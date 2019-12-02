@@ -330,7 +330,7 @@ parameters:
   kube_tag:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
-    default: v1.11.6
+    default: v1.15.6
 
   # FIXME update cloud_provider_tag when a fix for PVC is released
   # https://github.com/kubernetes/cloud-provider-openstack/pull/405
@@ -339,7 +339,7 @@ parameters:
     description:
       tag of the kubernetes/cloud-provider-openstack
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v0.2.0
+    default: v1.15.0
 
   cloud_provider_enabled:
     type: boolean
@@ -363,7 +363,7 @@ parameters:
   kube_version:
     type: string
     description: version of kubernetes used for kubernetes cluster
-    default: v1.11.6
+    default: v1.15.6
 
   kube_dashboard_version:
     type: string
@@ -530,7 +530,7 @@ parameters:
   heat_container_agent_tag:
     type: string
     description: tag of the heat_container_agent system container
-    default: stein-dev
+    default: stein-stable
 
   keystone_auth_enabled:
     type: boolean
@@ -581,7 +581,7 @@ parameters:
     description: >
       true if the auto scaling feature should be enabled
     default:
-      false
+      true
 
   node_problem_detector_tag:
     type: string
@@ -596,7 +596,7 @@ parameters:
   autoscaler_tag:
     type: string
     description: tag of the autoscaler container
-    default: v1.0
+    default: v1.15.2
 
   min_node_count:
     type: number
