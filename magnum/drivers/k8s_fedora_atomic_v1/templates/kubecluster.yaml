@@ -159,7 +159,7 @@ parameters:
     description: >
       cgroup driver name that kubelet should use, ideally the same as
       the docker cgroup driver.
-    default: "cgroupfs"
+    default: "systemd"
 
   traefik_ingress_controller_tag:
     type: string
