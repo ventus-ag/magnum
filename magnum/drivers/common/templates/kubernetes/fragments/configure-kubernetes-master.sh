@@ -261,6 +261,7 @@ fi
 
 systemctl daemon-reload
 systemctl enable docker
+systemctl restart docker
 
 if [ -z "${KUBE_NODE_IP}" ]; then
     KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
