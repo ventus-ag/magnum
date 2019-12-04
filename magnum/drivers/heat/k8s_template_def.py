@@ -118,6 +118,11 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
             extra_params['external_network'] = ext_net
 
         label_list = ['flannel_network_cidr', 'flannel_backend',
+                      'istio_enabled',
+                      'istio_lean_enabled',
+                      'cinder_enabled',
+                      'tekton_enabled',
+                      'knative_enabled',
                       'flannel_network_subnetlen',
                       'system_pods_initial_delay',
                       'system_pods_timeout',

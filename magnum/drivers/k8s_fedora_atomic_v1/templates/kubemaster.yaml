@@ -11,6 +11,31 @@ parameters:
     type: string
     description: server name
 
+  cinder_enabled:
+    type: boolean
+    description: >
+      cinder storage class
+
+  istio_enabled:
+    type: boolean
+    description: >
+      istio system
+
+  istio_lean_enabled:
+    type: boolean
+    description: >
+      istio lean system
+
+  tekton_enabled:
+    type: boolean
+    description: >
+      tekton system
+
+  knative_enabled:
+    type: boolean
+    description: >
+      tekton system
+
   server_image:
     type: string
     description: glance image used to boot the server
@@ -509,6 +534,11 @@ resources:
           template: {get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.yaml}
           params:
             "$PROMETHEUS_MONITORING": {get_param: prometheus_monitoring}
+            "$CINDER_ENABLED": {get_param: cinder_enabled}
+            "$ISTIO_ENABLED": {get_param: istio_enabled}
+            "$ISTIO_LEAN_ENABLED": {get_param: istio_lean_enabled}
+            "$TEKTON_ENABLED": {get_param: tekton_enabled}
+            "$KNATIVE_ENABLED": {get_param: knative_enabled}
             "$KUBE_API_PUBLIC_ADDRESS": {get_attr: [api_address_switch, public_ip]}
             "$KUBE_API_PRIVATE_ADDRESS": {get_attr: [api_address_switch, private_ip]}
             "$KUBE_API_PORT": {get_param: kubernetes_port}

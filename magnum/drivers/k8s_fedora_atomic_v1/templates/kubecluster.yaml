@@ -7,6 +7,36 @@ description: >
 
 parameters:
 
+  cinder_enabled:
+    type: boolean
+    default: true
+    description: >
+      cinder storage class
+
+  istio_enabled:
+    type: boolean
+    default: false
+    description: >
+      istio system
+
+  istio_lean_enabled:
+    type: boolean
+    default: false
+    description: >
+      istio lean system
+
+  tekton_enabled:
+    type: boolean
+    default: false
+    description: >
+      tekton system
+
+  knative_enabled:
+    type: boolean
+    default: false
+    description: >
+      tekton system
+
   ssh_key_name:
     type: string
     description: name of ssh key to be provisioned on our server
@@ -802,6 +832,11 @@ resources:
               - '-'
               - [{ get_param: 'OS::stack_name' }, 'master', '%index%']
           prometheus_monitoring: {get_param: prometheus_monitoring}
+          cinder_enabled: {get_param: cinder_enabled}
+          istio_enabled: {get_param: istio_enabled}
+          istio_lean_enabled: {get_param: istio_lean_enabled}
+          tekton_enabled: {get_param: tekton_enabled}
+          knative_enabled: {get_param: knative_enabled}
           grafana_admin_passwd: {get_param: grafana_admin_passwd}
           api_public_address: {get_attr: [api_lb, floating_address]}
           api_private_address: {get_attr: [api_lb, address]}
@@ -931,6 +966,11 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-keystone-auth.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-istio.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-istio-lean.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-tekton.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-knative.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
             - str_replace:
