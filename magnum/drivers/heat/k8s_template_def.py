@@ -122,6 +122,7 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
                       'istio_lean_enabled',
                       'cinder_enabled',
                       'tekton_enabled',
+                      'tekton_tag',
                       'knative_enabled',
                       'flannel_network_subnetlen',
                       'system_pods_initial_delay',

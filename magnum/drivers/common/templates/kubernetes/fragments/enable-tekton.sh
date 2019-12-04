@@ -8,7 +8,7 @@ printf "Starting to run ${step}\n"
 if [ "$(echo $TEKTON_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 
     printf "apply ${step}\n"
-    kubectl apply --filename https://storage.googleapis.com/tekton-releases/latest/release.yaml
+    kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/previous/${TEKTON_TAG}/release.yaml
 
 fi
 

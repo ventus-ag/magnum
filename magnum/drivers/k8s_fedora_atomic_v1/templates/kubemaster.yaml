@@ -31,6 +31,11 @@ parameters:
     description: >
       tekton system
 
+  tekton_tag:
+    type: string
+    description: >
+      tekton tag
+
   knative_enabled:
     type: boolean
     description: >
@@ -538,6 +543,7 @@ resources:
             "$ISTIO_ENABLED": {get_param: istio_enabled}
             "$ISTIO_LEAN_ENABLED": {get_param: istio_lean_enabled}
             "$TEKTON_ENABLED": {get_param: tekton_enabled}
+            "$TEKTON_TAG": {get_param: tekton_tag}
             "$KNATIVE_ENABLED": {get_param: knative_enabled}
             "$KUBE_API_PUBLIC_ADDRESS": {get_attr: [api_address_switch, public_ip]}
             "$KUBE_API_PRIVATE_ADDRESS": {get_attr: [api_address_switch, private_ip]}
