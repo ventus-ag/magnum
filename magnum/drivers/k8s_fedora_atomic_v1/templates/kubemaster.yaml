@@ -39,7 +39,13 @@ parameters:
   knative_enabled:
     type: boolean
     description: >
-      tekton system
+      knative system
+
+  knative_tag:
+    type: string
+    default: "v0.10.0"
+    description: >
+      knative tag
 
   server_image:
     type: string
@@ -545,6 +551,7 @@ resources:
             "$TEKTON_ENABLED": {get_param: tekton_enabled}
             "$TEKTON_TAG": {get_param: tekton_tag}
             "$KNATIVE_ENABLED": {get_param: knative_enabled}
+            "$KNATIVE_TAG": {get_param: knative_tag}
             "$KUBE_API_PUBLIC_ADDRESS": {get_attr: [api_address_switch, public_ip]}
             "$KUBE_API_PRIVATE_ADDRESS": {get_attr: [api_address_switch, private_ip]}
             "$KUBE_API_PORT": {get_param: kubernetes_port}

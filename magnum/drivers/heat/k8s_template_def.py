@@ -124,6 +124,7 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
                       'tekton_enabled',
                       'tekton_tag',
                       'knative_enabled',
+                      'knative_tag',
                       'flannel_network_subnetlen',
                       'system_pods_initial_delay',
                       'system_pods_timeout',

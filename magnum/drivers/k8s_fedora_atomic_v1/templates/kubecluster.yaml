@@ -43,6 +43,12 @@ parameters:
     description: >
       tekton system
 
+  knative_tag:
+    type: string
+    default: "v0.10.0"
+    description: >
+      tekton tag
+
   ssh_key_name:
     type: string
     description: name of ssh key to be provisioned on our server
@@ -844,6 +850,7 @@ resources:
           tekton_enabled: {get_param: tekton_enabled}
           tekton_tag: {get_param: tekton_tag}
           knative_enabled: {get_param: knative_enabled}
+          knative_tag: {get_param: knative_tag}
           grafana_admin_passwd: {get_param: grafana_admin_passwd}
           api_public_address: {get_attr: [api_lb, floating_address]}
           api_private_address: {get_attr: [api_lb, address]}
