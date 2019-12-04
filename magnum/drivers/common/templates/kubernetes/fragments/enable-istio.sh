@@ -14,7 +14,6 @@ if [ "$(echo $ISTIO_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
   mkdir -p $(dirname ${ISTIO_DEPLOY})
 
   (cd $(dirname ${ISTIO_DEPLOY}) && curl -L https://git.io/getLatestIstio | sh -)
-  (cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && for i in install/kubernetes/helm/istio-init/files/crd*yaml; do kubectl apply -f $i; done)
   (cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && helm template --namespace=istio-system \
     --set sidecarInjectorWebhook.enabled=true \
     --set sidecarInjectorWebhook.enableNamespacesByDefault=true \
@@ -37,7 +36,7 @@ name: istio-system
 labels:
   istio-injection: disabled
 EOF
-
+    (cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && for i in install/kubernetes/helm/istio-init/files/crd*yaml; do kubectl apply -f $i; done)
     kubectl apply --validate=false -f $ISTIO_DEPLOY
 fi
 
