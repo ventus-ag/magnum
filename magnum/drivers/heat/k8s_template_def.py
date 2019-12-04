@@ -119,7 +119,7 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
 
         label_list = ['flannel_network_cidr', 'flannel_backend',
                       'istio_enabled',
-                      'istio_lean_enabled',
+                      'istio_tag',
                       'cinder_enabled',
                       'tekton_enabled',
                       'tekton_tag',
