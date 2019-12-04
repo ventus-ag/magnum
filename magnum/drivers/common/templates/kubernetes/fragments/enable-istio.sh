@@ -9,7 +9,6 @@ if [ "$(echo $ISTIO_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 
   curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
   ISTIO_DEPLOY=/srv/magnum/kubernetes/istio.yaml
-  ISTIO_TAG=1.4.0
 
   mkdir -p $(dirname ${ISTIO_DEPLOY})
 
@@ -27,14 +26,13 @@ if [ "$(echo $ISTIO_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 	done
 	
     printf "apply ${step}\n"
-
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Namespace
 metadata:
-name: istio-system
-labels:
-  istio-injection: disabled
+ name: istio-system
+ labels:
+   istio-injection: disabled
 EOF
     (cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && for i in install/kubernetes/helm/istio-init/files/crd*yaml; do kubectl apply -f $i; done)
     kubectl apply --validate=false -f $ISTIO_DEPLOY
