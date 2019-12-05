@@ -39,10 +39,8 @@ if [ "$(echo $KNATIVE_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 			> $ISTIO_DEPLOY)
 
 	printf "Wait for Openstack controller manager"
-	until  [[ "$(kubectl get pod -n kube-system | grep openstack-cloud-controller-manager)" == *"openstack-cloud-controller-manager"* ]]
-	do
-		sleep 5
-	done
+	while [[ $(kubectl get pods -l k8s-app=openstack-cloud-controller-manager -n kube-system -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do echo "waiting for pod" && sleep 10; done
+	
 	
 	printf "apply ${step}\n"
 cat <<EOF | kubectl apply -f -
