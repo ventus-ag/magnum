@@ -177,6 +177,9 @@ fi
 
 systemctl daemon-reload
 systemctl enable docker
+
+ip link delete cni0
+
 systemctl restart docker
 
 cat > /etc/kubernetes/get_require_kubeconfig.sh <<EOF
