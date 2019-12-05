@@ -7,13 +7,13 @@ printf "Starting to run ${step}\n"
 
 if [ "$(echo $KNATIVE_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 	printf "apply ${step}\n"
-	curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | sed 's#/usr/local/bin#/srv/magnum#g' | bash
 	ISTIO_DEPLOY=/srv/magnum/kubernetes/istio-knative.yaml
 
 	mkdir -p $(dirname ${ISTIO_DEPLOY})
 
 	(cd $(dirname ${ISTIO_DEPLOY}) && curl -L https://git.io/getLatestIstio | sh -)
-	(cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && helm template --namespace=istio-system \
+	(cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && /srv/magnum/helm template --namespace=istio-system \
 			--set prometheus.enabled=false \
 			--set mixer.enabled=false \
 			--set mixer.policy.enabled=false \
