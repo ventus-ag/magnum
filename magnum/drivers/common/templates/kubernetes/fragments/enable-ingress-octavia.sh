@@ -46,7 +46,6 @@ data:
     octavia:
       subnet_id: ${CLUSTER_SUBNET}
       floating_network_id: ${EXTERNAL_NETWORK_ID}
-      manage-security-groups: true
 EOF
 )
 writeFile $OCTAVIA_INGRESS_CONTROLLER_CONFIGMAP "$OCTAVIA_INGRESS_CONTROLLER_CONFIGMAP_CONTENT"
