@@ -264,5 +264,5 @@ EOF
         done
     fi
 
-    /usr/bin/kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-system
+    kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-system
 fi

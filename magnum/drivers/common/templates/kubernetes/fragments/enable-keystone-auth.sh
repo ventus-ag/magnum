@@ -177,8 +177,8 @@ EOF
         sleep 5
     done
 
-    /usr/bin/kubectl apply -f ${KEYSTONE_AUTH_POLICY}
-    /usr/bin/kubectl apply -f ${KEYSTONE_AUTH_DEPLOY}
+    kubectl apply -f ${KEYSTONE_AUTH_POLICY}
+    kubectl apply -f ${KEYSTONE_AUTH_DEPLOY}
 
 fi
 

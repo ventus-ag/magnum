@@ -22,7 +22,7 @@ done
 
 # Label self as master
 until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ] && \
-    kubectl patch node ${INSTANCE_NAME} \
+    kubectl patch node $(hostname -s) \
         --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
 do
     echo "Trying to label master node with node-role.kubernetes.io/master=\"\""
