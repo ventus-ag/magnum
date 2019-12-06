@@ -9,9 +9,9 @@ if [ "$(echo $ISTIO_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 
   curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | sed 's#/usr/local/bin#/srv/magnum#g' | bash
   ISTIO_DEPLOY=/srv/magnum/kubernetes/istio.yaml
-  ISTIO_VERSION=${ISTIO_TAG}
   mkdir -p $(dirname ${ISTIO_DEPLOY})
-
+  
+  export ISTIO_VERSION=${ISTIO_TAG}
   (cd $(dirname ${ISTIO_DEPLOY}) && curl -L https://git.io/getLatestIstio | sh -)
   (cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && /srv/magnum/helm template --namespace=istio-system \
     --set sidecarInjectorWebhook.enabled=true \

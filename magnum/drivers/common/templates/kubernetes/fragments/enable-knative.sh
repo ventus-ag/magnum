@@ -11,7 +11,8 @@ if [ "$(echo $KNATIVE_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 	ISTIO_DEPLOY=/srv/magnum/kubernetes/istio-knative.yaml
 
 	mkdir -p $(dirname ${ISTIO_DEPLOY})
-    ISTIO_VERSION=${ISTIO_TAG}
+
+	export ISTIO_VERSION=${ISTIO_TAG}
 	(cd $(dirname ${ISTIO_DEPLOY}) && curl -L https://git.io/getLatestIstio | sh -)
 	(cd $(dirname ${ISTIO_DEPLOY})/istio-${ISTIO_TAG} && /srv/magnum/helm template --namespace=istio-system \
 			--set prometheus.enabled=false \
