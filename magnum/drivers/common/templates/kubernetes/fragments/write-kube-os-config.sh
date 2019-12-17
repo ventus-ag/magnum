@@ -25,7 +25,6 @@ create-monitor=yes
 monitor-delay=1m
 monitor-timeout=30s
 monitor-max-retries=3
-manage-security-groups=true
 [BlockStorage]
 bs-version=v2
 EOF
