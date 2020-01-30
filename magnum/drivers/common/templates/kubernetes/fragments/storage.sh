@@ -549,6 +549,7 @@ metadata:
   annotations: 
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: cinder.csi.openstack.org
+volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 parameters:
   type: RBD
