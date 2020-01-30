@@ -30,7 +30,9 @@ metadata:
   annotations: 
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: kubernetes.io/cinder
+volumeBindingMode: WaitForFirstConsumer
 parameters:
+  type: RBD
   availability: nova
 EOF
     }
