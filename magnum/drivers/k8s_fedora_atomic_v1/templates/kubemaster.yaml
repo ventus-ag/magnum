@@ -11,6 +11,56 @@ parameters:
     type: string
     description: server name
 
+  cinder_enabled:
+    type: boolean
+    description: >
+      cinder storage class
+
+  istio_enabled:
+    type: boolean
+    description: >
+      istio system
+
+  istio_tag:
+    type: string
+    description: >
+      istio version
+
+  tekton_enabled:
+    type: boolean
+    description: >
+      tekton system
+
+  tekton_tag:
+    type: string
+    description: >
+      tekton tag
+
+  knative_enabled:
+    type: boolean
+    description: >
+      knative system
+
+  knative_tag:
+    type: string
+    description: >
+      knative tag
+
+  kfserving_enabled:
+    type: boolean
+    description: >
+      kfserving system
+
+  kfserving_tag:
+    type: string
+    description: >
+      kfserving tag
+
+  cinder_csi_enabled:
+    type: boolean
+    description: >
+      cinder csi storage
+
   server_image:
     type: string
     description: glance image used to boot the server
@@ -637,6 +687,16 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh}
                 params:
                   "$INSTANCE_NAME": {get_param: name}
+                  "$CINDER_ENABLED": {get_param: cinder_enabled}
+                  "$ISTIO_ENABLED": {get_param: istio_enabled}
+                  "$ISTIO_TAG": {get_param: istio_tag}
+                  "$TEKTON_ENABLED": {get_param: tekton_enabled}
+                  "$TEKTON_TAG": {get_param: tekton_tag}
+                  "$KNATIVE_ENABLED": {get_param: knative_enabled}
+                  "$KNATIVE_TAG": {get_param: knative_tag}
+                  "$KFSERVING_ENABLED": {get_param: kfserving_enabled}
+                  "$KFSERVING_TAG": {get_param: kfserving_tag}
+                  "$CINDER_CSI_ENABLED": {get_param: cinder_csi_enabled}
                   "$HEAPSTER_ENABLED": {get_param: heapster_enabled}
                   "$METRICS_SERVER_ENABLED": {get_param: metrics_server_enabled}
                   "$METRICS_SERVER_CHART_TAG": {get_param: metrics_server_chart_tag}

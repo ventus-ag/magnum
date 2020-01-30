@@ -363,7 +363,9 @@ spec:
             path: /etc/kubernetes
 EOF
     }
-
+	  printf "Wait for cluster ready"
+    while [[ $(kubectl get nodes -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True True"* ]]; do echo "waiting for nodes" && sleep 10; done
+	
     kubectl apply -f ${magnum_auto_healer_manifest}
 }
 

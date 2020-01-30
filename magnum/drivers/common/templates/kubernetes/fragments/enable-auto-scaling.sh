@@ -20,7 +20,7 @@ if [[ "${auto_scaling_enabled}" = "true" || ("${auto_healing_enabled}" = "true" 
         mkdir -p $(dirname ${AUTOSCALER_DEPLOY})
         cat << EOF > ${AUTOSCALER_DEPLOY}
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cluster-autoscaler-role
@@ -59,17 +59,17 @@ rules:
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["watch", "list", "get"]
   - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
+    resources: ["storageclasses", "csinodes"]
     verbs: ["watch", "list", "get"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["create"]
+    verbs: ["create","list","watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["cluster-autoscaler-status"]
+    resourceNames: ["cluster-autoscaler-status", "cluster-autoscaler-priority-expander"]
     verbs: ["delete", "get", "update"]
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: cluster-autoscaler-rolebinding
@@ -181,7 +181,9 @@ stringData:
     region=$REGION_NAME
     ca-file=/etc/kubernetes/ca-bundle.crt
 EOF
-
+	  printf "Wait for cluster ready"
+    while [[ $(kubectl get nodes -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True True"* ]]; do echo "waiting for nodes" && sleep 10; done
+	
     kubectl apply -f ${AUTOSCALER_DEPLOY}
 fi
 printf "Finished running ${step}\n"

@@ -38,6 +38,67 @@ conditions:
 
 parameters:
 
+
+  cinder_enabled:
+    type: boolean
+    default: false
+    description: >
+      cinder storage class
+
+  istio_enabled:
+    type: boolean
+    default: false
+    description: >
+      istio system
+
+  istio_tag:
+    type: string
+    default: "1.4.0"
+    description: >
+      istio version
+
+  tekton_enabled:
+    type: boolean
+    default: false
+    description: >
+      tekton system
+
+  tekton_tag:
+    type: string
+    default: "v0.9.0"
+    description: >
+      tekton tag
+
+  knative_enabled:
+    type: boolean
+    default: false
+    description: >
+      tekton system
+
+  knative_tag:
+    type: string
+    default: "v0.12.0"
+    description: >
+      tekton tag
+
+  kfserving_enabled:
+    type: boolean
+    default: false
+    description: >
+      kfserving system
+
+  kfserving_tag:
+    type: string
+    default: "0.2.2"
+    description: >
+      kfserving tag
+
+  cinder_csi_enabled:
+    type: boolean
+    default: true
+    description: >
+      cinder csi storage
+
   # needs to become a list if we want to join master nodes?
   existing_master_private_ip:
     type: string
@@ -442,17 +503,17 @@ parameters:
   kube_tag:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
-    default: v1.15.7
+    default: v1.17.2
 
   master_kube_tag:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
-    default: v1.15.7
+    default: v1.17.2
 
   minion_kube_tag:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
-    default: v1.15.7
+    default: v1.17.2
 
   # FIXME update cloud_provider_tag when a fix for PVC is released
   # https://github.com/kubernetes/cloud-provider-openstack/pull/405
@@ -461,7 +522,7 @@ parameters:
     description:
       tag of the kubernetes/cloud-provider-openstack
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.15.0
+    default: v1.17.0
 
   cloud_provider_enabled:
     type: boolean
@@ -490,7 +551,7 @@ parameters:
   kube_version:
     type: string
     description: version of kubernetes used for kubernetes cluster
-    default: v1.15.7
+    default: v1.17.1
 
   kube_dashboard_version:
     type: string
@@ -652,7 +713,7 @@ parameters:
   heat_container_agent_tag:
     type: string
     description: tag of the heat_container_agent system container
-    default: ussuri-dev
+    default: train-stable
 
   keystone_auth_enabled:
     type: boolean
@@ -721,7 +782,7 @@ parameters:
     description: >
       true if the auto healing feature should be enabled
     default:
-      false
+      true
 
   auto_healing_controller:
     type: string
@@ -732,14 +793,14 @@ parameters:
   magnum_auto_healer_tag:
     type: string
     description: tag of the magnum-auto-healer service.
-    default: "v1.15.0"
+    default: "v1.17.0"
 
   auto_scaling_enabled:
     type: boolean
     description: >
       true if the auto scaling feature should be enabled
     default:
-      false
+      true
 
   node_problem_detector_tag:
     type: string
@@ -764,7 +825,7 @@ parameters:
   autoscaler_tag:
     type: string
     description: tag of the autoscaler container
-    default: v1.0
+    default: v1.16.1
 
   min_node_count:
     type: number
@@ -776,6 +837,7 @@ parameters:
     type: number
     description: >
       maximum node count of cluster workers when doing scale up
+    default: 5
 
   update_max_batch_size:
     type: number
@@ -1016,6 +1078,16 @@ resources:
               - [{ get_param: 'OS::stack_name' }, 'master', '%index%']
           nodegroup_role: {get_param: master_role}
           nodegroup_name: {get_param: master_nodegroup_name}
+          cinder_enabled: {get_param: cinder_enabled}
+          istio_enabled: {get_param: istio_enabled}
+          istio_tag: {get_param: istio_tag}
+          tekton_enabled: {get_param: tekton_enabled}
+          tekton_tag: {get_param: tekton_tag}
+          knative_enabled: {get_param: knative_enabled}
+          knative_tag: {get_param: knative_tag}
+          kfserving_enabled: {get_param: kfserving_enabled}
+          kfserving_tag: {get_param: kfserving_tag}
+          cinder_csi_enabled: {get_param: cinder_csi_enabled}
           heapster_enabled: {get_param: heapster_enabled}
           metrics_server_enabled: {get_param: metrics_server_enabled}
           metrics_server_chart_tag: {get_param: metrics_server_chart_tag}
@@ -1167,8 +1239,14 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/fragments/enable-keystone-auth.sh}
                 params:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
+            - get_file: ../../common/templates/kubernetes/fragments/storage.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-istio.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-tekton.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-knative.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-kfserving.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
             - str_replace:

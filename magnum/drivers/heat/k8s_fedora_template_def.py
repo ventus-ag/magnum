@@ -75,6 +75,16 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         extra_params['cloud_provider_enabled'] = cloud_provider_enabled
 
         label_list = ['coredns_tag',
+                      'istio_enabled',
+                      'istio_tag',
+                      'cinder_enabled',
+                      'tekton_enabled',
+                      'tekton_tag',
+                      'knative_enabled',
+                      'knative_tag',
+                      'kfserving_enabled',
+                      'kfserving_tag',
+                      'cinder_csi_enabled',
                       'kube_tag', 'container_infra_prefix',
                       'availability_zone',
                       'cgroup_driver',

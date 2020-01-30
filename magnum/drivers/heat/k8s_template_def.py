@@ -212,6 +212,16 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
         extra_params.update(net_params)
 
         label_list = ['flannel_network_cidr', 'flannel_backend',
+                      'istio_enabled',
+                      'istio_tag',
+                      'cinder_enabled',
+                      'tekton_enabled',
+                      'tekton_tag',
+                      'knative_enabled',
+                      'knative_tag',
+                      'kfserving_enabled',
+                      'kfserving_tag',
+                      'cinder_csi_enabled',
                       'flannel_network_subnetlen',
                       'system_pods_initial_delay',
                       'system_pods_timeout',
