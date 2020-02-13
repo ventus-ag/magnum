@@ -1,0 +1,20 @@
+name: ci-magnum-stage
+on:
+  push:
+    branches:
+    - stable/train
+
+jobs:
+  deploy:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy
+      uses: garygrossgarten/github-action-ssh@v0.3.0
+      with:
+        command: |
+          openstack-ansible /opt/openstack-ansible/playbooks/os-magnum-install.yml -e "venv_rebuild=yes" -e "magnum_git_install_branch=stable/train"
+        host: "95.217.80.65"
+        username: "root"
+        privateKey: ${{ secrets.PRIVATE_KEY }}

@@ -20,7 +20,7 @@ if [ "$(echo $KFSERVING_ENABLED | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 	
     printf "apply ${step}\n"
 
-    kubectl apply -f https://raw.githubusercontent.com/kubeflow/kfserving/master/install/${KFSERVING_TAG}/kfserving.yaml
+    kubectl apply --validate=false -f https://raw.githubusercontent.com/kubeflow/kfserving/master/install/${KFSERVING_TAG}/kfserving.yaml
 fi
 
 printf "Finished running ${step}\n"

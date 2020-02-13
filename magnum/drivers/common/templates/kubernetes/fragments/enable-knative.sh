@@ -76,13 +76,13 @@ EOF
 		sleep 5
 	done
 	
-   kubectl apply --selector knative.dev/crd-install=true \
+   kubectl apply --validate=false --selector knative.dev/crd-install=true \
    --filename https://github.com/knative/serving/releases/download/${KNATIVE_TAG}/serving.yaml \
    --filename https://github.com/knative/eventing/releases/download/${KNATIVE_TAG}/eventing.yaml
 
    sleep 10
 
-   kubectl apply \
+   kubectl apply --validate=false \
    --filename https://github.com/knative/serving/releases/download/${KNATIVE_TAG}/serving.yaml \
    --filename https://github.com/knative/eventing/releases/download/${KNATIVE_TAG}/eventing.yaml \
    --selector networking.knative.dev/certificate-provider!=cert-manager

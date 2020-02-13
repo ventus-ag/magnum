@@ -1,47 +1,30 @@
 #!/bin/sh
 
-step="enable-csi-storage"
+step="enable-cinder-csi"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
 
-#EXTERNAL_ATTACHER_IMAGE="${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-attacher:${KUBE_CSI_VERSION}"
-#EXTERNAL_PROVISIONER_IMAGE="${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-provisioner:${KUBE_CSI_VERSION}"
-
+volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
 cinder_csi_enabled=$(echo $CINDER_CSI_ENABLED | tr '[:upper:]' '[:lower:]')
-#cephfs_csi_enabled=$(echo $CEPHFS_CSI_ENABLED | tr '[:upper:]' '[:lower:]')
 
-
-if [[ "${cinder_csi_enabled}" = "true" ]]; then
-    # Generate rbd csi manifest file
-    CINDER_CSI_DEPLOY=/srv/magnum/kubernetes/manifests/cinder_csi.yaml
-
+if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_enabled}" = "true" ]; then
+    # Generate Cinder CSI manifest file
+    CINDER_CSI_DEPLOY=/srv/magnum/kubernetes/manifests/cinder-csi.yaml
     echo "Writing File: $CINDER_CSI_DEPLOY"
     mkdir -p $(dirname ${CINDER_CSI_DEPLOY})
-    cat << 'EOF' > ${CINDER_CSI_DEPLOY}
----
-apiVersion: storage.k8s.io/v1beta1
-kind: CSIDriver
-metadata:
-  name: cinder.csi.openstack.org
-spec:
-  attachRequired: true
-  podInfoOnMount: true
-  volumeLifecycleModes:
-  - Persistent
-  - Ephemeral
+    cat << EOF > ${CINDER_CSI_DEPLOY}
 ---
 # This YAML file contains RBAC API objects,
 # which are necessary to run csi controller plugin
-
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-cinder-controller-sa
   namespace: kube-system
-
 ---
-# external attacher 
+# external attacher
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -59,8 +42,6 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["csinodes"]
     verbs: ["get", "list", "watch"]
-
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -74,7 +55,6 @@ roleRef:
   kind: ClusterRole
   name: csi-attacher-role
   apiGroup: rbac.authorization.k8s.io
-
 ---
 # external Provisioner
 kind: ClusterRole
@@ -106,7 +86,6 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -120,7 +99,6 @@ roleRef:
   kind: ClusterRole
   name: csi-provisioner-role
   apiGroup: rbac.authorization.k8s.io
-
 ---
 # external snapshotter
 kind: ClusterRole
@@ -158,7 +136,6 @@ rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["create", "list", "watch", "delete"]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -173,7 +150,6 @@ roleRef:
   name: csi-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
 ---
-
 # External Resizer
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -182,9 +158,9 @@ metadata:
 rules:
   # The following rule should be uncommented for plugins that require secrets
   # for provisioning.
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+  # - apiGroups: [""]
+  #   resources: ["secrets"]
+  #   verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch", "update", "patch"]
@@ -200,7 +176,6 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -214,7 +189,6 @@ roleRef:
   kind: ClusterRole
   name: csi-resizer-role
   apiGroup: rbac.authorization.k8s.io
-
 ---
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
@@ -225,7 +199,6 @@ rules:
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["get", "watch", "list", "delete", "update", "create"]
-
 ---
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -241,40 +214,9 @@ roleRef:
   name: external-resizer-cfg
   apiGroup: rbac.authorization.k8s.io
 ---
-# This YAML defines all API objects to create RBAC roles for csi node plugin.
-
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: csi-cinder-node-sa
-  namespace: kube-system
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-nodeplugin-role
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-nodeplugin-binding
-subjects:
-  - kind: ServiceAccount
-    name: csi-cinder-node-sa
-    namespace: kube-system
-roleRef:
-  kind: ClusterRole
-  name: csi-nodeplugin-role
-  apiGroup: rbac.authorization.k8s.io
----
 # This YAML file contains CSI Controller Plugin Sidecars
 # external-attacher, external-provisioner, external-snapshotter
-
+---
 kind: Service
 apiVersion: v1
 metadata:
@@ -288,7 +230,6 @@ spec:
   ports:
     - name: dummy
       port: 12345
-
 ---
 kind: StatefulSet
 apiVersion: apps/v1
@@ -309,10 +250,10 @@ spec:
       serviceAccount: csi-cinder-controller-sa
       containers:
         - name: csi-attacher
-          image: quay.io/k8scsi/csi-attacher:v2.0.0
+          image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-attacher:${CSI_ATTACHER_TAG}
           args:
             - "--v=5"
-            - "--csi-address=$(ADDRESS)"
+            - "--csi-address=\$(ADDRESS)"
             - "--timeout=3m"
           env:
             - name: ADDRESS
@@ -322,9 +263,9 @@ spec:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:v1.4.0
+          image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-provisioner:${CSI_PROVISIONER_TAG}
           args:
-            - "--csi-address=$(ADDRESS)"
+            - "--csi-address=\$(ADDRESS)"
             - "--timeout=3m"
           env:
             - name: ADDRESS
@@ -334,9 +275,9 @@ spec:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: csi-snapshotter
-          image: quay.io/k8scsi/csi-snapshotter:v1.2.2
+          image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-snapshotter:${CSI_SNAPSHOTTER_TAG}
           args:
-            - "--csi-address=$(ADDRESS)"
+            - "--csi-address=\$(ADDRESS)"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -345,10 +286,10 @@ spec:
             - mountPath: /var/lib/csi/sockets/pluginproxy/
               name: socket-dir
         - name: csi-resizer
-          image: quay.io/k8scsi/csi-resizer:v0.3.0
+          image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-resizer:${CSI_RESIZER_TAG}
           args:
             - "--v=5"
-            - "--csi-address=$(ADDRESS)"
+            - "--csi-address=\$(ADDRESS)"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -357,13 +298,13 @@ spec:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
         - name: cinder-csi-plugin
-          image: docker.io/k8scloudprovider/cinder-csi-plugin:latest
+          image: ${CONTAINER_INFRA_PREFIX:-docker.io/k8scloudprovider/}cinder-csi-plugin:${CINDER_CSI_PLUGIN_TAG}
           args :
             - /bin/cinder-csi-plugin
-            - "--nodeid=$(NODE_ID)"
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--cloud-config=$(CLOUD_CONFIG)"
-            - "--cluster=$(CLUSTER_NAME)"
+            - "--nodeid=\$(NODE_ID)"
+            - "--endpoint=\$(CSI_ENDPOINT)"
+            - "--cloud-config=\$(CLOUD_CONFIG)"
+            - "--cluster=\$(CLUSTER_NAME)"
           env:
             - name: NODE_ID
               valueFrom:
@@ -372,32 +313,63 @@ spec:
             - name: CSI_ENDPOINT
               value: unix://csi/csi.sock
             - name: CLOUD_CONFIG
-              value: /etc/config/cloud.conf
+              value: /etc/config/cloud-config
             - name: CLUSTER_NAME
               value: kubernetes
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-            - name: ca-bundle
-              mountPath: /etc/kubernetes
-              readOnly: true
             - name: secret-cinderplugin
               mountPath: /etc/config
+              readOnly: true
+            - name: cacert
+              mountPath: /etc/kubernetes/ca-bundle.crt
               readOnly: true
       volumes:
         - name: socket-dir
           emptyDir:
-        - name: ca-bundle
-          secret:
-            secretName: ca-bundle-csi
         - name: secret-cinderplugin
           secret:
             secretName: cinder-csi-cloud-config
+        - name: cacert
+          hostPath:
+            path: /etc/kubernetes/ca-bundle.crt
+            type: File
+---
+# This YAML defines all API objects to create RBAC roles for csi node plugin.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-cinder-node-sa
+  namespace: kube-system
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-nodeplugin-role
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-nodeplugin-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-cinder-node-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-nodeplugin-role
+  apiGroup: rbac.authorization.k8s.io
 ---
 # This YAML file contains driver-registrar & csi driver nodeplugin API objects,
 # which are necessary to run csi nodeplugin for cinder.
-
+---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -416,10 +388,10 @@ spec:
       hostNetwork: true
       containers:
         - name: node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
+          image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-node-driver-registrar:${CSI_NODE_DRIVER_REGISTRAR_TAG}
           args:
-            - "--csi-address=$(ADDRESS)"
-            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+            - "--csi-address=\$(ADDRESS)"
+            - "--kubelet-registration-path=\$(DRIVER_REG_SOCK_PATH)"
           lifecycle:
             preStop:
               exec:
@@ -445,12 +417,12 @@ spec:
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
-          image: docker.io/k8scloudprovider/cinder-csi-plugin:latest
+          image: ${CONTAINER_INFRA_PREFIX:-docker.io/k8scloudprovider/}cinder-csi-plugin:${CINDER_CSI_PLUGIN_TAG}
           args :
             - /bin/cinder-csi-plugin
-            - "--nodeid=$(NODE_ID)"
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--cloud-config=$(CLOUD_CONFIG)"
+            - "--nodeid=\$(NODE_ID)"
+            - "--endpoint=\$(CSI_ENDPOINT)"
+            - "--cloud-config=\$(CLOUD_CONFIG)"
           env:
             - name: NODE_ID
               valueFrom:
@@ -459,7 +431,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix://csi/csi.sock
             - name: CLOUD_CONFIG
-              value: /etc/config/cloud.conf
+              value: /etc/config/cloud-config
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir
@@ -473,11 +445,11 @@ spec:
             - name: pods-probe-dir
               mountPath: /dev
               mountPropagation: "HostToContainer"
-            - name: ca-bundle
-              mountPath: /etc/kubernetes
-              readOnly: true
             - name: secret-cinderplugin
               mountPath: /etc/config
+              readOnly: true
+            - name: cacert
+              mountPath: /etc/kubernetes/ca-bundle.crt
               readOnly: true
       volumes:
         - name: socket-dir
@@ -495,17 +467,28 @@ spec:
         - name: pods-cloud-data
           hostPath:
             path: /var/lib/cloud/data
-        #    type: Directory
         - name: pods-probe-dir
           hostPath:
             path: /dev
             type: Directory
-        - name: ca-bundle
-          secret:
-            secretName: ca-bundle-csi
         - name: secret-cinderplugin
           secret:
             secretName: cinder-csi-cloud-config
+        - name: cacert
+          hostPath:
+            path: /etc/kubernetes/ca-bundle.crt
+            type: File
+---
+apiVersion: storage.k8s.io/v1beta1
+kind: CSIDriver
+metadata:
+  name: cinder.csi.openstack.org
+spec:
+  attachRequired: true
+  podInfoOnMount: true
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
 EOF
 
     echo "Waiting for Kubernetes API..."
@@ -513,10 +496,6 @@ EOF
     do
         sleep 5
     done
-
-	  if [[ $(kubectl get secrets -n kube-system | grep ca-bundle-csi) != "ca-bundle-csi"* ]]; then
-        kubectl create secret generic ca-bundle-csi --from-file=/etc/kubernetes/ca-bundle.crt -n kube-system
-    fi
 
     cat <<EOF | kubectl apply -f -
 ---
@@ -527,7 +506,7 @@ metadata:
   namespace: kube-system
 type: Opaque
 stringData:
-  cloud.conf: |-
+  cloud-config: |-
     [Global]
     auth-url=$AUTH_URL
     user-id=$TRUSTEE_USER_ID
@@ -535,11 +514,9 @@ stringData:
     trust-id=$TRUST_ID
     region=$REGION_NAME
     ca-file=/etc/kubernetes/ca-bundle.crt
-    [BlockStorage]
-    bs-version=v2
 EOF
-    kubectl apply -f ${CINDER_CSI_DEPLOY}
 
+    kubectl apply --validate=false -f ${CINDER_CSI_DEPLOY}
     cat <<EOF | kubectl apply -f -
 ---
 apiVersion: storage.k8s.io/v1

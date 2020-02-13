@@ -92,12 +92,6 @@ parameters:
     description: >
       kfserving tag
 
-  cinder_csi_enabled:
-    type: boolean
-    default: false
-    description: >
-      cinder csi storage
-
   # needs to become a list if we want to join master nodes?
   existing_master_private_ip:
     type: string
@@ -395,7 +389,7 @@ parameters:
   volume_driver:
     type: string
     description: volume driver to use for container storage
-    default: ""
+    default: "cinder"
 
   region_name:
     type: string
@@ -521,7 +515,7 @@ parameters:
     description:
       tag of the kubernetes/cloud-provider-openstack
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.15.0
+    default: v1.17.0
 
   cloud_provider_enabled:
     type: boolean
@@ -600,7 +594,7 @@ parameters:
     type: string
     description: >
       availability zone for master and nodes
-    default: ""
+    default: "nova"
 
   cert_manager_api:
     type: boolean
@@ -800,6 +794,43 @@ parameters:
       true if the auto scaling feature should be enabled
     default:
       true
+
+  cinder_csi_enabled:
+    type: boolean
+    description: >
+      true if the cinder csi feature should be enabled
+    default:
+      false
+
+  cinder_csi_plugin_tag:
+    type: string
+    description: tag of cinder csi plugin
+    default: v1.16.0
+
+  csi_attacher_tag:
+    type: string
+    description: tag of csi attacher
+    default: v2.0.0
+
+  csi_provisioner_tag:
+    type: string
+    description: tag of csi provisioner
+    default: v1.4.0
+
+  csi_snapshotter_tag:
+    type: string
+    description: tag of csi snapshotter
+    default: v1.2.2
+
+  csi_resizer_tag:
+    type: string
+    description: tag of csi resizer
+    default: v0.3.0
+
+  csi_node_driver_registrar_tag:
+    type: string
+    description: tag of csi node driver registrar
+    default: v1.1.0
 
   node_problem_detector_tag:
     type: string
@@ -1084,7 +1115,6 @@ resources:
           knative_tag: {get_param: knative_tag}
           kfserving_enabled: {get_param: kfserving_enabled}
           kfserving_tag: {get_param: kfserving_tag}
-          cinder_csi_enabled: {get_param: cinder_csi_enabled}
           heapster_enabled: {get_param: heapster_enabled}
           metrics_server_enabled: {get_param: metrics_server_enabled}
           metrics_server_chart_tag: {get_param: metrics_server_chart_tag}
@@ -1194,6 +1224,13 @@ resources:
           auto_healing_controller: {get_param: auto_healing_controller}
           magnum_auto_healer_tag: {get_param: magnum_auto_healer_tag}
           auto_scaling_enabled: {get_param: auto_scaling_enabled}
+          cinder_csi_enabled: {get_param: cinder_csi_enabled}
+          cinder_csi_plugin_tag: {get_param: cinder_csi_plugin_tag}
+          csi_attacher_tag: {get_param: csi_attacher_tag}
+          csi_provisioner_tag: {get_param: csi_provisioner_tag}
+          csi_snapshotter_tag: {get_param: csi_snapshotter_tag}
+          csi_resizer_tag: {get_param: csi_resizer_tag}
+          csi_node_driver_registrar_tag: {get_param: csi_node_driver_registrar_tag}
           draino_tag: {get_param: draino_tag}
           autoscaler_tag: {get_param: autoscaler_tag}
           min_node_count: {get_param: min_node_count}
@@ -1235,9 +1272,9 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/fragments/enable-keystone-auth.sh}
                 params:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
-            - get_file: ../../common/templates/kubernetes/fragments/storage.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-istio.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-tekton.sh

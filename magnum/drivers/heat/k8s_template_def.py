@@ -221,7 +221,7 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
                       'knative_tag',
                       'kfserving_enabled',
                       'kfserving_tag',
-                      'cinder_csi_enabled',
+                      'availability_zone',
                       'flannel_network_subnetlen',
                       'system_pods_initial_delay',
                       'system_pods_timeout',
