@@ -261,7 +261,7 @@ fi
 
 CERT_DIR=/etc/kubernetes/certs
 
-# kube-proxy config
+# kube-proxy configs
 PROXY_KUBECONFIG=/etc/kubernetes/proxy-kubeconfig.yaml
 KUBE_PROXY_ARGS="--kubeconfig=${PROXY_KUBECONFIG} --cluster-cidr=${PODS_NETWORK_CIDR} --hostname-override=${INSTANCE_NAME}"
 cat > /etc/kubernetes/proxy << EOF
