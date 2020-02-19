@@ -46,7 +46,7 @@ parameters:
 
   coreos_selinux_disable:
     type: string
-    default: true
+    default: false
 
   istio_enabled:
     type: boolean
