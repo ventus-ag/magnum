@@ -442,13 +442,13 @@ resources:
                   $USE_PODMAN: {get_param: use_podman}
             - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
             - get_file: ../../common/templates/kubernetes/fragments/make-cert-client.sh
+            - get_file: ../../common/templates/kubernetes/fragments/disable-selinux-fedoracoreos.sh
             - get_file: ../../common/templates/fragments/configure-docker-registry.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
               # TODO add docker_storage_setup
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
             - get_file: ../../common/templates/fragments/enable-docker-registry.sh
-            - get_file: ../../common/templates/kubernetes/fragments/disable-selinux-fedoracoreos.sh
 
   node_config_deployment:
     type: OS::Heat::SoftwareDeployment
