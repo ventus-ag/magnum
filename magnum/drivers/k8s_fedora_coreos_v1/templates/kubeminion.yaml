@@ -11,6 +11,9 @@ parameters:
     type: string
     description: server name
 
+  coreos_selinux_disable:
+    type: string
+
   server_image:
     type: string
     description: glance image used to boot the server
@@ -384,6 +387,7 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/fragments/write-heat-params.sh}
                 params:
                   $INSTANCE_NAME: {get_param: name}
+                  $COREOS_SELINUX_DISABLE: {get_param: coreos_selinux_disable}
                   $PROMETHEUS_MONITORING: {get_param: prometheus_monitoring}
                   $KUBE_ALLOW_PRIV: {get_param: kube_allow_priv}
                   $KUBE_MASTER_IP: {get_param: kube_master_ip}
@@ -444,6 +448,7 @@ resources:
               # TODO add docker_storage_setup
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
             - get_file: ../../common/templates/fragments/enable-docker-registry.sh
+            - get_file: ../../common/templates/kubernetes/fragments/disable-selinux-fedoracoreos.sh
 
   node_config_deployment:
     type: OS::Heat::SoftwareDeployment

@@ -212,6 +212,7 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
         extra_params.update(net_params)
 
         label_list = ['flannel_network_cidr', 'flannel_backend',
+                      'coreos_selinux_disable',
                       'istio_enabled',
                       'istio_tag',
                       'cinder_enabled',

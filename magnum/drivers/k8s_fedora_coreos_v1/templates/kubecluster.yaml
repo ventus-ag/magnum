@@ -45,6 +45,10 @@ parameters:
     description: >
       cinder storage class
 
+  coreos_selinux_disable:
+    type: string
+    default: true
+
   istio_enabled:
     type: boolean
     default: false
@@ -1109,6 +1113,7 @@ resources:
               - [{ get_param: 'OS::stack_name' }, 'master', '%index%']
           nodegroup_role: {get_param: master_role}
           nodegroup_name: {get_param: master_nodegroup_name}
+          coreos_selinux_disable: {get_param: coreos_selinux_disable}
           cinder_enabled: {get_param: cinder_enabled}
           istio_enabled: {get_param: istio_enabled}
           istio_tag: {get_param: istio_tag}
@@ -1330,6 +1335,7 @@ resources:
               - '-'
               - [{ get_param: 'OS::stack_name' }, 'node', '%index%']
           prometheus_monitoring: {get_param: prometheus_monitoring}
+          coreos_selinux_disable: {get_param: coreos_selinux_disable}
           nodegroup_role: {get_param: worker_role}
           nodegroup_name: {get_param: worker_nodegroup_name}
           ssh_key_name: {get_param: ssh_key_name}

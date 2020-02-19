@@ -11,6 +11,9 @@ parameters:
     type: string
     description: server name
 
+  coreos_selinux_disable:
+    type: string
+
   cinder_enabled:
     type: boolean
     description: >
@@ -717,6 +720,7 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh}
                 params:
                   "$INSTANCE_NAME": {get_param: name}
+                  "$COREOS_SELINUX_DISABLE": {get_param: coreos_selinux_disable}
                   "$CINDER_ENABLED": {get_param: cinder_enabled}
                   "$ISTIO_ENABLED": {get_param: istio_enabled}
                   "$ISTIO_TAG": {get_param: istio_tag}
@@ -850,6 +854,7 @@ resources:
                   $configure_docker_storage_driver: {get_file: ../../common/templates/fragments/configure_docker_storage_driver_fedora_coreos.sh}
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
+            - get_file: ../../common/templates/kubernetes/fragments/disable-selinux-fedoracoreos.sh
 
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment

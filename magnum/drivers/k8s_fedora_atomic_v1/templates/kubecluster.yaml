@@ -44,6 +44,10 @@ parameters:
     description: >
       cinder storage class
 
+  coreos_selinux_disable:
+    type: string
+    default: true
+
   istio_enabled:
     type: boolean
     default: false

@@ -660,7 +660,7 @@ EOF
         sleep 5
     done
 
-    /usr/bin/kubectl apply -f ${CALICO_DEPLOY} --namespace=kube-system
+    kubectl apply -f ${CALICO_DEPLOY} --namespace=kube-system
 fi
 
 printf "Finished running ${step}\n"
