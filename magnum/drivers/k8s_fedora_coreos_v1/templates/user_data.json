@@ -70,6 +70,15 @@
   "systemd": {
       "units": [
       {
+        "name": "zincati.service",
+        "enabled": false
+      },
+      {
+        "name": "stop-zincati.service",
+        "enabled": true,
+        "contents": "[Unit]\nDescription=Stop zincati\nAfter=zincati.service\n\n[Service]\nUser=root\nGroup=root\nType=simple\nExecStart=/usr/bin/systemctl stop zincati.service\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target"
+      },
+      {
           "name": "configure-agent-env.service",
           "enabled": true,
           "contents": "[Unit]\nDescription=Configure heat agent environment\nAfter=sshd.service\n\n[Service]\nUser=root\nGroup=root\nType=simple\nExecStart=/bin/bash /root/configure-agent-env.sh\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target"
