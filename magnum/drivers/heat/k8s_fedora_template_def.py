@@ -120,7 +120,9 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'min_node_count', 'max_node_count', 'npd_enabled',
                       'ostree_remote', 'ostree_commit',
                       'use_podman', 'kube_image_digest',
-                      'metrics_scraper_tag']
+                      'metrics_scraper_tag',
+                      'kubernetes_tarball_sha512',
+                      'kubernetes_tarball_url']
 
         labels = self._get_relevant_labels(cluster, kwargs)
 

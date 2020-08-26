@@ -453,6 +453,14 @@ parameters:
       https://github.com/kubernetes/kubernetes/releases
     default: v1.18.2
 
+  kubernetes_tarball_sha512:
+    type: string
+    default: ""
+
+  kubernetes_tarball_url:
+    type: string
+    default: ""
+
   master_kube_tag:
     type: string
     description:
@@ -1226,6 +1234,8 @@ resources:
           https_proxy: {get_param: https_proxy}
           no_proxy: {get_param: no_proxy}
           kube_tag: {get_param: master_kube_tag}
+          kubernetes_tarball_sha512: {get_param: kubernetes_tarball_sha512}
+          kubernetes_tarball_url: {get_param: kubernetes_tarball_url}
           cloud_provider_tag: {get_param: cloud_provider_tag}
           cloud_provider_enabled: {get_param: cloud_provider_enabled}
           kube_version: {get_param: kube_version}
@@ -1459,6 +1469,8 @@ resources:
           https_proxy: {get_param: https_proxy}
           no_proxy: {get_param: no_proxy}
           kube_tag: {get_param: minion_kube_tag}
+          kubernetes_tarball_sha512: {get_param: kubernetes_tarball_sha512}
+          kubernetes_tarball_url: {get_param: kubernetes_tarball_url}
           kube_version: {get_param: kube_version}
           trustee_user_id: {get_param: trustee_user_id}
           trustee_username: {get_param: trustee_username}

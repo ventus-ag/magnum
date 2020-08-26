@@ -89,15 +89,14 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-apiserver
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-apiserver \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-apiserver:\${KUBE_TAG} \\
     kube-apiserver \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_API_PORT \$KUBELET_PORT \$KUBE_SERVICE_ADDRESSES \$KUBE_ADMISSION_CONTROL \$KUBE_API_ARGS'
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_ADMISSION_CONTROL \$KUBE_API_ARGS'
 ExecStop=-/usr/bin/podman stop kube-apiserver
 Delegate=yes
 Restart=always
@@ -118,13 +117,12 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-controller-manager
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-controller-manager \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-controller-manager:\${KUBE_TAG} \\
     kube-controller-manager \\
     --secure-port=0 \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
@@ -148,13 +146,12 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-scheduler
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-scheduler \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-scheduler:\${KUBE_TAG} \\
     kube-scheduler \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-scheduler
@@ -165,8 +162,6 @@ TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target
 EOF
-
-
 
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
@@ -184,36 +179,8 @@ ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
-ExecStartPre=-/usr/bin/podman rm kubelet
-ExecStart=/bin/bash -c '/usr/bin/podman run --name kubelet \\
-    --privileged \\
-    --pid host \\
-    --network host \\
-    --entrypoint /hyperkube \\
-    --volume /:/rootfs:ro \\
-    --volume /etc/cni/net.d:/etc/cni/net.d:ro,z \\
-    --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
-    --volume /usr/lib/os-release:/usr/lib/os-release:ro \\
-    --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
-    --volume /lib/modules:/lib/modules:ro \\
-    --volume /run:/run \\
-    --volume /dev:/dev \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
-    --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    --volume /var/lib/calico:/var/lib/calico \\
-    --volume /var/lib/docker:/var/lib/docker \\
-    --volume /var/lib/containerd:/var/lib/containerd \\
-    --volume /var/lib/kubelet:/var/lib/kubelet:rshared,z \\
-    --volume /var/log:/var/log \\
-    --volume /var/run:/var/run \\
-    --volume /var/run/lock:/var/run/lock:z \\
-    --volume /opt/cni/bin:/opt/cni/bin:z \\
-    --volume /etc/machine-id:/etc/machine-id \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
-    kubelet \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS'
-ExecStop=-/usr/bin/podman stop kubelet
+ExecStart=/usr/local/bin/kubelet \\
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
 RestartSec=10
@@ -234,7 +201,6 @@ ExecStartPre=-/usr/bin/podman rm kube-proxy
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --privileged \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
@@ -243,7 +209,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy

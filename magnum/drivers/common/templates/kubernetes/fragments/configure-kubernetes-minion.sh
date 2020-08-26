@@ -68,7 +68,7 @@ EOF
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
-Description=Kubelet via Hyperkube (System Container)
+Description=Kubelet
 Wants=rpc-statd.service
 
 [Service]
@@ -82,47 +82,19 @@ ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
-ExecStartPre=-/usr/bin/podman rm kubelet
-ExecStart=/bin/bash -c '/usr/bin/podman run --name kubelet \\
-    --privileged \\
-    --pid host \\
-    --network host \\
-    --entrypoint /hyperkube \\
-    --volume /:/rootfs:ro \\
-    --volume /etc/cni/net.d:/etc/cni/net.d:ro,z \\
-    --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
-    --volume /usr/lib/os-release:/usr/lib/os-release:ro \\
-    --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
-    --volume /lib/modules:/lib/modules:ro \\
-    --volume /run:/run \\
-    --volume /dev:/dev \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
-    --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    --volume /var/lib/calico:/var/lib/calico \\
-    --volume /var/lib/docker:/var/lib/docker \\
-    --volume /var/lib/containerd:/var/lib/containerd \\
-    --volume /var/lib/kubelet:/var/lib/kubelet:rshared,z \\
-    --volume /var/log:/var/log \\
-    --volume /var/run:/var/run \\
-    --volume /var/run/lock:/var/run/lock:z \\
-    --volume /opt/cni/bin:/opt/cni/bin:z \\
-    --volume /etc/machine-id:/etc/machine-id \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
-    kubelet \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS'
-ExecStop=-/usr/bin/podman stop kubelet
+ExecStart=/usr/local/bin/kubelet \\
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
-TimeoutStartSec=10min
 RestartSec=10
+TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target
 EOF
 
     cat > /etc/systemd/system/kube-proxy.service <<EOF
 [Unit]
-Description=kube-proxy via Hyperkube
+Description=kube-proxy via k8s.gcr.io/kube-proxy
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -132,7 +104,6 @@ ExecStartPre=-/usr/bin/podman rm kube-proxy
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --privileged \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
@@ -141,14 +112,14 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
 Delegate=yes
 Restart=always
-TimeoutStartSec=10min
 RestartSec=10
+TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target
 EOF

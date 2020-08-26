@@ -263,6 +263,12 @@ parameters:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
 
+  kubernetes_tarball_sha512:
+    type: string
+
+  kubernetes_tarball_url:
+    type: string
+
   cloud_provider_tag:
     type: string
     description:
@@ -776,6 +782,8 @@ resources:
                   "$HTTPS_PROXY": {get_param: https_proxy}
                   "$NO_PROXY": {get_param: no_proxy}
                   "$KUBE_TAG": {get_param: kube_tag}
+                  "$KUBERNETES_TARBALL_SHA512": {get_param: kubernetes_tarball_sha512}
+                  "$KUBERNETES_TARBALL_URL": {get_param: kubernetes_tarball_url}
                   "$CLOUD_PROVIDER_TAG": {get_param: cloud_provider_tag}
                   "$CLOUD_PROVIDER_ENABLED": {get_param: cloud_provider_enabled}
                   "$ETCD_TAG": {get_param: etcd_tag}
