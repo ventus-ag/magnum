@@ -517,5 +517,21 @@ stringData:
 EOF
 
     kubectl apply -f ${CINDER_CSI_DEPLOY}
+
+    cat <<EOF | kubectl apply -f -
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-csi
+  annotations: 
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: cinder.csi.openstack.org
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: RBD
+EOF
+
 fi
 printf "Finished running ${step}\n"
