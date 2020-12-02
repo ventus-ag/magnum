@@ -901,7 +901,7 @@ parameters:
     type: string
     description: >
       Choose SELinux mode
-    default: "enforcing"
+    default: "disabled"
     constraints:
       - allowed_values: ["enforcing", "permissive", "disabled"]
 
