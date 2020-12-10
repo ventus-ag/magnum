@@ -1331,7 +1331,7 @@ resources:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
             - str_replace:
