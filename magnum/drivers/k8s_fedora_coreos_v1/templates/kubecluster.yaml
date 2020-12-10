@@ -1331,7 +1331,7 @@ resources:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
+            # - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
             - str_replace:
@@ -1342,6 +1342,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/helm/prometheus-adapter.sh
             - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
 
   kube_cluster_deploy:
     condition: create_cluster_resources
