@@ -788,6 +788,20 @@ parameters:
     default:
       false
 
+  manila_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the manila csi plugin feature should be enabled
+    default:
+      false
+
+  cinder_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the cinder csi plugin feature should be enabled
+    default:
+      false
+
   cinder_csi_enabled:
     type: boolean
     description: >
@@ -1274,6 +1288,8 @@ resources:
           auto_healing_controller: {get_param: auto_healing_controller}
           magnum_auto_healer_tag: {get_param: magnum_auto_healer_tag}
           auto_scaling_enabled: {get_param: auto_scaling_enabled}
+          manila_csi_plugin_enabled: {get_param: manila_csi_plugin_enabled}
+          cinder_csi_plugin_enabled: {get_param: cinder_csi_plugin_enabled}
           cinder_csi_enabled: {get_param: cinder_csi_enabled}
           cinder_csi_plugin_tag: {get_param: cinder_csi_plugin_tag}
           csi_attacher_tag: {get_param: csi_attacher_tag}
@@ -1331,7 +1347,7 @@ resources:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
-            # - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
             - str_replace:

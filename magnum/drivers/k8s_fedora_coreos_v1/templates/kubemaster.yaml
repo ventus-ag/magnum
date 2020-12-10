@@ -535,6 +535,16 @@ parameters:
     description: >
       true if the auto scaling feature should be enabled
 
+  manila_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the manila csi plugin feature should be enabled
+
+  cinder_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the cinder csi plugin feature should be enabled
+
   cinder_csi_enabled:
     type: boolean
     description: >
@@ -824,6 +834,8 @@ resources:
                   "$AUTO_HEALING_CONTROLLER": {get_param: auto_healing_controller}
                   "$MAGNUM_AUTO_HEALER_TAG": {get_param: magnum_auto_healer_tag}
                   "$AUTO_SCALING_ENABLED": {get_param: auto_scaling_enabled}
+                  "$MANILA_CSI_PLUGIN_ENABLED": {get_param: manila_csi_plugin_enabled}
+                  "$CINDER_CSI_PLUGIN_ENABLED": {get_param: cinder_csi_plugin_enabled}
                   "$CINDER_CSI_ENABLED": {get_param: cinder_csi_enabled}
                   "$CINDER_CSI_PLUGIN_TAG": {get_param: cinder_csi_plugin_tag}
                   "$CSI_ATTACHER_TAG": {get_param: csi_attacher_tag}

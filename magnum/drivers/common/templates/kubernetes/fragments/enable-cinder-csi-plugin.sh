@@ -1,14 +1,14 @@
 #!/bin/sh
 
-step="enable-cinder-csi"
+step="enable-cinder-csi-plugin"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
 
 volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
-cinder_csi_enabled=$(echo $CINDER_CSI_ENABLED | tr '[:upper:]' '[:lower:]')
+cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
 
-if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_enabled}" = "true" ]; then
+if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
     helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
     helm repo update
     helm upgrade -i cinder-csi cpo/openstack-cinder-csi -n kube-system \
