@@ -7,7 +7,7 @@ printf "Starting to run ${step}\n"
 
 manila_csi_plugin_enabled=$(echo $MANILA_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
 
-if [ [ "${manila_csi_plugin_enabled}" = "true" ]; then
+if [ "${manila_csi_plugin_enabled}" = "true" ]; then
     helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
     helm repo update
     helm upgrade -i openstack-manila-csi cpo/openstack-manila-csi -n kube-system \
