@@ -85,6 +85,8 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'calico_tag',
                       'calico_kube_controllers_tag', 'calico_ipv4pool',
                       'calico_ipv4pool_ipip',
+                      'manila_csi_plugin_enabled',
+                      'cinder_csi_plugin_enabled',
                       'cinder_csi_enabled', 'cinder_csi_plugin_tag',
                       'csi_attacher_tag', 'csi_provisioner_tag',
                       'csi_snapshotter_tag', 'csi_resizer_tag',
