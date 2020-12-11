@@ -1359,6 +1359,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
   kube_cluster_deploy:
     condition: create_cluster_resources
