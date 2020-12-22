@@ -9,9 +9,12 @@ volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
 cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
 
 if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
-    helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
-    helm repo update
-    helm upgrade -i cinder-csi cpo/openstack-cinder-csi -n kube-system \
+    csi_plugin_path="/srv/magnum/kubernetes/cinder-csi-plugin"
+    rm -rf ${csi_plugin_path}
+    mkdir -p ${csi_plugin_path}
+    git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
+    helm package ${csi_plugin_path}/charts/cinder-csi-plugin -d ${csi_plugin_path}/package
+    helm upgrade -i cinder-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set storageClass.delete.isDefault=true \
          --set csi.plugin.image.tag="${CINDER_CSI_PLUGIN_TAG}" \
          --set csi.attacher.image.tag="${CSI_ATTACHER_TAG}" \
