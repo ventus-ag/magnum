@@ -11,7 +11,7 @@ if [ "${manila_csi_plugin_enabled}" = "true" ]; then
     csi_driver_path="/srv/magnum/kubernetes/csi-driver-nfs"
     rm -rf ${csi_driver_path}
     mkdir -p ${csi_driver_path}
-    git clone --depth=1 https://github.com/kubernetes-csi/csi-driver-nfs.git ${csi_driver_path}
+    /usr/bin/git clone --depth=1 https://github.com/kubernetes-csi/csi-driver-nfs.git ${csi_driver_path}
     helm package ${csi_driver_path}/charts/v2.0.0/csi-driver-nfs -d ${csi_driver_path}/package
     helm upgrade -i nfs-driver $(ls -d ${csi_driver_path}/package/*) -n kube-system \
          --set controller.replicas=2
@@ -20,11 +20,10 @@ if [ "${manila_csi_plugin_enabled}" = "true" ]; then
     csi_plugin_path="/srv/magnum/kubernetes/manila-csi-plugin"
     rm -rf ${csi_plugin_path}
     mkdir -p ${csi_plugin_path}
-    git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
+    /usr/bin/git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
     helm package ${csi_plugin_path}/charts/manila-csi-plugin -d ${csi_plugin_path}/package
     helm upgrade -i openstack-manila-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set fullnameOverride="" \
-         --set nodeplugin.registrar.image.tag=v1.2.0 \
          --set shareProtocols[0].protocolSelector=NFS \
          --set shareProtocols[0].fwdNodePluginEndpoint.dir=/var/lib/kubelet/plugins/csi-nfsplugin \
          --set shareProtocols[0].fwdNodePluginEndpoint.sockFile=csi.sock
