@@ -10,10 +10,12 @@ cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:
 
 if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
     csi_plugin_path="/srv/magnum/kubernetes/cinder-csi-plugin"
+    csi_plugin_branch="release-1.19"
     rm -rf ${csi_plugin_path}
     mkdir -p ${csi_plugin_path}
-    /bin/git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
-    helm package ${csi_plugin_path}/charts/cinder-csi-plugin -d ${csi_plugin_path}/package
+    curl -L https://github.com/kubernetes/cloud-provider-openstack/archive/${csi_plugin_branch}.tar.gz -o ${csi_plugin_path}/${csi_plugin_branch}.tar.gz
+    tar -xzf ${csi_plugin_path}/${csi_plugin_branch}.tar.gz -C ${csi_plugin_path}
+    helm package ${csi_plugin_path}/cloud-provider-openstack-${csi_plugin_branch}/charts/cinder-csi-plugin -d ${csi_plugin_path}/package
     helm upgrade -i cinder-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set storageClass.delete.isDefault=true \
          --set csi.plugin.image.tag="${CINDER_CSI_PLUGIN_TAG}" \

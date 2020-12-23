@@ -9,19 +9,23 @@ manila_csi_plugin_enabled=$(echo $MANILA_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:
 
 if [ "${manila_csi_plugin_enabled}" = "true" ]; then
     csi_driver_path="/srv/magnum/kubernetes/csi-driver-nfs"
+    csi_driver_branch="master"
     rm -rf ${csi_driver_path}
     mkdir -p ${csi_driver_path}
-    /bin/git clone --depth=1 https://github.com/kubernetes-csi/csi-driver-nfs.git ${csi_driver_path}
-    helm package ${csi_driver_path}/charts/v2.0.0/csi-driver-nfs -d ${csi_driver_path}/package
+    curl -L https://github.com/kubernetes-csi/csi-driver-nfs/archive/${csi_driver_branch}.tar.gz -o ${csi_driver_path}/${csi_driver_branch}.tar.gz
+    tar -xzf ${csi_driver_path}/${csi_driver_branch}.tar.gz -C ${csi_driver_path}
+    helm package ${csi_driver_path}/csi-driver-nfs-${csi_driver_branch}/charts/v2.0.0/csi-driver-nfs -d ${csi_driver_path}/package
     helm upgrade -i nfs-driver $(ls -d ${csi_driver_path}/package/*) -n kube-system \
          --set controller.replicas=2
 
 
     csi_plugin_path="/srv/magnum/kubernetes/manila-csi-plugin"
+    csi_plugin_branch="release-1.19"
     rm -rf ${csi_plugin_path}
     mkdir -p ${csi_plugin_path}
-    /bin/git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
-    helm package ${csi_plugin_path}/charts/manila-csi-plugin -d ${csi_plugin_path}/package
+    curl -L https://github.com/kubernetes/cloud-provider-openstack/archive/${csi_plugin_branch}.tar.gz -o ${csi_plugin_path}/${csi_plugin_branch}.tar.gz
+    tar -xzf ${csi_plugin_path}/${csi_plugin_branch}.tar.gz -C ${csi_plugin_path}
+    helm package ${csi_plugin_path}/cloud-provider-openstack-${csi_plugin_branch}/charts/manila-csi-plugin -d ${csi_plugin_path}/package
     helm upgrade -i openstack-manila-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set fullnameOverride="" \
          --set shareProtocols[0].protocolSelector=NFS \
