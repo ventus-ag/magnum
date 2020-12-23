@@ -12,7 +12,7 @@ if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true
     csi_plugin_path="/srv/magnum/kubernetes/cinder-csi-plugin"
     rm -rf ${csi_plugin_path}
     mkdir -p ${csi_plugin_path}
-    /usr/bin/git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
+    /bin/git clone --depth=1 -b release-1.19 https://github.com/kubernetes/cloud-provider-openstack.git ${csi_plugin_path}
     helm package ${csi_plugin_path}/charts/cinder-csi-plugin -d ${csi_plugin_path}/package
     helm upgrade -i cinder-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set storageClass.delete.isDefault=true \
