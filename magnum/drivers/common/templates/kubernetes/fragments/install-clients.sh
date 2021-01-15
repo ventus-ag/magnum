@@ -15,7 +15,7 @@ echo "PATH=/srv/magnum/bin:\$PATH" >> /etc/bashrc
 if [ -z "${KUBERNETES_TARBALL_URL}" ] ; then
     KUBERNETES_TARBALL_URL="https://dl.k8s.io/${KUBE_TAG}/kubernetes-server-linux-${ARCH}.tar.gz"
 fi
-i=0
+#i=0
 # until curl -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL} && echo "${KUBERNETES_TARBALL_SHA512} /srv/magnum/k8s.tar.gz" | sha512sum -c -
 # do
 #     i=$((i + 1))
@@ -35,10 +35,17 @@ $ssh_cmd tar xzvf /srv/magnum/k8s.tar.gz -C /tmp/ kubernetes/server/bin
 # Put node components in /usr/local/bin
 $ssh_cmd mv /tmp/kubernetes/server/bin/{kubelet,kubectl,kubeadm} /usr/local/bin/
 $ssh_cmd chmod +x /usr/local/bin/kube*
-$ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
+
+if [ "$SELINUX_MODE" == "enforcing" ] ; then
+    $ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
+fi
+
 $ssh_cmd cp /usr/local/bin/kubectl /srv/magnum/bin/
 $ssh_cmd chmod +x /srv/magnum/bin/kube*
-$ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
+
+if [ "$SELINUX_MODE" == "enforcing" ] ; then
+    $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
+fi
 
 # Import images
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ] ; then
