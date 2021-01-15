@@ -52,7 +52,7 @@ mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOGTOSTDERR="--logtostderr=true"
 KUBE_LOG_LEVEL="--v=3"
-KUBE_MASTER="--master=http://127.0.0.1:8080"
+KUBE_MASTER="--master=https://127.0.0.1:6443"
 EOF
 cat > /etc/kubernetes/kubelet <<EOF
 KUBELET_ARGS="--fail-swap-on=false"
@@ -250,7 +250,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: http://127.0.0.1:8080
+    server: https://127.0.0.1:6443
   name: kubernetes
 contexts:
 - context:
@@ -268,7 +268,7 @@ EOF
 
 sed -i '
     /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged='"$KUBE_ALLOW_PRIV"'"/
-    /^KUBE_MASTER=/ s|=.*|="--master=http://127.0.0.1:8080"|
+    /^KUBE_MASTER=/ s|=.*|="--master=https://127.0.0.1:6443"|
 ' /etc/kubernetes/config
 
 KUBE_API_ARGS="--runtime-config=api/all=true"
@@ -437,7 +437,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: http://127.0.0.1:8080
+    server: https://127.0.0.1:6443
   name: kubernetes
 contexts:
 - context:
