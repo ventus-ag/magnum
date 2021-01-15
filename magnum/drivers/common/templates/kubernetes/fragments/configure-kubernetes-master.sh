@@ -282,6 +282,8 @@ else
     # insecure port is used internaly
     KUBE_API_ADDRESS="$KUBE_API_ADDRESS --insecure-bind-address=127.0.0.1 --insecure-port=8080"
     KUBE_API_ARGS="$KUBE_API_ARGS --authorization-mode=Node,RBAC --tls-cert-file=$CERT_DIR/server.crt"
+    KUBE_API_ARGS="$KUBE_API_ARGS --service-account-signing-key-file=$CERT_DIR/service_account_private.key"
+    KUBE_API_ARGS="$KUBE_API_ARGS --service-account-issuer=kubernetes.default.svc"
     KUBE_API_ARGS="$KUBE_API_ARGS --tls-private-key-file=$CERT_DIR/server.key"
     KUBE_API_ARGS="$KUBE_API_ARGS --client-ca-file=$CERT_DIR/ca.crt"
     KUBE_API_ARGS="$KUBE_API_ARGS --service-account-key-file=${CERT_DIR}/service_account.key"
