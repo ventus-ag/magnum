@@ -16,16 +16,18 @@ if [ -z "${KUBERNETES_TARBALL_URL}" ] ; then
     KUBERNETES_TARBALL_URL="https://dl.k8s.io/${KUBE_TAG}/kubernetes-server-linux-${ARCH}.tar.gz"
 fi
 i=0
-until curl -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL} && echo "${KUBERNETES_TARBALL_SHA512} /srv/magnum/k8s.tar.gz" | sha512sum -c -
-do
-    i=$((i + 1))
-    if [ ${i} -gt 60 ] ; then
-        echo "ERROR Unable to download kubernetes-server-linux-${ARCH}.tar.gz. Abort."
-        exit 1
-    fi
-    echo "WARNING Attempt ${i}: Trying to download kubernetes-server-linux-${ARCH}.tar.gz. Sleeping 5s"
-    sleep 5s
-done
+# until curl -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL} && echo "${KUBERNETES_TARBALL_SHA512} /srv/magnum/k8s.tar.gz" | sha512sum -c -
+# do
+#     i=$((i + 1))
+#     if [ ${i} -gt 60 ] ; then
+#         echo "ERROR Unable to download kubernetes-server-linux-${ARCH}.tar.gz. Abort."
+#         exit 1
+#     fi
+#     echo "WARNING Attempt ${i}: Trying to download kubernetes-server-linux-${ARCH}.tar.gz. Sleeping 5s"
+#     sleep 5s
+# done
+
+$ssh_cmd curl -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL}
 
 # Extrace binaries and images
 $ssh_cmd tar xzvf /srv/magnum/k8s.tar.gz -C /tmp/ kubernetes/server/bin
