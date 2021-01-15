@@ -276,11 +276,11 @@ KUBE_API_ARGS="$KUBE_API_ARGS --allow-privileged=$KUBE_ALLOW_PRIV"
 KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP"
 KUBE_API_ARGS="$KUBE_API_ARGS $KUBEAPI_OPTIONS"
 if [ "$TLS_DISABLED" == "True" ]; then
-    KUBE_API_ADDRESS="--insecure-bind-address=0.0.0.0 --insecure-port=$KUBE_API_PORT"
+    KUBE_API_ADDRESS="--insecure-bind-address=0.0.0.0"
 else
     KUBE_API_ADDRESS="--bind-address=0.0.0.0 --secure-port=$KUBE_API_PORT"
     # insecure port is used internaly
-    KUBE_API_ADDRESS="$KUBE_API_ADDRESS --insecure-bind-address=127.0.0.1 --insecure-port=8080"
+    KUBE_API_ADDRESS="$KUBE_API_ADDRESS --insecure-bind-address=127.0.0.1"
     KUBE_API_ARGS="$KUBE_API_ARGS --authorization-mode=Node,RBAC --tls-cert-file=$CERT_DIR/server.crt"
     KUBE_API_ARGS="$KUBE_API_ARGS --service-account-signing-key-file=$CERT_DIR/service_account_private.key"
     KUBE_API_ARGS="$KUBE_API_ARGS --service-account-issuer=kubernetes.default.svc"
