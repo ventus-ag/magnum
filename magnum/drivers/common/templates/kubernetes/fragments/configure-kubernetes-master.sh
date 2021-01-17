@@ -380,11 +380,36 @@ echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
 chown root:root ${ADMIN_KUBECONFIG}
 chmod 600 ${ADMIN_KUBECONFIG}
 
+# kube-config controller 
+CONTROLLER_KUBECONFIG=/etc/kubernetes/controller-kubeconfig.yaml
+cat > ${CONTROLLER_KUBECONFIG} << EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${CERT_DIR}/ca.crt
+    server: https://127.0.0.1:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: controller
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: controller
+  user:
+    as-user-extra: {}
+    client-certificate: ${CERT_DIR}/controller.crt
+    client-key: ${CERT_DIR}/controller.key
+EOF
+
 # Add controller manager args
 KUBE_CONTROLLER_MANAGER_ARGS="--leader-elect=true"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS --cluster-name=${CLUSTER_UUID}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --allocate-node-cidrs=true"
-KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --kubeconfig=${ADMIN_KUBECONFIG}"
+KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --kubeconfig=${CONTROLLER_KUBECONFIG}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --cluster-cidr=${PODS_NETWORK_CIDR}"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS $KUBECONTROLLER_OPTIONS"
 if [ -n "${ADMISSION_CONTROL_LIST}" ] && [ "${TLS_DISABLED}" == "False" ]; then
@@ -408,8 +433,41 @@ sed -i '
     /^KUBE_CONTROLLER_MANAGER_ARGS=/ s#\(KUBE_CONTROLLER_MANAGER_ARGS\).*#\1="'"${KUBE_CONTROLLER_MANAGER_ARGS}"'"#
 ' /etc/kubernetes/controller-manager
 
-sed -i '/^KUBE_SCHEDULER_ARGS=/ s/=.*/="--leader-elect=true"/' /etc/kubernetes/scheduler
+# kube-config scheduler 
+SCHEDULER_KUBECONFIG=/etc/kubernetes/scheduler-kubeconfig.yaml
+cat > ${SCHEDULER_KUBECONFIG} << EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${CERT_DIR}/ca.crt
+    server: https://127.0.0.1:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: scheduler
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: scheduler
+  user:
+    as-user-extra: {}
+    client-certificate: ${CERT_DIR}/scheduler.crt
+    client-key: ${CERT_DIR}/scheduler.key
+EOF
 
+# Add scheduler args
+KUBE_SCHEDULER_ARGS="--leader-elect=true"
+KUBE_SCHEDULER_ARGS="${KUBE_SCHEDULER_ARGS} --kubeconfig=${SCHEDULER_KUBECONFIG}"
+
+sed -i '
+    /^KUBE_SCHEDULER_ARGS=/ s#\(KUBE_SCHEDULER_ARGS\).*#\1="'"${KUBE_SCHEDULER_ARGS}"'"#
+' /etc/kubernetes/scheduler
+
+
+# Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
 KUBELET_ARGS="--register-node=true --pod-manifest-path=/etc/kubernetes/manifests --hostname-override=${INSTANCE_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
