@@ -516,8 +516,8 @@ users:
 - name: system:node:${INSTANCE_NAME}
   user:
     as-user-extra: {}
-    client-certificate: ${CERT_DIR}/server.crt
-    client-key: ${CERT_DIR}/server.key
+    client-certificate: ${CERT_DIR}/kubelet.crt
+    client-key: ${CERT_DIR}/kubelet.key
 EOF
 
 cat > /etc/kubernetes/get_require_kubeconfig.sh << EOF
