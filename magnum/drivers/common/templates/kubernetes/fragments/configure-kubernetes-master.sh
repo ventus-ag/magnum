@@ -239,7 +239,8 @@ fi
 CERT_DIR=/etc/kubernetes/certs
 
 # kube-proxy config
-PROXY_KUBECONFIG=/etc/kubernetes/proxy-kubeconfig.yaml
+#PROXY_KUBECONFIG=/etc/kubernetes/proxy-kubeconfig.yaml
+PROXY_KUBECONFIG=/etc/kubernetes/admin.conf
 KUBE_PROXY_ARGS="--kubeconfig=${PROXY_KUBECONFIG} --cluster-cidr=${PODS_NETWORK_CIDR} --hostname-override=${INSTANCE_NAME}"
 cat > /etc/kubernetes/proxy << EOF
 KUBE_PROXY_ARGS="${KUBE_PROXY_ARGS} ${KUBEPROXY_OPTIONS}"
@@ -382,6 +383,7 @@ chmod 600 ${ADMIN_KUBECONFIG}
 KUBE_CONTROLLER_MANAGER_ARGS="--leader-elect=true"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS --cluster-name=${CLUSTER_UUID}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --allocate-node-cidrs=true"
+KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --kubeconfig=${ADMIN_KUBECONFIG}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --cluster-cidr=${PODS_NETWORK_CIDR}"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS $KUBECONTROLLER_OPTIONS"
 if [ -n "${ADMISSION_CONTROL_LIST}" ] && [ "${TLS_DISABLED}" == "False" ]; then
@@ -435,7 +437,8 @@ KUBELET_ARGS="${KUBELET_ARGS} --register-with-taints=node-role.kubernetes.io/mas
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 
-KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
+#KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
+KUBELET_KUBECONFIG=/etc/kubernetes/admin.conf
 cat << EOF >> ${KUBELET_KUBECONFIG}
 apiVersion: v1
 clusters:
