@@ -261,5 +261,6 @@ $ssh_cmd chmod 440 "$cert_dir/server.key"
 $ssh_cmd chmod 440 "${cert_dir}/proxy.key"
 $ssh_cmd chmod 440 "${cert_dir}/controller.key"
 $ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
+$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
 $ssh_cmd mkdir -p /etc/etcd/certs
 $ssh_cmd cp ${cert_dir}/* /etc/etcd/certs
