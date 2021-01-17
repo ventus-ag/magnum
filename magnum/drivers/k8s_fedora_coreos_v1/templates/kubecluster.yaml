@@ -570,7 +570,7 @@ parameters:
   cert_manager_api:
     type: boolean
     description: true if the kubernetes cert api manager should be enabled
-    default: true
+    default: false
 
   ca_key:
     type: string
