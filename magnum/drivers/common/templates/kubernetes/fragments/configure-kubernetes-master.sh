@@ -317,21 +317,25 @@ mkdir -p $(dirname ${KEYSTONE_WEBHOOK_CONFIG})
 cat << EOF > ${KEYSTONE_WEBHOOK_CONFIG}
 ---
 apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${CERT_DIR}/ca.crt
+    server: https://127.0.0.1:$KUBE_API_PORT
+  name: ${CLUSTER_UUID}
+contexts:
+- context:
+    cluster: ${CLUSTER_UUID}
+    user: admin
+  name: default
+current-context: default
 kind: Config
 preferences: {}
-clusters:
-  - cluster:
-      insecure-skip-tls-verify: true
-      server: https://127.0.0.1:8443/webhook
-    name: webhook
 users:
-  - name: webhook
-contexts:
-  - context:
-      cluster: webhook
-      user: webhook
-    name: webhook
-current-context: webhook
+- name: admin
+  user:
+    as-user-extra: {}
+    client-certificate: ${CERT_DIR}/admin.crt
+    client-key: ${CERT_DIR}/admin.key
 EOF
 }
     KUBE_API_ARGS="$KUBE_API_ARGS --authentication-token-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml --authorization-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml"
