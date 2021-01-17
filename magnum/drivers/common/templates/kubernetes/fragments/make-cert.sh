@@ -175,6 +175,7 @@ req_extensions     = req_ext
 prompt = no
 [req_distinguished_name]
 CN = system:kube-scheduler
+O=system:kube-scheduler
 OU=OpenStack/Magnum
 C=US
 ST=TX
@@ -192,6 +193,7 @@ req_extensions     = req_ext
 prompt = no
 [req_distinguished_name]
 CN = system:kube-controller-manager
+O=system:kube-controller-manager
 OU=OpenStack/Magnum
 C=US
 ST=TX
