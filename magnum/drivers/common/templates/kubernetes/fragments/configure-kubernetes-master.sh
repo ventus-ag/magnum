@@ -239,8 +239,7 @@ fi
 CERT_DIR=/etc/kubernetes/certs
 
 # kube-proxy config
-#PROXY_KUBECONFIG=/etc/kubernetes/proxy-kubeconfig.yaml
-PROXY_KUBECONFIG=/etc/kubernetes/admin.conf
+PROXY_KUBECONFIG=/etc/kubernetes/proxy-kubeconfig.yaml
 KUBE_PROXY_ARGS="--kubeconfig=${PROXY_KUBECONFIG} --cluster-cidr=${PODS_NETWORK_CIDR} --hostname-override=${INSTANCE_NAME}"
 cat > /etc/kubernetes/proxy << EOF
 KUBE_PROXY_ARGS="${KUBE_PROXY_ARGS} ${KUBEPROXY_OPTIONS}"
@@ -265,6 +264,8 @@ users:
 - name: kube-proxy
   user:
     as-user-extra: {}
+    client-certificate: ${CERT_DIR}/proxy.crt
+    client-key: ${CERT_DIR}/proxy.key
 EOF
 
 sed -i '
@@ -437,8 +438,7 @@ KUBELET_ARGS="${KUBELET_ARGS} --register-with-taints=node-role.kubernetes.io/mas
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 
-#KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
-KUBELET_KUBECONFIG=/etc/kubernetes/admin.conf
+KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
 cat << EOF >> ${KUBELET_KUBECONFIG}
 apiVersion: v1
 clusters:

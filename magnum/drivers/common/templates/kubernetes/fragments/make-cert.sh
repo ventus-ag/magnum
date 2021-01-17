@@ -148,6 +148,25 @@ subjectAltName = ${sans}
 extendedKeyUsage = clientAuth,serverAuth
 EOF
 
+
+#kube-proxy Certs
+cat > ${cert_dir}/proxy.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-proxy
+O=system:node-proxier
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+EOF
+
 #Kubelet Certs
 cat > ${cert_dir}/kubelet.conf <<EOF
 [req]
@@ -187,6 +206,7 @@ EOF
 generate_certificates server ${cert_dir}/server.conf
 generate_certificates kubelet ${cert_dir}/kubelet.conf
 generate_certificates admin ${cert_dir}/admin.conf
+generate_certificates proxy ${cert_dir}/proxy.conf
 
 # Generate service account key and private key
 echo -e "${KUBE_SERVICE_ACCOUNT_KEY}" > ${cert_dir}/service_account.key
@@ -200,5 +220,6 @@ $ssh_cmd usermod -a -G kube_etcd kube
 $ssh_cmd chmod 550 "${cert_dir}"
 $ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
 $ssh_cmd chmod 440 "$cert_dir/server.key"
+$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
 $ssh_cmd mkdir -p /etc/etcd/certs
 $ssh_cmd cp ${cert_dir}/* /etc/etcd/certs
