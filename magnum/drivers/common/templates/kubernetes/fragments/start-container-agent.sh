@@ -95,6 +95,10 @@ ExecStart=/bin/podman run \\
 ExecStop=/bin/podman stop heat-container-agent
 TimeoutStartSec=10min
 
+Restart=on-failure
+StartLimitBurst=3
+StartLimitInterval=600s
+
 [Install]
 WantedBy=multi-user.target
 EOF
