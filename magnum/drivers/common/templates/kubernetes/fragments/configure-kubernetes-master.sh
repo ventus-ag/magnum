@@ -250,7 +250,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:6443
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:
@@ -270,7 +270,7 @@ EOF
 
 sed -i '
     /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged='"$KUBE_ALLOW_PRIV"'"/
-    /^KUBE_MASTER=/ s|=.*|="--master=https://127.0.0.1:6443"|
+    /^KUBE_MASTER=/ s|=.*|="--master=https://127.0.0.1:'"${KUBE_API_PORT}"'"|
 ' /etc/kubernetes/config
 
 KUBE_API_ARGS="--runtime-config=api/all=true"
@@ -320,7 +320,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:$KUBE_API_PORT
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: ${CLUSTER_UUID}
 contexts:
 - context:
@@ -351,13 +351,14 @@ sed -i '
     /^KUBE_ADMISSION_CONTROL=/ s/=.*/="'"${KUBE_ADMISSION_CONTROL}"'"/
 ' /etc/kubernetes/apiserver
 
+# root kubeconfig
 ADMIN_KUBECONFIG=/etc/kubernetes/kubeconfig.yaml
 cat << EOF >> ${ADMIN_KUBECONFIG}
 apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:$KUBE_API_PORT
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: ${CLUSTER_UUID}
 contexts:
 - context:
@@ -378,6 +379,35 @@ echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
 chown root:root ${ADMIN_KUBECONFIG}
 chmod 600 ${ADMIN_KUBECONFIG}
 
+# core kubeconfig
+CORE_KUBECONFIG=/home/core/.kube/config
+mkdir -p /home/core/.kube
+cat << EOF > ${CORE_KUBECONFIG}
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: $(cat ${CERT_DIR}/ca.crt | base64 | tr -d '\n')
+    server: https://127.0.0.1:${KUBE_API_PORT}
+  name: ${CLUSTER_UUID}
+contexts:
+- context:
+    cluster: ${CLUSTER_UUID}
+    user: admin
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    as-user-extra: {}
+    client-certificate-data: $(cat ${CERT_DIR}/admin.crt | base64 | tr -d '\n')
+    client-key-data: $(cat ${CERT_DIR}/admin.key | base64 | tr -d '\n')
+EOF
+cat ${CORE_KUBECONFIG}
+chown core:core ${CORE_KUBECONFIG}
+chmod 600 ${CORE_KUBECONFIG}
+
 # kube-config controller 
 CONTROLLER_KUBECONFIG=/etc/kubernetes/controller-kubeconfig.yaml
 cat > ${CONTROLLER_KUBECONFIG} << EOF
@@ -385,7 +415,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:6443
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:
@@ -438,7 +468,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:6443
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:
@@ -500,7 +530,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:6443
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:

@@ -85,6 +85,7 @@ ExecStart=/bin/podman run \\
     --volume /run/systemd:/run/systemd \\
     --volume /etc/:/etc/ \\
     --volume /var/lib:/var/lib \\
+    --volume /home:/home \\
     --volume /var/run:/var/run \\
     --volume /var/log:/var/log \\
     --volume /tmp:/tmp \\
