@@ -357,35 +357,6 @@ cat << EOF >> ${ADMIN_KUBECONFIG}
 apiVersion: v1
 clusters:
 - cluster:
-    certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:${KUBE_API_PORT}
-  name: ${CLUSTER_UUID}
-contexts:
-- context:
-    cluster: ${CLUSTER_UUID}
-    user: admin
-  name: default
-current-context: default
-kind: Config
-preferences: {}
-users:
-- name: admin
-  user:
-    as-user-extra: {}
-    client-certificate: ${CERT_DIR}/admin.crt
-    client-key: ${CERT_DIR}/admin.key
-EOF
-echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
-chown root:root ${ADMIN_KUBECONFIG}
-chmod 600 ${ADMIN_KUBECONFIG}
-
-# core kubeconfig
-CORE_KUBECONFIG=/home/core/.kube/config
-mkdir -p /home/core/.kube
-cat << EOF > ${CORE_KUBECONFIG}
-apiVersion: v1
-clusters:
-- cluster:
     certificate-authority-data: $(cat ${CERT_DIR}/ca.crt | base64 | tr -d '\n')
     server: https://127.0.0.1:${KUBE_API_PORT}
   name: ${CLUSTER_UUID}
@@ -404,9 +375,9 @@ users:
     client-certificate-data: $(cat ${CERT_DIR}/admin.crt | base64 | tr -d '\n')
     client-key-data: $(cat ${CERT_DIR}/admin.key | base64 | tr -d '\n')
 EOF
-cat ${CORE_KUBECONFIG}
-chown core:core ${CORE_KUBECONFIG}
-chmod 600 ${CORE_KUBECONFIG}
+echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
+chown root:root ${ADMIN_KUBECONFIG}
+chmod 755 ${ADMIN_KUBECONFIG}
 
 # kube-config controller 
 CONTROLLER_KUBECONFIG=/etc/kubernetes/controller-kubeconfig.yaml

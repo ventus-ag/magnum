@@ -30,7 +30,6 @@ done
 
 # Label self as master
 until  [ "ok" = "$(curl --silent -k https://127.0.0.1:6443/healthz)" ] && \
-    export KUBECONFIG=/etc/kubernetes/admin.conf
     kubectl patch node ${INSTANCE_NAME} \
         --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
 do
