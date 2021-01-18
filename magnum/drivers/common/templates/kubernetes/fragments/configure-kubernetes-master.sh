@@ -339,8 +339,8 @@ users:
 EOF
 }
     KUBE_API_ARGS="$KUBE_API_ARGS --authentication-token-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml --authorization-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml"
-    webhook_auth="--authorization-mode=Node,Webhook,RBAC"
-    KUBE_API_ARGS=${KUBE_API_ARGS/--authorization-mode=Node,RBAC/$webhook_auth}
+    #webhook_auth="--authorization-mode=Node,Webhook,RBAC"
+    #KUBE_API_ARGS=${KUBE_API_ARGS/--authorization-mode=Node,RBAC/$webhook_auth}
 fi
 
 sed -i '
