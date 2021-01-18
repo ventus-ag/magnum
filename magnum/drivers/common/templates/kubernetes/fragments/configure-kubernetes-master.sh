@@ -281,8 +281,6 @@ if [ "$TLS_DISABLED" == "True" ]; then
     KUBE_API_ADDRESS="--insecure-bind-address=0.0.0.0"
 else
     KUBE_API_ADDRESS="--bind-address=0.0.0.0 --secure-port=$KUBE_API_PORT"
-    # insecure port is used internaly
-    KUBE_API_ADDRESS="$KUBE_API_ADDRESS --insecure-bind-address=127.0.0.1"
     KUBE_API_ARGS="$KUBE_API_ARGS --authorization-mode=Node,RBAC --tls-cert-file=$CERT_DIR/server.crt"
     KUBE_API_ARGS="$KUBE_API_ARGS --service-account-signing-key-file=$CERT_DIR/service_account_private.key"
     KUBE_API_ARGS="$KUBE_API_ARGS --service-account-issuer=kubernetes.default.svc"
@@ -353,7 +351,7 @@ sed -i '
     /^KUBE_ADMISSION_CONTROL=/ s/=.*/="'"${KUBE_ADMISSION_CONTROL}"'"/
 ' /etc/kubernetes/apiserver
 
-ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
+ADMIN_KUBECONFIG=/etc/kubernetes/kubeconfig.yaml
 cat << EOF >> ${ADMIN_KUBECONFIG}
 apiVersion: v1
 clusters:
