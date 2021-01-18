@@ -142,17 +142,11 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         extra_params['post_install_manifest_url'] = \
             CONF.kubernetes.post_install_manifest_url
 
-        cert_manager_api = cluster.labels.get('cert_manager_api')
-        if strutils.bool_from_string(cert_manager_api):
-            extra_params['cert_manager_api'] = cert_manager_api
-            ca_cert = cert_manager.get_cluster_ca_certificate(cluster)
-            extra_params['ca_key'] = x509.decrypt_key(
-                ca_cert.get_private_key(),
-                ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
 
         if not extra_params.get('max_node_count'):
             extra_params['max_node_count'] = cluster.node_count + 1
 
+        self._set_cert_manager_params(context, cluster, extra_params)
         self._get_keystone_auth_default_policy(extra_params)
         self._set_volumes(context, cluster, extra_params)
 
@@ -161,6 +155,22 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                                       extra_params=extra_params,
                                       **kwargs)
 
+    def _set_cert_manager_params(self, context, cluster, extra_params):
+        cert_manager_api = cluster.labels.get('cert_manager_api')
+        if strutils.bool_from_string(cert_manager_api):
+            extra_params['cert_manager_api'] = cert_manager_api
+            ca_cert = cert_manager.get_cluster_ca_certificate(cluster,
+                                                              context=context)
+            if six.PY3 and isinstance(ca_cert.get_private_key_passphrase(),
+                                      six.text_type):
+                extra_params['ca_key'] = x509.decrypt_key(
+                    ca_cert.get_private_key(),
+                    ca_cert.get_private_key_passphrase().encode()
+                ).decode().replace("\n", "\\n")
+            else:
+                extra_params['ca_key'] = x509.decrypt_key(
+                    ca_cert.get_private_key(),
+                    ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
 
     def _get_keystone_auth_default_policy(self, extra_params):
         # NOTE(flwang): This purpose of this function is to make the default
