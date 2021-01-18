@@ -159,17 +159,9 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         if strutils.bool_from_string(cert_manager_api):
             extra_params['cert_manager_api'] = cert_manager_api
             ca_cert = cert_manager.get_cluster_ca_certificate(cluster,
-                                                              context=context)
-            if six.PY3 and isinstance(ca_cert.get_private_key_passphrase(),
-                                      six.text_type):
-                extra_params['ca_key'] = x509.decrypt_key(
-                    ca_cert.get_private_key(),
-                    ca_cert.get_private_key_passphrase().encode()
-                ).decode().replace("\n", "\\n")
-            else:
-                extra_params['ca_key'] = x509.decrypt_key(
-                    ca_cert.get_private_key(),
-                    ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
+            extra_params['ca_key'] = x509.decrypt_key(
+                ca_cert.get_private_key(),
+                ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
 
     def _get_keystone_auth_default_policy(self, extra_params):
         # NOTE(flwang): This purpose of this function is to make the default
