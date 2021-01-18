@@ -159,6 +159,7 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         if strutils.bool_from_string(cert_manager_api):
             extra_params['cert_manager_api'] = cert_manager_api
             ca_cert = cert_manager.get_cluster_ca_certificate(cluster,
+                                                              context=context)
             extra_params['ca_key'] = x509.decrypt_key(
                 ca_cert.get_private_key(),
                 ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
