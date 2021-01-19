@@ -20,7 +20,7 @@ if [ "${manila_csi_plugin_enabled}" = "true" ]; then
 
 
     csi_plugin_path="/srv/magnum/kubernetes/manila-csi-plugin"
-    csi_plugin_branch="release-1.19"
+    csi_plugin_branch="release-1.20"
     rm -rf ${csi_plugin_path}
     mkdir -p ${csi_plugin_path}
     curl -L https://github.com/kubernetes/cloud-provider-openstack/archive/${csi_plugin_branch}.tar.gz -o ${csi_plugin_path}/${csi_plugin_branch}.tar.gz

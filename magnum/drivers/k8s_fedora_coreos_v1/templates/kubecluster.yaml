@@ -822,32 +822,32 @@ parameters:
     description: tag of cinder csi plugin
       tag of the k8scloudprovider/cinder-csi-plugin container
       https://hub.docker.com/r/k8scloudprovider/cinder-csi-plugin/tags/
-    default: v1.18.0
+    default: v1.20.0
 
   csi_attacher_tag:
     type: string
     description: tag of csi attacher
-    default: v2.0.0
+    default: v2.2.1
 
   csi_provisioner_tag:
     type: string
     description: tag of csi provisioner
-    default: v1.4.0
+    default: v1.6.1
 
   csi_snapshotter_tag:
     type: string
     description: tag of csi snapshotter
-    default: v1.2.2
+    default: v2.1.3
 
   csi_resizer_tag:
     type: string
     description: tag of csi resizer
-    default: v0.3.0
+    default: v0.5.1
 
   csi_node_driver_registrar_tag:
     type: string
     description: tag of csi node driver registrar
-    default: v1.1.0
+    default: v1.3.0
 
   node_problem_detector_tag:
     type: string
@@ -874,7 +874,7 @@ parameters:
     description: tag of the autoscaler container
       tag of the openstackmagnum/cluster-autoscaler container
       https://hub.docker.com/r/openstackmagnum/cluster-autoscaler/tags/
-    default: v1.18.1
+    default: v1.19.0
 
   min_node_count:
     type: number
