@@ -4,7 +4,7 @@ step="enable-manila-csi-plugin"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 manila_csi_plugin_enabled=$(echo $MANILA_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
 
 if [ "${manila_csi_plugin_enabled}" = "true" ]; then

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 # make sure we pick up any modified unit files

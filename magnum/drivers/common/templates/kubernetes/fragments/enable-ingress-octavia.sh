@@ -116,7 +116,7 @@ until  [ "ok" = "$(curl --silent -k https://127.0.0.1:6443/healthz)" ]
 do
     sleep 5
 done
-
+. /etc/bashrc
 kubectl apply --validate=false -f $OCTAVIA_INGRESS_CONTROLLER_RBAC
 kubectl apply --validate=false -f $OCTAVIA_INGRESS_CONTROLLER_CONFIGMAP
 kubectl apply --validate=false -f $OCTAVIA_INGRESS_CONTROLLER

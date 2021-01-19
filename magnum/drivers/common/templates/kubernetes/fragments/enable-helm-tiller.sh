@@ -1,7 +1,7 @@
 #!/bin/bash
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 step="enable-helm-tiller"
 printf "Starting to run ${step}\n"
 

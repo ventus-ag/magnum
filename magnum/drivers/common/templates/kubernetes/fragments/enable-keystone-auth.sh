@@ -1,7 +1,7 @@
 #!/bin/sh
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 step="enable-keystone-auth"
 printf "Starting to run ${step}\n"
 

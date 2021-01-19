@@ -4,7 +4,7 @@ step="enable-prometheus-monitoring"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 if [ ! -z "$HTTP_PROXY" ]; then
     export HTTP_PROXY
 fi

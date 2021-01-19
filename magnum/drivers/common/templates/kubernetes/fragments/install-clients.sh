@@ -5,6 +5,7 @@ printf "Starting to run ${step}\n"
 set -e
 set +x
 . /etc/sysconfig/heat-params
+. /etc/bashrc
 set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"

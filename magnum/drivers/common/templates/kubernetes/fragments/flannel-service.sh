@@ -3,6 +3,7 @@
 set -e
 set +x
 . /etc/sysconfig/heat-params
+. /etc/bashrc
 set -x
 
 

@@ -4,7 +4,7 @@ step="kube-dashboard-service"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 echo "Waiting for Kubernetes API..."
 until  [ "ok" = "$(curl --silent -k https://127.0.0.1:6443/healthz)" ]
 do

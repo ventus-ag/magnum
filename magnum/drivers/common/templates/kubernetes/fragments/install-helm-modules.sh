@@ -5,6 +5,7 @@ echo "START: ${step}"
 
 set +x
 . /etc/sysconfig/heat-params
+. /etc/bashrc
 set -ex
 
 if [ ! -z "$HTTP_PROXY" ]; then

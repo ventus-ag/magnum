@@ -5,6 +5,7 @@ printf "Starting to run ${step}\n"
 
 set +x
 . /etc/sysconfig/heat-params
+. /etc/bashrc
 set -x
 
 echo "Waiting for Kubernetes API..."

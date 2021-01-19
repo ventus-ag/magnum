@@ -4,7 +4,7 @@ step="enable-auto-scaling"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 _docker_ca_prefix=${CONTAINER_INFRA_PREFIX:-docker.io/openstackmagnum/}
 
 auto_scaling_enabled=$(echo $AUTO_SCALING_ENABLED | tr '[:upper:]' '[:lower:]')

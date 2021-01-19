@@ -181,6 +181,7 @@ do
 done
 
 # Check if all resources exist already before creating them
+. /etc/bashrc
 kubectl -n kube-system get service ingress-traefik
 if [ "$?" != "0" ] && \
         [ -f "'''${INGRESS_TRAEFIK_MANIFEST}'''" ]; then

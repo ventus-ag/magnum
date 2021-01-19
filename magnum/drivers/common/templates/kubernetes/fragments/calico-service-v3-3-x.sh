@@ -664,7 +664,7 @@ EOF
         echo "Waiting for Kubernetes API..."
         sleep 5
     done
-
+    . /etc/bashrc
     /usr/bin/kubectl apply -f ${CALICO_DEPLOY} --namespace=kube-system
 fi
 

@@ -304,7 +304,7 @@ until  [ "ok" = "$(curl --silent -k https://127.0.0.1:6443/healthz)" ]
 do
     sleep 5
 done
-
+. /etc/bashrc
 kubectl apply --validate=false -f $CORE_DNS
 
 printf "Finished running ${step}\n"

@@ -4,7 +4,7 @@ step="enable-node-problem-detector"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
-
+. /etc/bashrc
 _gcr_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
 
 # Either auto scaling or auto healing we need CA to be deployed

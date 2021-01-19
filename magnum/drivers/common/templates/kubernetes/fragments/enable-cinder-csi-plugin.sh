@@ -4,6 +4,7 @@ step="enable-cinder-csi-plugin"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
+. /etc/bashrc
 
 volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
 cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
