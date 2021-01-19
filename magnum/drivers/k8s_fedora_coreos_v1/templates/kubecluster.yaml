@@ -480,7 +480,7 @@ parameters:
     description:
       tag of the k8scloudprovider/openstack-cloud-controller-manager
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.18.0
+    default: v1.20.1
 
   cloud_provider_enabled:
     type: boolean
@@ -499,7 +499,7 @@ parameters:
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.12.0-amd64
+    default: v0.13.0-amd64
 
   flannel_cni_tag:
     type: string
