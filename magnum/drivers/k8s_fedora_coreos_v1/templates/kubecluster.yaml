@@ -923,7 +923,7 @@ parameters:
     type: string
     description: >
       Choose SELinux mode
-    default: "disabled"
+    default: "enforcing"
     constraints:
       - allowed_values: ["enforcing", "permissive", "disabled"]
 

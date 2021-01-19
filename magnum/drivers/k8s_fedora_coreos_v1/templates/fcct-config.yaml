@@ -56,7 +56,7 @@ storage:
           #     mls - Multi Level Security protection.
           SELINUXTYPE=targeted
       overwrite: true
-    - path: /etc/containers/libpod.conf
+    - path: /etc/containers/containers.conf
       # 420 (decimal) == 644 (octal)
       mode: 420
       user:

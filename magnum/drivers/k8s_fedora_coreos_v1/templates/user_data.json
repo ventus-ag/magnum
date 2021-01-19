@@ -65,7 +65,7 @@
         "group": {
           "name": "root"
         },
-        "path": "/etc/containers/libpod.conf",
+        "path": "/etc/containers/containers.conf",
         "user": {
           "name": "root"
         },
