@@ -18,7 +18,6 @@ if [ "${manila_csi_plugin_enabled}" = "true" ]; then
     helm upgrade -i nfs-driver $(ls -d ${csi_driver_path}/package/*) -n kube-system \
          --set controller.replicas=2
 
-
     csi_plugin_path="/srv/magnum/kubernetes/manila-csi-plugin"
     csi_plugin_branch="release-1.20"
     rm -rf ${csi_plugin_path}
