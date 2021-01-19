@@ -97,7 +97,7 @@ TimeoutStartSec=10min
 
 Restart=on-failure
 StartLimitBurst=3
-StartLimitInterval=600s
+StartLimitInterval=300s
 
 [Install]
 WantedBy=multi-user.target
