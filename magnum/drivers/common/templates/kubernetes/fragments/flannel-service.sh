@@ -249,6 +249,9 @@ spec:
         - name: flannel-cfg
           mountPath: /etc/kube-flannel/
       volumes:
+      - name: host-cni-bin
+        hostPath:
+          path: /opt/cni/bin
       - name: run
         hostPath:
           path: /run/flannel
