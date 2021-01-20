@@ -827,7 +827,7 @@ parameters:
   csi_attacher_tag:
     type: string
     description: tag of csi attacher
-    default: v3.1.0
+    default: v2.2.1
 
   csi_provisioner_tag:
     type: string
