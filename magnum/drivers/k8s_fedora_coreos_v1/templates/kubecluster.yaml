@@ -837,17 +837,17 @@ parameters:
   csi_snapshotter_tag:
     type: string
     description: tag of csi snapshotter
-    default: v2.1.3
+    default: v1.2.2
 
   csi_resizer_tag:
     type: string
     description: tag of csi resizer
-    default: v0.5.1
+    default: v1.0.1
 
   csi_node_driver_registrar_tag:
     type: string
     description: tag of csi node driver registrar
-    default: v1.3.0
+    default: v1.2.0
 
   node_problem_detector_tag:
     type: string
