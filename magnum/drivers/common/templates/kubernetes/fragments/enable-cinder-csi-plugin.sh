@@ -39,6 +39,16 @@ EOF
     if [[ $KUBE_TAG == "v1.17"* ]]; then
         sed -i 's/v1/v1beta1/g' ${csi_plugin_path}/cloud-provider-openstack-${csi_plugin_branch}/charts/cinder-csi-plugin/templates/cinder-csi-driver.yaml
     fi
+    if [[ $KUBE_TAG == "v1.1"* ]]; then
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-2.1/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-2.1/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-2.1/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+    fi
+    if [[ $KUBE_TAG == "v1.2"* ]]; then
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+    fi
     helm package ${csi_plugin_path}/cloud-provider-openstack-${csi_plugin_branch}/charts/cinder-csi-plugin -d ${csi_plugin_path}/package
     helm upgrade -i cinder-csi $(ls -d ${csi_plugin_path}/package/*) -n kube-system \
          --set storageClass.delete.isDefault=true \
