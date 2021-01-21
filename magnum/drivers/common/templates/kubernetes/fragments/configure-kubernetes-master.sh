@@ -27,6 +27,12 @@ $ssh_cmd rm -rf /opt/cni/*
 $ssh_cmd mkdir -p /opt/cni/bin
 $ssh_cmd mkdir -p /etc/cni/net.d/
 
+cni_plugin_path="/srv/magnum/kubernetes/cni"
+cni_plugin_version="0.9.0"
+$ssh_cmd mkdir -p ${cni_plugin_path}
+$ssh_cmd curl -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+$ssh_cmd tar -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+
 if [ "$NETWORK_DRIVER" = "calico" ]; then
     echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
     $ssh_cmd sysctl -p

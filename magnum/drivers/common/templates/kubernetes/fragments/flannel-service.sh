@@ -149,13 +149,6 @@ data:
         "Type": "$FLANNEL_BACKEND"
       }
     }
-  magnum-install-cni.sh: |
-    #!/bin/sh
-    set -e -x;
-    if [ -w "/host/opt/cni/bin/" ]; then
-      cp /opt/cni/bin/* /host/opt/cni/bin/;
-      echo "Wrote CNI binaries to /host/opt/cni/bin/";
-    fi;
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -191,17 +184,6 @@ spec:
         effect: NoSchedule
       serviceAccountName: flannel
       initContainers:
-      - name: install-cni-plugins
-        image: ${_prefix}flannel-cni:${FLANNEL_CNI_TAG}
-        command:
-        - sh
-        args:
-        - /etc/kube-flannel/magnum-install-cni.sh
-        volumeMounts:
-        - name: host-cni-bin
-          mountPath: /host/opt/cni/bin/
-        - name: flannel-cfg
-          mountPath: /etc/kube-flannel/
       - name: install-cni
         image: ${_prefix}flannel:${FLANNEL_TAG}
         command:
@@ -249,9 +231,6 @@ spec:
         - name: flannel-cfg
           mountPath: /etc/kube-flannel/
       volumes:
-      - name: host-cni-bin
-        hostPath:
-          path: /opt/cni/bin
       - name: run
         hostPath:
           path: /run/flannel
