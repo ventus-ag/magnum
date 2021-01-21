@@ -87,7 +87,6 @@ ExecStart=/bin/podman run \\
     --volume /var/lib:/var/lib \\
     --volume /var/run:/var/run \\
     --volume /var/log:/var/log \\
-    --volume /opt:/opt \\
     --volume /tmp:/tmp \\
     --volume /dev:/dev \\
     --env REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt \\
