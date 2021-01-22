@@ -42,21 +42,39 @@ storage:
         name: root
   files:
     - path: /etc/sysctl.d/max-user-watches.conf
+      mode: 420
+      group:
+        name: root
+      user:
+        name: root
       contents:
         inline: |
           fs.inotify.max_user_watches=16184
+      overwrite: true
     - path: /etc/sysctl.d/reverse-path-filter.conf
+      mode: 420
+      group:
+        name: root
+      user:
+        name: root
       contents:
         inline: |
           net.ipv4.conf.default.rp_filter=0
           net.ipv4.conf.*.rp_filter=0
+      overwrite: true
     - path: /etc/systemd/network/50-flannel.link
+      mode: 420
+      group:
+        name: root
+      user:
+        name: root
       contents:
         inline: |
           [Match]
           OriginalName=flannel*
           [Link]
           MACAddressPolicy=none
+      overwrite: true
     - path: /etc/selinux/config
       # 420 (decimal) == 644 (octal)
       mode: 420
