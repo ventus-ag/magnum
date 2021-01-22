@@ -12,7 +12,7 @@
 # [0] https://github.com/coreos/fcct
 # [1] https://github.com/coreos/fedora-coreos-docs/blob/master/modules/ROOT/pages/producing-ign.adoc
 variant: fcos
-version: 1.0.0
+version: 1.1.0
 passwd:
   users:
     - name: core
@@ -35,6 +35,22 @@ storage:
       group:
         name: root
   files:
+    - path: /etc/sysctl.d/max-user-watches.conf
+      contents:
+        inline: |
+          fs.inotify.max_user_watches=16184
+    - path: /etc/sysctl.d/reverse-path-filter.conf
+      contents:
+        inline: |
+          net.ipv4.conf.default.rp_filter=0
+          net.ipv4.conf.*.rp_filter=0
+    - path: /etc/systemd/network/50-flannel.link
+      contents:
+        inline: |
+          [Match]
+          OriginalName=flannel*
+          [Link]
+          MACAddressPolicy=none
     - path: /etc/selinux/config
       # 420 (decimal) == 644 (octal)
       mode: 420
