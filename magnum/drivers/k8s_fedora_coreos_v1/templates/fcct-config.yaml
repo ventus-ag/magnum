@@ -11,6 +11,12 @@
 #
 # [0] https://github.com/coreos/fcct
 # [1] https://github.com/coreos/fedora-coreos-docs/blob/master/modules/ROOT/pages/producing-ign.adoc
+
+#docker run --rm \
+# -v /home/ubuntu:/opt \
+# quay.io/coreos/fcct:release \
+# --pretty --strict /opt/fcct-config.yaml > ./user_data.json
+
 variant: fcos
 version: 1.1.0
 passwd:
