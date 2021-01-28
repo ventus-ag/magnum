@@ -51,7 +51,7 @@ storage:
         inline: |
           fs.inotify.max_user_watches=16184
       overwrite: true
-    - path: /etc/sysctl.d/reverse-path-filter.conf
+    - path: /etc/sysctl.d/k8s_custom.conf
       mode: 420
       group:
         name: root
