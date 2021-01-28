@@ -12,7 +12,7 @@
 # [0] https://github.com/coreos/fcct
 # [1] https://github.com/coreos/fedora-coreos-docs/blob/master/modules/ROOT/pages/producing-ign.adoc
 
-#docker run --rm \
+# docker run --rm \
 # -v /home/ubuntu:/opt \
 # quay.io/coreos/fcct:release \
 # --pretty --strict /opt/fcct-config.yaml > ./user_data.json
@@ -59,8 +59,10 @@ storage:
         name: root
       contents:
         inline: |
-          net.ipv4.conf.default.rp_filter=0
-          net.ipv4.conf.*.rp_filter=0
+          net.ipv4.conf.default.rp_filter=2
+          net.ipv4.conf.*.rp_filter=2
+          net.ipv4.conf.all.promote_secondaries = 1
+          net.ipv4.conf.*.accept_source_route = 1
       overwrite: true
     - path: /etc/systemd/network/50-flannel.link
       mode: 420
