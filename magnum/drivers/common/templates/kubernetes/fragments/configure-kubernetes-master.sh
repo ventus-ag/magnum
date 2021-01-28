@@ -87,7 +87,7 @@ EOF
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     cat > /etc/systemd/system/kube-apiserver.service <<EOF
 [Unit]
-Description=kube-apiserver via Hyperkube
+Description=kube-apiserver
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -115,7 +115,7 @@ EOF
 
     cat > /etc/systemd/system/kube-controller-manager.service <<EOF
 [Unit]
-Description=kube-controller-manager via Hyperkube
+Description=kube-controller-manager
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -144,7 +144,7 @@ EOF
 
     cat > /etc/systemd/system/kube-scheduler.service <<EOF
 [Unit]
-Description=kube-scheduler via Hyperkube
+Description=kube-scheduler
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -172,7 +172,7 @@ EOF
 
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
-Description=Kubelet via Hyperkube (System Container)
+Description=Kubelet
 Wants=rpc-statd.service
 
 [Service]
@@ -198,7 +198,7 @@ EOF
 
     cat > /etc/systemd/system/kube-proxy.service <<EOF
 [Unit]
-Description=kube-proxy via Hyperkube
+Description=kube-proxy
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
