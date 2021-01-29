@@ -39,14 +39,14 @@ $ssh_cmd tar xzvf /srv/magnum/k8s.tar.gz -C /srv/magnum/k8s/ kubernetes/server/b
 $ssh_cmd mv /srv/magnum/k8s/kubernetes/server/bin/{kubelet,kubectl,kubeadm} /usr/local/bin/
 $ssh_cmd chmod +x /usr/local/bin/kube*
 
-if [ "$SELINUX_MODE" == "enforcing" ] ; then
+if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
     $ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
 fi
 
 $ssh_cmd cp /usr/local/bin/kubectl /srv/magnum/bin/
 $ssh_cmd chmod +x /srv/magnum/bin/kube*
 
-if [ "$SELINUX_MODE" == "enforcing" ] ; then
+if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
     $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
 fi
 
