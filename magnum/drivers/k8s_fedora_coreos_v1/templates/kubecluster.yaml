@@ -832,7 +832,7 @@ parameters:
   csi_provisioner_tag:
     type: string
     description: tag of csi provisioner
-    default: v2.1.0
+    default: v1.6.1
 
   csi_snapshotter_tag:
     type: string
