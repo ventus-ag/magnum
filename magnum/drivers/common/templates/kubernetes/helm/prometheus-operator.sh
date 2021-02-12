@@ -16,6 +16,7 @@ if [ "$(echo ${MONITORING_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ]; th
 - name: ${CHART_NAME}
   version: ${PROMETHEUS_OPERATOR_CHART_TAG}
   repository: https://prometheus-community.github.io/helm-charts
+EOF
 
     # Calculate resources needed to run the Prometheus Monitoring Solution
     # MAX_NODE_COUNT so we can have metrics even if cluster scales
