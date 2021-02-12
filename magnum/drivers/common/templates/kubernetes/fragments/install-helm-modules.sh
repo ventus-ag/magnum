@@ -5,6 +5,7 @@ echo "START: ${step}"
 
 set +x
 . /etc/sysconfig/heat-params
+
 set -ex
 
 if [ ! -z "$HTTP_PROXY" ]; then
@@ -22,7 +23,7 @@ fi
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ]; do
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]; do
     sleep 5
 done
 

@@ -174,13 +174,14 @@ INGRESS_TRAEFIK_SERVICE="/etc/systemd/system/ingress-traefik.service"
 
 # Binary for ingress traefik
 INGRESS_TRAEFIK_BIN_CONTENT='''#!/bin/sh
-until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
     echo "Waiting for Kubernetes API..."
     sleep 5
 done
 
 # Check if all resources exist already before creating them
+
 kubectl -n kube-system get service ingress-traefik
 if [ "$?" != "0" ] && \
         [ -f "'''${INGRESS_TRAEFIK_MANIFEST}'''" ]; then

@@ -3,6 +3,7 @@
 set -e
 set +x
 . /etc/sysconfig/heat-params
+
 set -x
 
 
@@ -28,14 +29,14 @@ metadata:
 spec:
   privileged: false
   volumes:
-    - configMap
-    - secret
-    - emptyDir
-    - hostPath
+  - configMap
+  - secret
+  - emptyDir
+  - hostPath
   allowedHostPaths:
-    - pathPrefix: "/etc/cni/net.d"
-    - pathPrefix: "/etc/kube-flannel"
-    - pathPrefix: "/run/flannel"
+  - pathPrefix: "/etc/cni/net.d"
+  - pathPrefix: "/etc/kube-flannel"
+  - pathPrefix: "/run/flannel"
   readOnlyRootFilesystem: false
   # Users and groups
   runAsUser:
@@ -48,7 +49,7 @@ spec:
   allowPrivilegeEscalation: false
   defaultAllowPrivilegeEscalation: false
   # Capabilities
-  allowedCapabilities: ['NET_ADMIN']
+  allowedCapabilities: ['NET_ADMIN', 'NET_RAW']
   defaultAddCapabilities: []
   requiredDropCapabilities: []
   # Host namespaces
@@ -60,40 +61,40 @@ spec:
     max: 65535
   # SELinux
   seLinux:
-    # SELinux is unsed in CaaSP
+    # SELinux is unused in CaaSP
     rule: 'RunAsAny'
 ---
 kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: flannel
 rules:
-  - apiGroups: ['extensions']
-    resources: ['podsecuritypolicies']
-    verbs: ['use']
-    resourceNames: ['psp.flannel.unprivileged']
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes/status
-    verbs:
-      - patch
+- apiGroups: ['extensions']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames: ['psp.flannel.unprivileged']
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes/status
+  verbs:
+  - patch
 ---
 kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: flannel
 roleRef:
@@ -123,7 +124,7 @@ data:
   cni-conf.json: |
     {
       "name": "cbr0",
-      "cniVersion": "0.2.0",
+      "cniVersion": "0.3.1",
       "plugins": [
         {
           "type": "flannel",
@@ -148,13 +149,6 @@ data:
         "Type": "$FLANNEL_BACKEND"
       }
     }
-  magnum-install-cni.sh: |
-    #!/bin/sh
-    set -e -x;
-    if [ -w "/host/opt/cni/bin/" ]; then
-      cp /opt/cni/bin/* /host/opt/cni/bin/;
-      echo "Wrote CNI binaries to /host/opt/cni/bin/";
-    fi;
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -167,7 +161,6 @@ metadata:
 spec:
   selector:
     matchLabels:
-      tier: node
       app: flannel
   template:
     metadata:
@@ -175,28 +168,22 @@ spec:
         tier: node
         app: flannel
     spec:
-      # https://pagure.io/atomic/kubernetes-sig/issue/3
-      # https://danwalsh.livejournal.com/74754.html
-      securityContext:
-        seLinuxOptions:
-          type: "spc_t"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
       hostNetwork: true
+      priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
         effect: NoSchedule
       serviceAccountName: flannel
       initContainers:
-      - name: install-cni-plugins
-        image: ${_prefix}flannel-cni:${FLANNEL_CNI_TAG}
-        command:
-        - sh
-        args:
-        - /etc/kube-flannel/magnum-install-cni.sh
-        volumeMounts:
-        - name: host-cni-bin
-          mountPath: /host/opt/cni/bin/
-        - name: flannel-cfg
-          mountPath: /etc/kube-flannel/
       - name: install-cni
         image: ${_prefix}flannel:${FLANNEL_TAG}
         command:
@@ -228,7 +215,7 @@ spec:
         securityContext:
           privileged: false
           capabilities:
-             add: ["NET_ADMIN"]
+            add: ["NET_ADMIN", "NET_RAW"]
         env:
         - name: POD_NAME
           valueFrom:
@@ -244,30 +231,27 @@ spec:
         - name: flannel-cfg
           mountPath: /etc/kube-flannel/
       volumes:
-        - name: host-cni-bin
-          hostPath:
-            path: /opt/cni/bin
-        - name: run
-          hostPath:
-            path: /run/flannel
-        - name: cni
-          hostPath:
-            path: /etc/cni/net.d
-        - name: flannel-cfg
-          configMap:
-            name: kube-flannel-cfg
+      - name: run
+        hostPath:
+          path: /run/flannel
+      - name: cni
+        hostPath:
+          path: /etc/cni/net.d
+      - name: flannel-cfg
+        configMap:
+          name: kube-flannel-cfg
 EOF
     }
     set -x
 
     if [ "$MASTER_INDEX" = "0" ]; then
 
-        until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ]
+        until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
         do
             echo "Waiting for Kubernetes API..."
             sleep 5
         done
     fi
 
-    /usr/bin/kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-system
+    kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-system
 fi

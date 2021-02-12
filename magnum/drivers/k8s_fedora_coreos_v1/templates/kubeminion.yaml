@@ -204,6 +204,12 @@ parameters:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
 
+  kubernetes_tarball_sha512:
+    type: string
+
+  kubernetes_tarball_url:
+    type: string
+
   kube_version:
     type: string
     description: version of kubernetes used for kubernetes cluster
@@ -436,6 +442,8 @@ resources:
                   $HTTPS_PROXY: {get_param: https_proxy}
                   $NO_PROXY: {get_param: no_proxy}
                   $KUBE_TAG: {get_param: kube_tag}
+                  $KUBERNETES_TARBALL_SHA512: {get_param: kubernetes_tarball_sha512}
+                  $KUBERNETES_TARBALL_url: {get_param: kubernetes_tarball_url}
                   $FLANNEL_NETWORK_CIDR: {get_param: flannel_network_cidr}
                   $PODS_NETWORK_CIDR: {get_param: pods_network_cidr}
                   $KUBE_VERSION: {get_param: kube_version}

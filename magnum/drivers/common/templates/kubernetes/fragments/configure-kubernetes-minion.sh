@@ -29,6 +29,13 @@ $ssh_cmd mkdir -p /opt/cni/bin
 $ssh_cmd mkdir -p /etc/cni/net.d/
 _addtl_mounts=',{"type":"bind","source":"/opt/cni","destination":"/opt/cni","options":["bind","rw","slave","mode=777"]},{"type":"bind","source":"/var/lib/docker","destination":"/var/lib/docker","options":["bind","rw","slave","mode=755"]}'
 
+cni_plugin_path="/srv/magnum/kubernetes/cni"
+cni_plugin_version="0.9.0"
+$ssh_cmd mkdir -p ${cni_plugin_path}
+$ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+$ssh_cmd mkdir -p /opt/cni/bin
+$ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+
 if [ "$NETWORK_DRIVER" = "calico" ]; then
     echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
     # NOTE(flwang): The default value for vm.max_map_count is too low, update
@@ -57,7 +64,6 @@ mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOGTOSTDERR="--logtostderr=true"
 KUBE_LOG_LEVEL="--v=3"
-KUBE_MASTER="--master=http://127.0.0.1:8080"
 EOF
 cat > /etc/kubernetes/kubelet <<EOF
 KUBELET_ARGS="--fail-swap-on=false"
@@ -68,7 +74,7 @@ EOF
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
-Description=Kubelet via Hyperkube (System Container)
+Description=Kubelet
 Wants=rpc-statd.service
 
 [Service]
@@ -82,47 +88,19 @@ ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
-ExecStartPre=-/usr/bin/podman rm kubelet
-ExecStart=/bin/bash -c '/usr/bin/podman run --name kubelet \\
-    --privileged \\
-    --pid host \\
-    --network host \\
-    --entrypoint /hyperkube \\
-    --volume /:/rootfs:ro \\
-    --volume /etc/cni/net.d:/etc/cni/net.d:ro,z \\
-    --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
-    --volume /usr/lib/os-release:/usr/lib/os-release:ro \\
-    --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
-    --volume /lib/modules:/lib/modules:ro \\
-    --volume /run:/run \\
-    --volume /dev:/dev \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
-    --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    --volume /var/lib/calico:/var/lib/calico \\
-    --volume /var/lib/docker:/var/lib/docker \\
-    --volume /var/lib/containerd:/var/lib/containerd \\
-    --volume /var/lib/kubelet:/var/lib/kubelet:rshared,z \\
-    --volume /var/log:/var/log \\
-    --volume /var/run:/var/run \\
-    --volume /var/run/lock:/var/run/lock:z \\
-    --volume /opt/cni/bin:/opt/cni/bin:z \\
-    --volume /etc/machine-id:/etc/machine-id \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
-    kubelet \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS'
-ExecStop=-/usr/bin/podman stop kubelet
+ExecStart=/usr/local/bin/kubelet \\
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
-TimeoutStartSec=10min
 RestartSec=10
+TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target
 EOF
 
     cat > /etc/systemd/system/kube-proxy.service <<EOF
 [Unit]
-Description=kube-proxy via Hyperkube
+Description=kube-proxy via k8s.gcr.io/kube-proxy
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -132,7 +110,6 @@ ExecStartPre=-/usr/bin/podman rm kube-proxy
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --privileged \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
@@ -141,14 +118,14 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
 Delegate=yes
 Restart=always
-TimeoutStartSec=10min
 RestartSec=10
+TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target
 EOF

@@ -17,8 +17,7 @@ if [ "$(echo ${MONITORING_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ] && 
     cat << EOF >> ${HELM_CHART_DIR}/requirements.yaml
 - name: ${CHART_NAME}
   version: ${PROMETHEUS_ADAPTER_CHART_TAG}
-  repository: https://charts.helm.sh/stable
-EOF
+  repository: https://prometheus-community.github.io/helm-charts
 
     cat << EOF >> ${HELM_CHART_DIR}/values.yaml
 prometheus-adapter:

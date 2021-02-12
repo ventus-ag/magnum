@@ -51,6 +51,47 @@
           "name": "root"
         },
         "overwrite": true,
+        "path": "/etc/sysctl.d/max-user-watches.conf",
+        "user": {
+          "name": "root"
+        },
+        "contents": {
+          "source": "data:,fs.inotify.max_user_watches%3D16184%0A"
+        },
+        "mode": 420
+      },
+      {
+        "group": {
+          "name": "root"
+        },
+        "overwrite": true,
+        "path": "/etc/sysctl.d/k8s_custom.conf",
+        "user": {
+          "name": "root"
+        },
+        "contents": {
+          "source": "data:,net.ipv4.conf.default.rp_filter%3D2%0Anet.ipv4.conf.*.rp_filter%3D2%0Anet.ipv4.conf.all.promote_secondaries%20%3D%201%0Anet.ipv4.conf.*.accept_source_route%20%3D%201%0A"
+        },
+        "mode": 420
+      },
+      {
+        "group": {
+          "name": "root"
+        },
+        "path": "/etc/systemd/network/50-flannel.link",
+        "user": {
+          "name": "root"
+        },
+        "contents": {
+          "source": "data:,%5BMatch%5D%0AOriginalName%3Dflannel*%0A%5BLink%5D%0AMACAddressPolicy%3Dnone%0A"
+        },
+        "mode": 420
+      },
+      {
+        "group": {
+          "name": "root"
+        },
+        "overwrite": true,
         "path": "/etc/selinux/config",
         "user": {
           "name": "root"
@@ -65,7 +106,7 @@
         "group": {
           "name": "root"
         },
-        "path": "/etc/containers/libpod.conf",
+        "path": "/etc/containers/containers.conf",
         "user": {
           "name": "root"
         },
@@ -131,6 +172,71 @@
           "verification": {}
         },
         "mode": 420
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/state/current",
+        "contents": {
+          "source": "data:,LEGACY"
+        },
+        "mode": 420
+      }
+    ],
+    "links": [
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/bind.config",
+        "target": "/usr/share/crypto-policies/LEGACY/bind.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/gnutls.config",
+        "target": "/usr/share/crypto-policies/LEGACY/gnutls.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/java.config",
+        "target": "/usr/share/crypto-policies/LEGACY/java.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/krb5.config",
+        "target": "/usr/share/crypto-policies/LEGACY/krb5.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/libreswan.config",
+        "target": "/usr/share/crypto-policies/LEGACY/libreswan.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/libssh.config",
+        "target": "/usr/share/crypto-policies/LEGACY/libssh.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/nss.config",
+        "target": "/usr/share/crypto-policies/LEGACY/nss.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/openssh.config",
+        "target": "/usr/share/crypto-policies/LEGACY/openssh.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/opensshserver.config",
+        "target": "/usr/share/crypto-policies/LEGACY/opensshserver.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/opensslcnf.config",
+        "target": "/usr/share/crypto-policies/LEGACY/opensslcnf.txt"
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/crypto-policies/back-ends/openssl.config",
+        "target": "/usr/share/crypto-policies/LEGACY/openssl.txt"
       }
     ]
   },

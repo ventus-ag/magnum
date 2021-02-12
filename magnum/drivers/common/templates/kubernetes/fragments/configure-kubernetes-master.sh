@@ -27,6 +27,13 @@ $ssh_cmd rm -rf /opt/cni/*
 $ssh_cmd mkdir -p /opt/cni/bin
 $ssh_cmd mkdir -p /etc/cni/net.d/
 
+cni_plugin_path="/srv/magnum/kubernetes/cni"
+cni_plugin_version="0.9.0"
+$ssh_cmd mkdir -p ${cni_plugin_path}
+$ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+$ssh_cmd mkdir -p /opt/cni/bin
+$ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+
 if [ "$NETWORK_DRIVER" = "calico" ]; then
     echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
     $ssh_cmd sysctl -p
@@ -52,14 +59,13 @@ mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOGTOSTDERR="--logtostderr=true"
 KUBE_LOG_LEVEL="--v=3"
-KUBE_MASTER="--master=http://127.0.0.1:8080"
+
 EOF
 cat > /etc/kubernetes/kubelet <<EOF
 KUBELET_ARGS="--fail-swap-on=false"
 EOF
 
 cat > /etc/kubernetes/apiserver <<EOF
-KUBE_API_ADDRESS="--insecure-bind-address=127.0.0.1"
 KUBE_ETCD_SERVERS="--etcd-servers=http://127.0.0.1:2379,http://127.0.0.1:4001"
 KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range=10.254.0.0/16"
 KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota"
@@ -80,7 +86,7 @@ EOF
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     cat > /etc/systemd/system/kube-apiserver.service <<EOF
 [Unit]
-Description=kube-apiserver via Hyperkube
+Description=kube-apiserver
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -89,15 +95,14 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-apiserver
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-apiserver \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-apiserver:\${KUBE_TAG} \\
     kube-apiserver \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_API_PORT \$KUBELET_PORT \$KUBE_SERVICE_ADDRESSES \$KUBE_ADMISSION_CONTROL \$KUBE_API_ARGS'
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_ADMISSION_CONTROL \$KUBE_API_ARGS'
 ExecStop=-/usr/bin/podman stop kube-apiserver
 Delegate=yes
 Restart=always
@@ -109,7 +114,7 @@ EOF
 
     cat > /etc/systemd/system/kube-controller-manager.service <<EOF
 [Unit]
-Description=kube-controller-manager via Hyperkube
+Description=kube-controller-manager
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -118,13 +123,12 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-controller-manager
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-controller-manager \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-controller-manager:\${KUBE_TAG} \\
     kube-controller-manager \\
     --secure-port=0 \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
@@ -139,7 +143,7 @@ EOF
 
     cat > /etc/systemd/system/kube-scheduler.service <<EOF
 [Unit]
-Description=kube-scheduler via Hyperkube
+Description=kube-scheduler
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -148,13 +152,12 @@ ExecStartPre=/bin/mkdir -p /etc/kubernetes/
 ExecStartPre=-/usr/bin/podman rm kube-scheduler
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-scheduler \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-scheduler:\${KUBE_TAG} \\
     kube-scheduler \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-scheduler
@@ -166,11 +169,9 @@ TimeoutStartSec=10min
 WantedBy=multi-user.target
 EOF
 
-
-
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
-Description=Kubelet via Hyperkube (System Container)
+Description=Kubelet
 Wants=rpc-statd.service
 
 [Service]
@@ -184,36 +185,8 @@ ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
-ExecStartPre=-/usr/bin/podman rm kubelet
-ExecStart=/bin/bash -c '/usr/bin/podman run --name kubelet \\
-    --privileged \\
-    --pid host \\
-    --network host \\
-    --entrypoint /hyperkube \\
-    --volume /:/rootfs:ro \\
-    --volume /etc/cni/net.d:/etc/cni/net.d:ro,z \\
-    --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
-    --volume /usr/lib/os-release:/usr/lib/os-release:ro \\
-    --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
-    --volume /lib/modules:/lib/modules:ro \\
-    --volume /run:/run \\
-    --volume /dev:/dev \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
-    --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    --volume /var/lib/calico:/var/lib/calico \\
-    --volume /var/lib/docker:/var/lib/docker \\
-    --volume /var/lib/containerd:/var/lib/containerd \\
-    --volume /var/lib/kubelet:/var/lib/kubelet:rshared,z \\
-    --volume /var/log:/var/log \\
-    --volume /var/run:/var/run \\
-    --volume /var/run/lock:/var/run/lock:z \\
-    --volume /opt/cni/bin:/opt/cni/bin:z \\
-    --volume /etc/machine-id:/etc/machine-id \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
-    kubelet \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS'
-ExecStop=-/usr/bin/podman stop kubelet
+ExecStart=/usr/local/bin/kubelet \\
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
 RestartSec=10
@@ -224,7 +197,7 @@ EOF
 
     cat > /etc/systemd/system/kube-proxy.service <<EOF
 [Unit]
-Description=kube-proxy via Hyperkube
+Description=kube-proxy
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -234,7 +207,6 @@ ExecStartPre=-/usr/bin/podman rm kube-proxy
 ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --privileged \\
     --net host \\
-    --entrypoint /hyperkube \\
     --volume /etc/kubernetes:/etc/kubernetes:ro,z \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
@@ -243,7 +215,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
@@ -284,7 +256,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: http://127.0.0.1:8080
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:
@@ -298,38 +270,35 @@ users:
 - name: kube-proxy
   user:
     as-user-extra: {}
+    client-certificate: ${CERT_DIR}/proxy.crt
+    client-key: ${CERT_DIR}/proxy.key
 EOF
 
 sed -i '
     /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged='"$KUBE_ALLOW_PRIV"'"/
-    /^KUBE_MASTER=/ s|=.*|="--master=http://127.0.0.1:8080"|
 ' /etc/kubernetes/config
 
 KUBE_API_ARGS="--runtime-config=api/all=true"
 KUBE_API_ARGS="$KUBE_API_ARGS --allow-privileged=$KUBE_ALLOW_PRIV"
 KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP"
 KUBE_API_ARGS="$KUBE_API_ARGS $KUBEAPI_OPTIONS"
-if [ "$TLS_DISABLED" == "True" ]; then
-    KUBE_API_ADDRESS="--insecure-bind-address=0.0.0.0 --insecure-port=$KUBE_API_PORT"
-else
-    KUBE_API_ADDRESS="--bind-address=0.0.0.0 --secure-port=$KUBE_API_PORT"
-    # insecure port is used internaly
-    KUBE_API_ADDRESS="$KUBE_API_ADDRESS --insecure-bind-address=127.0.0.1 --insecure-port=8080"
-    KUBE_API_ARGS="$KUBE_API_ARGS --authorization-mode=Node,RBAC --tls-cert-file=$CERT_DIR/server.crt"
-    KUBE_API_ARGS="$KUBE_API_ARGS --tls-private-key-file=$CERT_DIR/server.key"
-    KUBE_API_ARGS="$KUBE_API_ARGS --client-ca-file=$CERT_DIR/ca.crt"
-    KUBE_API_ARGS="$KUBE_API_ARGS --service-account-key-file=${CERT_DIR}/service_account.key"
-    KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-certificate-authority=${CERT_DIR}/ca.crt --kubelet-client-certificate=${CERT_DIR}/server.crt --kubelet-client-key=${CERT_DIR}/server.key --kubelet-https=true"
-    # Allow for metrics-server/aggregator communication
-    KUBE_API_ARGS="${KUBE_API_ARGS} \
-        --proxy-client-cert-file=${CERT_DIR}/server.crt \
-        --proxy-client-key-file=${CERT_DIR}/server.key \
-        --requestheader-allowed-names=front-proxy-client,kube,kubernetes \
-        --requestheader-client-ca-file=${CERT_DIR}/ca.crt \
-        --requestheader-extra-headers-prefix=X-Remote-Extra- \
-        --requestheader-group-headers=X-Remote-Group \
-        --requestheader-username-headers=X-Remote-User"
-fi
+KUBE_API_ADDRESS="--bind-address=0.0.0.0 --secure-port=$KUBE_API_PORT"
+KUBE_API_ARGS="$KUBE_API_ARGS --authorization-mode=Node,RBAC --tls-cert-file=$CERT_DIR/server.crt"
+KUBE_API_ARGS="$KUBE_API_ARGS --service-account-signing-key-file=$CERT_DIR/service_account_private.key"
+KUBE_API_ARGS="$KUBE_API_ARGS --service-account-issuer=https://kubernetes.default.svc.cluster.local"
+KUBE_API_ARGS="$KUBE_API_ARGS --tls-private-key-file=$CERT_DIR/server.key"
+KUBE_API_ARGS="$KUBE_API_ARGS --client-ca-file=$CERT_DIR/ca.crt"
+KUBE_API_ARGS="$KUBE_API_ARGS --service-account-key-file=${CERT_DIR}/service_account.key"
+KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-certificate-authority=${CERT_DIR}/ca.crt --kubelet-client-certificate=${CERT_DIR}/server.crt --kubelet-client-key=${CERT_DIR}/server.key --kubelet-https=true"
+# Allow for metrics-server/aggregator communication
+KUBE_API_ARGS="${KUBE_API_ARGS} \
+    --proxy-client-cert-file=${CERT_DIR}/server.crt \
+    --proxy-client-key-file=${CERT_DIR}/server.key \
+    --requestheader-allowed-names=front-proxy-client,kube,kubernetes \
+    --requestheader-client-ca-file=${CERT_DIR}/ca.crt \
+    --requestheader-extra-headers-prefix=X-Remote-Extra- \
+    --requestheader-group-headers=X-Remote-Group \
+    --requestheader-username-headers=X-Remote-User"
 
 KUBE_ADMISSION_CONTROL=""
 if [ -n "${ADMISSION_CONTROL_LIST}" ] && [ "${TLS_DISABLED}" == "False" ]; then
@@ -349,43 +318,10 @@ mkdir -p $(dirname ${KEYSTONE_WEBHOOK_CONFIG})
 cat << EOF > ${KEYSTONE_WEBHOOK_CONFIG}
 ---
 apiVersion: v1
-kind: Config
-preferences: {}
-clusters:
-  - cluster:
-      insecure-skip-tls-verify: true
-      server: https://127.0.0.1:8443/webhook
-    name: webhook
-users:
-  - name: webhook
-contexts:
-  - context:
-      cluster: webhook
-      user: webhook
-    name: webhook
-current-context: webhook
-EOF
-}
-    KUBE_API_ARGS="$KUBE_API_ARGS --authentication-token-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml --authorization-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml"
-    webhook_auth="--authorization-mode=Node,Webhook,RBAC"
-    KUBE_API_ARGS=${KUBE_API_ARGS/--authorization-mode=Node,RBAC/$webhook_auth}
-fi
-
-sed -i '
-    /^KUBE_API_ADDRESS=/ s/=.*/="'"${KUBE_API_ADDRESS}"'"/
-    /^KUBE_SERVICE_ADDRESSES=/ s|=.*|="--service-cluster-ip-range='"$PORTAL_NETWORK_CIDR"'"|
-    /^KUBE_API_ARGS=/ s|=.*|="'"${KUBE_API_ARGS}"'"|
-    /^KUBE_ETCD_SERVERS=/ s/=.*/="--etcd-servers=http:\/\/127.0.0.1:2379"/
-    /^KUBE_ADMISSION_CONTROL=/ s/=.*/="'"${KUBE_ADMISSION_CONTROL}"'"/
-' /etc/kubernetes/apiserver
-
-ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
-cat << EOF >> ${ADMIN_KUBECONFIG}
-apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: https://127.0.0.1:$KUBE_API_PORT
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: ${CLUSTER_UUID}
 contexts:
 - context:
@@ -402,14 +338,79 @@ users:
     client-certificate: ${CERT_DIR}/admin.crt
     client-key: ${CERT_DIR}/admin.key
 EOF
+}
+    KUBE_API_ARGS="$KUBE_API_ARGS --authentication-token-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml --authorization-webhook-config-file=/etc/kubernetes/keystone_webhook_config.yaml"
+    webhook_auth="--authorization-mode=Node,Webhook,RBAC"
+    KUBE_API_ARGS=${KUBE_API_ARGS/--authorization-mode=Node,RBAC/$webhook_auth}
+fi
+
+sed -i '
+    /^KUBE_API_ADDRESS=/ s/=.*/="'"${KUBE_API_ADDRESS}"'"/
+    /^KUBE_SERVICE_ADDRESSES=/ s|=.*|="--service-cluster-ip-range='"$PORTAL_NETWORK_CIDR"'"|
+    /^KUBE_API_ARGS=/ s|=.*|="'"${KUBE_API_ARGS}"'"|
+    /^KUBE_ETCD_SERVERS=/ s/=.*/="--etcd-servers=http:\/\/127.0.0.1:2379"/
+    /^KUBE_ADMISSION_CONTROL=/ s/=.*/="'"${KUBE_ADMISSION_CONTROL}"'"/
+' /etc/kubernetes/apiserver
+
+# root kubeconfig
+ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
+cat << EOF >> ${ADMIN_KUBECONFIG}
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: $(cat ${CERT_DIR}/ca.crt | base64 | tr -d '\n')
+    server: https://127.0.0.1:${KUBE_API_PORT}
+  name: ${CLUSTER_UUID}
+contexts:
+- context:
+    cluster: ${CLUSTER_UUID}
+    user: admin
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    as-user-extra: {}
+    client-certificate-data: $(cat ${CERT_DIR}/admin.crt | base64 | tr -d '\n')
+    client-key-data: $(cat ${CERT_DIR}/admin.key | base64 | tr -d '\n')
+EOF
 echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
 chown root:root ${ADMIN_KUBECONFIG}
-chmod 600 ${ADMIN_KUBECONFIG}
+chmod 755 ${ADMIN_KUBECONFIG}
+export KUBECONFIG=${ADMIN_KUBECONFIG}
+
+# kube-config controller 
+CONTROLLER_KUBECONFIG=/etc/kubernetes/controller-kubeconfig.yaml
+cat > ${CONTROLLER_KUBECONFIG} << EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${CERT_DIR}/ca.crt
+    server: https://127.0.0.1:${KUBE_API_PORT}
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: controller
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: controller
+  user:
+    as-user-extra: {}
+    client-certificate: ${CERT_DIR}/controller.crt
+    client-key: ${CERT_DIR}/controller.key
+EOF
 
 # Add controller manager args
 KUBE_CONTROLLER_MANAGER_ARGS="--leader-elect=true"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS --cluster-name=${CLUSTER_UUID}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --allocate-node-cidrs=true"
+KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --kubeconfig=${CONTROLLER_KUBECONFIG}"
 KUBE_CONTROLLER_MANAGER_ARGS="${KUBE_CONTROLLER_MANAGER_ARGS} --cluster-cidr=${PODS_NETWORK_CIDR}"
 KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS $KUBECONTROLLER_OPTIONS"
 if [ -n "${ADMISSION_CONTROL_LIST}" ] && [ "${TLS_DISABLED}" == "False" ]; then
@@ -433,8 +434,41 @@ sed -i '
     /^KUBE_CONTROLLER_MANAGER_ARGS=/ s#\(KUBE_CONTROLLER_MANAGER_ARGS\).*#\1="'"${KUBE_CONTROLLER_MANAGER_ARGS}"'"#
 ' /etc/kubernetes/controller-manager
 
-sed -i '/^KUBE_SCHEDULER_ARGS=/ s/=.*/="--leader-elect=true"/' /etc/kubernetes/scheduler
+# kube-config scheduler 
+SCHEDULER_KUBECONFIG=/etc/kubernetes/scheduler-kubeconfig.yaml
+cat > ${SCHEDULER_KUBECONFIG} << EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${CERT_DIR}/ca.crt
+    server: https://127.0.0.1:${KUBE_API_PORT}
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: scheduler
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: scheduler
+  user:
+    as-user-extra: {}
+    client-certificate: ${CERT_DIR}/scheduler.crt
+    client-key: ${CERT_DIR}/scheduler.key
+EOF
 
+# Add scheduler args
+KUBE_SCHEDULER_ARGS="--leader-elect=true"
+KUBE_SCHEDULER_ARGS="${KUBE_SCHEDULER_ARGS} --kubeconfig=${SCHEDULER_KUBECONFIG}"
+
+sed -i '
+    /^KUBE_SCHEDULER_ARGS=/ s#\(KUBE_SCHEDULER_ARGS\).*#\1="'"${KUBE_SCHEDULER_ARGS}"'"#
+' /etc/kubernetes/scheduler
+
+
+# Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
 KUBELET_ARGS="--register-node=true --pod-manifest-path=/etc/kubernetes/manifests --hostname-override=${INSTANCE_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
@@ -469,7 +503,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority: ${CERT_DIR}/ca.crt
-    server: http://127.0.0.1:8080
+    server: https://127.0.0.1:${KUBE_API_PORT}
   name: kubernetes
 contexts:
 - context:
@@ -483,8 +517,8 @@ users:
 - name: system:node:${INSTANCE_NAME}
   user:
     as-user-extra: {}
-    client-certificate: ${CERT_DIR}/server.crt
-    client-key: ${CERT_DIR}/server.key
+    client-certificate: ${CERT_DIR}/kubelet.crt
+    client-key: ${CERT_DIR}/kubelet.key
 EOF
 
 cat > /etc/kubernetes/get_require_kubeconfig.sh << EOF

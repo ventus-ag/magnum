@@ -659,12 +659,11 @@ spec:
 EOF
     }
 
-    until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ]
+    until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
     do
         echo "Waiting for Kubernetes API..."
         sleep 5
-    done
-
+    done   
     /usr/bin/kubectl apply -f ${CALICO_DEPLOY} --namespace=kube-system
 fi
 

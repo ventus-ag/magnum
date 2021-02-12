@@ -5,16 +5,17 @@ printf "Starting to run ${step}\n"
 
 set +x
 . /etc/sysconfig/heat-params
+
 set -x
 
-echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(curl --silent http://127.0.0.1:8080/healthz)" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
+    echo "Waiting for Kubernetes API..."
     sleep 5
 done
 
 cat <<EOF | kubectl apply --validate=false -f -
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   annotations:
@@ -36,7 +37,7 @@ rules:
 EOF
 
 cat <<EOF | kubectl apply --validate=false -f -
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: system:kube-apiserver
@@ -64,7 +65,7 @@ metadata:
   name: admin
   namespace: kube-system
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: admin
