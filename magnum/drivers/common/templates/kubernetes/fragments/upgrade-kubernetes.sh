@@ -74,7 +74,7 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
         if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ] ; then
             for component in kube-apiserver kube-controller-manager kube-scheduler kube-proxy
             do
-                $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar "${CONTAINER_INFRA_PREFIX:-k8s.gcr.io}/${component}:$(cat /srv/magnum/k8s/kubernetes/server/bin/${component}.docker_tag)"
+                $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar
             done
         fi
 
@@ -87,7 +87,7 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
 
         for service in ${SERVICE_LIST}; do
             i=0
-            until [ "`${ssh_cmd} podman image exists ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}:${new_kube_tag} && echo $?`" = 0 ]
+            until [ "`${ssh_cmd} podman image exists ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}-${ARCH}:${new_kube_tag} && echo $?`" = 0 ]
             do
                 i=$((i+1))
                 [ $i -lt 30 ] || break;

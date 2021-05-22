@@ -68,7 +68,6 @@ EOF
 cat > /etc/kubernetes/apiserver <<EOF
 KUBE_ETCD_SERVERS="--etcd-servers=http://127.0.0.1:2379,http://127.0.0.1:4001"
 KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range=10.254.0.0/16"
-KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota"
 KUBE_API_ARGS=""
 EOF
 
@@ -100,9 +99,9 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-apiserver \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-apiserver:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-apiserver-\${ARCH}:\${KUBE_TAG} \\
     kube-apiserver \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_ADMISSION_CONTROL \$KUBE_API_ARGS'
+    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_API_ARGS'
 ExecStop=-/usr/bin/podman stop kube-apiserver
 Delegate=yes
 Restart=always
@@ -128,7 +127,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-controller-manager \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-controller-manager:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-controller-manager-\${ARCH}:\${KUBE_TAG} \\
     kube-controller-manager \\
     --secure-port=0 \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
@@ -157,7 +156,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-scheduler \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-scheduler:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-scheduler-\${ARCH}:\${KUBE_TAG} \\
     kube-scheduler \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-scheduler
@@ -215,7 +214,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
@@ -300,10 +299,6 @@ KUBE_API_ARGS="${KUBE_API_ARGS} \
     --requestheader-group-headers=X-Remote-Group \
     --requestheader-username-headers=X-Remote-User"
 
-KUBE_ADMISSION_CONTROL=""
-if [ -n "${ADMISSION_CONTROL_LIST}" ] && [ "${TLS_DISABLED}" == "False" ]; then
-    KUBE_ADMISSION_CONTROL="--admission-control=NodeRestriction,${ADMISSION_CONTROL_LIST}"
-fi
 
 if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
     KUBE_API_ARGS="$KUBE_API_ARGS --cloud-provider=external"
@@ -349,7 +344,6 @@ sed -i '
     /^KUBE_SERVICE_ADDRESSES=/ s|=.*|="--service-cluster-ip-range='"$PORTAL_NETWORK_CIDR"'"|
     /^KUBE_API_ARGS=/ s|=.*|="'"${KUBE_API_ARGS}"'"|
     /^KUBE_ETCD_SERVERS=/ s/=.*/="--etcd-servers=http:\/\/127.0.0.1:2379"/
-    /^KUBE_ADMISSION_CONTROL=/ s/=.*/="'"${KUBE_ADMISSION_CONTROL}"'"/
 ' /etc/kubernetes/apiserver
 
 # root kubeconfig
