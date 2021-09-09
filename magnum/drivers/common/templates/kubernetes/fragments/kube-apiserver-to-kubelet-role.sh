@@ -213,6 +213,12 @@ items:
   - apiGroups:
     - ""
     resources:
+    - serviceaccounts/token
+    verbs:
+    - create
+  - apiGroups:
+    - ""
+    resources:
     - persistentvolumes
     verbs:
     - '*'
@@ -363,8 +369,11 @@ spec:
         - /bin/openstack-cloud-controller-manager
         - --v=2
         - --cloud-config=/etc/kubernetes/cloud-config-occm
+        - --cloud-provider=openstack
         - --cluster-name=${CLUSTER_UUID}
         - --use-service-account-credentials=true
+        - --leader-elect-lease-duration=40s
+        - --leader-elect-renew-deadline=20s
         - --bind-address=127.0.0.1
         volumeMounts:
         - name: cloudconfig

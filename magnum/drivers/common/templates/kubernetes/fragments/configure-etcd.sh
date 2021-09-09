@@ -72,6 +72,8 @@ ExecStart=/bin/podman run \\
     --config-file /etc/etcd/etcd.conf.yaml
 ExecStop=/bin/podman stop etcd
 TimeoutStartSec=10min
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
 
 [Install]
 WantedBy=multi-user.target
@@ -111,6 +113,9 @@ data-dir: /var/lib/etcd/default.etcd
 # List of comma separated URLs to listen on for peer traffic.
 listen-peer-urls: "$protocol://$myip:2380"
 
+# Only for /metrics url
+listen-metrics-urls: "http://$myip:2378"
+
 # List of comma separated URLs to listen on for client traffic.
 listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
 
@@ -124,6 +129,12 @@ advertise-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
 
 # Discovery URL used to bootstrap the cluster.
 discovery: "$ETCD_DISCOVERY_URL"
+
+# Time (in milliseconds) of a heartbeat interval. default: 100
+heartbeat-interval: 500
+
+# Time (in milliseconds) for an election to timeout. default: 1000
+election-timeout: 5000
 
 EOF
 
