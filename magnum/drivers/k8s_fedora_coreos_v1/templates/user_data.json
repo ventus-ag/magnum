@@ -111,7 +111,7 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,%23%20Maximum%20size%20of%20log%20files%20(in%20bytes)%0A%23%20-1%20is%20unlimited%0A%23%2050m%0Amax_log_size%20%3D%2052428800%0A",
+          "source": "data:;base64,IyBNYXhpbXVtIHNpemUgb2YgbG9nIGZpbGVzIChpbiBieXRlcykKIyAtMSBpcyB1bmxpbWl0ZWQKIyA1MG0KW2NvbnRhaW5lcnNdCmxvZ19zaXplX21heCA9IDUyNDI4ODAwCg==",
           "verification": {}
         },
         "mode": 420

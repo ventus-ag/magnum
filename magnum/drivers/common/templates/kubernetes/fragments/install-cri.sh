@@ -12,21 +12,12 @@ ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
     $ssh_cmd systemctl disable docker
     if [ -z "${CONTAINERD_TARBALL_URL}"  ] ; then
-        CONTAINERD_TARBALL_URL="https://storage.googleapis.com/cri-containerd-release/cri-containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz"
+        # CONTAINERD_TARBALL_URL="https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
+        CONTAINERD_TARBALL_URL="https://magnum.ventuscloud.eu/public/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
     fi
-    i=0
-    until curl -o /srv/magnum/cri-containerd.tar.gz "${CONTAINERD_TARBALL_URL}"
-    do
-        i=$((i + 1))
-        [ $i -lt 5 ] || break;
-        sleep 5
-    done
 
-    if ! echo "${CONTAINERD_TARBALL_SHA256} /srv/magnum/cri-containerd.tar.gz" | sha256sum -c - ; then
-        echo "ERROR cri-containerd.tar.gz computed checksum did NOT match, exiting."
-        exit 1
-    fi
-    $ssh_cmd tar xzvf /srv/magnum/cri-containerd.tar.gz -C / --no-same-owner --touch --no-same-permissions
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
+    $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions
     $ssh_cmd systemctl daemon-reload
     $ssh_cmd systemctl enable containerd
     $ssh_cmd systemctl start containerd

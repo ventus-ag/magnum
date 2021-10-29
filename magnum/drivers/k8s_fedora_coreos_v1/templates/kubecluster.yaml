@@ -135,7 +135,7 @@ parameters:
   metrics_server_chart_tag:
     type: string
     description: tag of the stable/metrics-server chart to install
-    default: v2.8.8
+    default: 3.6.0
 
   minion_flavor:
     type: string
@@ -494,12 +494,12 @@ parameters:
   coredns_tag:
     type: string
     description: tag for coredns
-    default: 1.6.6
+    default: 1.8.4
 
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.13.0
+    default: v0.15.0
 
   flannel_cni_tag:
     type: string
@@ -534,7 +534,7 @@ parameters:
       kubernetes-dashboard, coredns etc
     constraints:
       - allowed_pattern: "^$|.*/"
-    default: ""
+    default: "registry.ventuscloud.eu/ventus/"
 
   dns_service_ip:
     type: string
@@ -874,7 +874,7 @@ parameters:
     description: tag of the autoscaler container
       tag of the openstackmagnum/cluster-autoscaler container
       https://hub.docker.com/r/openstackmagnum/cluster-autoscaler/tags/
-    default: v1.19.0
+    default: v1.21.0
 
   min_node_count:
     type: number
@@ -940,8 +940,8 @@ parameters:
 
   containerd_version:
     type: string
-    description: The containerd version to download from https://storage.googleapis.com/cri-containerd-release/
-    default: '1.2.8'
+    description: The containerd version to download from https://github.com/containerd/containerd/releases
+    default: '1.5.7'
 
   containerd_tarball_url:
     type: string
@@ -1337,8 +1337,9 @@ resources:
           - "\n"
           -
             - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+            - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service.sh
+            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - if:
                 - calico_v3_3
                 - get_file: ../../common/templates/kubernetes/fragments/calico-service-v3-3-x.sh

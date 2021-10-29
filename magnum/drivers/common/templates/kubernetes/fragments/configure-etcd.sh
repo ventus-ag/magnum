@@ -131,10 +131,10 @@ advertise-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
 discovery: "$ETCD_DISCOVERY_URL"
 
 # Time (in milliseconds) of a heartbeat interval. default: 100
-heartbeat-interval: 500
+heartbeat-interval: 1000
 
 # Time (in milliseconds) for an election to timeout. default: 1000
-election-timeout: 5000
+election-timeout: 15000
 
 EOF
 

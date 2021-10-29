@@ -22,17 +22,25 @@ if [ ! -z "$NO_PROXY" ]; then
 fi
 
 $ssh_cmd rm -rf /etc/cni/net.d/*
-$ssh_cmd rm -rf /var/lib/cni/*
-$ssh_cmd rm -rf /opt/cni/*
-$ssh_cmd mkdir -p /opt/cni/bin
-$ssh_cmd mkdir -p /etc/cni/net.d/
 
-cni_plugin_path="/srv/magnum/kubernetes/cni"
-cni_plugin_version="0.9.0"
-$ssh_cmd mkdir -p ${cni_plugin_path}
-$ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-$ssh_cmd mkdir -p /opt/cni/bin
-$ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
+    $ssh_cmd rm -rf /var/lib/cni/*
+    $ssh_cmd rm -rf /opt/cni/*
+    $ssh_cmd mkdir -p /opt/cni/bin
+    $ssh_cmd mkdir -p /etc/cni/net.d/
+
+    cni_plugin_path="/srv/magnum/kubernetes/cni"
+    cni_plugin_version="1.0.1"
+    flannel_plugin_version="1.0"
+    $ssh_cmd mkdir -p ${cni_plugin_path}
+    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+    $ssh_cmd mkdir -p /opt/cni/bin
+    $ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/flannel-amd64 -o /opt/cni/bin/flannel
+    $ssh_cmd chmod +x /opt/cni/bin/*
+fi
 
 if [ "$NETWORK_DRIVER" = "calico" ]; then
     echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
@@ -72,10 +80,10 @@ KUBE_API_ARGS=""
 EOF
 
 cat > /etc/kubernetes/controller-manager <<EOF
-KUBE_CONTROLLER_MANAGER_ARGS=""
+KUBE_CONTROLLER_MANAGER_ARGS="--authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics"
 EOF
 cat > /etc/kubernetes/scheduler<<EOF
-KUBE_SCHEDULER_ARGS=""
+KUBE_SCHEDULER_ARGS="--authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics"
 EOF
 cat > /etc/kubernetes/proxy <<EOF
 KUBE_PROXY_ARGS=""
@@ -210,8 +218,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
+    --volume /sys/fs/cgroup:/sys/fs/cgroup \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
     \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
@@ -288,7 +295,7 @@ KUBE_API_ARGS="$KUBE_API_ARGS --service-account-issuer=https://kubernetes.defaul
 KUBE_API_ARGS="$KUBE_API_ARGS --tls-private-key-file=$CERT_DIR/server.key"
 KUBE_API_ARGS="$KUBE_API_ARGS --client-ca-file=$CERT_DIR/ca.crt"
 KUBE_API_ARGS="$KUBE_API_ARGS --service-account-key-file=${CERT_DIR}/service_account.key"
-KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-certificate-authority=${CERT_DIR}/ca.crt --kubelet-client-certificate=${CERT_DIR}/server.crt --kubelet-client-key=${CERT_DIR}/server.key --kubelet-https=true"
+KUBE_API_ARGS="$KUBE_API_ARGS --kubelet-certificate-authority=${CERT_DIR}/ca.crt --kubelet-client-certificate=${CERT_DIR}/server.crt --kubelet-client-key=${CERT_DIR}/server.key"
 # Allow for metrics-server/aggregator communication
 KUBE_API_ARGS="${KUBE_API_ARGS} \
     --proxy-client-cert-file=${CERT_DIR}/server.crt \

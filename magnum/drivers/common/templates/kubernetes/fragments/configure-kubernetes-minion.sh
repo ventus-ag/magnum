@@ -22,19 +22,26 @@ if [ ! -z "$NO_PROXY" ]; then
 fi
 
 $ssh_cmd rm -rf /etc/cni/net.d/*
-$ssh_cmd rm -rf /var/lib/cni/*
-$ssh_cmd rm -rf /opt/cni/*
-$ssh_cmd mkdir -p /opt/cni
-$ssh_cmd mkdir -p /opt/cni/bin
-$ssh_cmd mkdir -p /etc/cni/net.d/
-_addtl_mounts=',{"type":"bind","source":"/opt/cni","destination":"/opt/cni","options":["bind","rw","slave","mode=777"]},{"type":"bind","source":"/var/lib/docker","destination":"/var/lib/docker","options":["bind","rw","slave","mode=755"]}'
 
-cni_plugin_path="/srv/magnum/kubernetes/cni"
-cni_plugin_version="0.9.0"
-$ssh_cmd mkdir -p ${cni_plugin_path}
-$ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-$ssh_cmd mkdir -p /opt/cni/bin
-$ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
+    $ssh_cmd rm -rf /var/lib/cni/*
+    $ssh_cmd rm -rf /opt/cni/*
+    $ssh_cmd mkdir -p /opt/cni
+    $ssh_cmd mkdir -p /opt/cni/bin
+    $ssh_cmd mkdir -p /etc/cni/net.d/
+
+    cni_plugin_path="/srv/magnum/kubernetes/cni"
+    cni_plugin_version="1.0.1"
+    flannel_plugin_version="1.0"
+    $ssh_cmd mkdir -p ${cni_plugin_path}
+    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+    $ssh_cmd mkdir -p /opt/cni/bin
+    $ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
+    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/flannel-amd64 -o /opt/cni/bin/flannel
+    $ssh_cmd chmod +x /opt/cni/bin/*
+fi
 
 if [ "$NETWORK_DRIVER" = "calico" ]; then
     echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
@@ -114,8 +121,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /usr/lib/os-release:/etc/os-release:ro \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
-    --volume /sys/fs/cgroup:/sys/fs/cgroup:ro \\
-    --volume /sys/fs/cgroup/systemd:/sys/fs/cgroup/systemd \\
+    --volume /sys/fs/cgroup:/sys/fs/cgroup \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
     \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
