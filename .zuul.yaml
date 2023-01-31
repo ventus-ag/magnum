@@ -260,7 +260,14 @@
     post-run: playbooks/container-publish.yaml
     secrets:
       - magnum_docker_login
-    timeout: 1200
+    timeout: 2400
+
+- job:
+    name: magnum-tempest-plugin-tests-api-temporary
+    parent: magnum-tempest-plugin-tests-api
+    vars:
+      devstack_localrc:
+        GLANCE_LIMIT_IMAGE_SIZE_TOTAL: 5000
 
 - project:
     templates:
@@ -272,23 +279,12 @@
       - release-notes-jobs-python3
     check:
       jobs:
-        - magnum-functional-api
-        - openstack-tox-cover:
-           voting: false
+        - magnum-tempest-plugin-tests-api-temporary
         - magnum-container-build
     gate:
       queue: magnum
       jobs:
-        - magnum-functional-api
-    experimental:
-      jobs:
-        - magnum-functional-dcos
-        - magnum-functional-mesos
-        - magnum-functional-swarm
-        - magnum-functional-k8s-ironic
-        - magnum-functional-swarm-ironic
-        - magnum-functional-k8s-multinode
-        - magnum-functional-swarm-mode-multinode
+        - magnum-tempest-plugin-tests-api-temporary
     post:
       jobs:
         - magnum-container-publish
