@@ -15,9 +15,17 @@ CORE_DNS_VALUES_YAML=/srv/magnum/kubernetes/helm/coredns/values.yaml
     cat << EOF > ${CORE_DNS_VALUES_YAML}
 image:
   repository: ${_dns_prefix}coredns
-  tag: "1.8.4"
+  tag: "1.10.1"
 
 replicaCount: 2
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
 
 ## Create HorizontalPodAutoscaler object.
 autoscaling:
@@ -32,6 +40,16 @@ autoscaling:
     resource:
       name: memory
       targetAverageUtilization: 60
+
+rollingUpdate:
+  maxUnavailable: 1
+  maxSurge: 25%
+
+# Under heavy load it takes more that standard time to remove Pod endpoint from a cluster.
+# This will delay termination of our pod by `preStopSleep`. To make sure kube-proxy has
+# enough time to catch up.
+# preStopSleep: 5
+terminationGracePeriodSeconds: 30
 
 prometheus:
   service:
@@ -98,7 +116,7 @@ servers:
   - name: prometheus
     parameters: 0.0.0.0:9153
   - name: forward
-    parameters: . /etc/resolv.conf
+    parameters: . 1.1.1.1 1.0.0.1
   - name: cache
     parameters: 30
   - name: loop
@@ -134,7 +152,7 @@ autoscaler:
 
   image:
     repository: ${_autoscaler_prefix}cluster-proportional-autoscaler-${ARCH}
-    tag: "1.8.1"
+    tag: "1.10.1"
 
 deployment:
   enabled: true
@@ -149,6 +167,6 @@ do
 done
 
 helm repo add coredns https://coredns.github.io/helm
-helm upgrade -i coredns coredns/coredns --version 1.16.3 -n kube-system -f ${CORE_DNS_VALUES_YAML}
+helm upgrade -i coredns coredns/coredns --version 1.19.7 -n kube-system -f ${CORE_DNS_VALUES_YAML}
 
 printf "Finished running ${step}\n"
