@@ -18,6 +18,19 @@ if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
 
     $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
     $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions
+    $ssh_cmd mkdir -p /etc/containerd
+cat << EOF > /etc/containerd/config.toml
+version = 2
+
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    [plugins."io.containerd.grpc.v1.cri".cni]
+      bin_dir = "/opt/cni/bin/"
+      conf_dir = "/etc/cni/net.d"
+  [plugins."io.containerd.internal.v1.opt"]
+    path = "/var/lib/containerd/opt"
+EOF
+
     $ssh_cmd systemctl daemon-reload
     $ssh_cmd systemctl enable containerd
     $ssh_cmd systemctl start containerd
