@@ -140,7 +140,7 @@ rules:
   - use
 EOF
 }
-kubectl apply -f ${POD_SECURITY_POLICIES}
+#kubectl apply -f ${POD_SECURITY_POLICIES}
 
 # Add the openstack trustee as a secret under kube-system
 kubectl -n kube-system create secret generic os-trustee \
