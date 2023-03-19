@@ -690,7 +690,7 @@ parameters:
     type: boolean
     description: >
       true if the keystone authN and authZ should be enabled
-    default: true
+    default: false
 
   keystone_auth_default_policy:
     type: string
