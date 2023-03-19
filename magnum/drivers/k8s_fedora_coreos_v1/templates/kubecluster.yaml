@@ -864,7 +864,7 @@ parameters:
     description: tag of the autoscaler container
       tag of the autoscaling/cluster-autoscaler container
       registry.k8s.io/autoscaling/cluster-autoscaler
-    default: v1.24.0
+    default: v1.26.0
 
   min_node_count:
     type: number
