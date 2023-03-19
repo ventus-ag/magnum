@@ -33,6 +33,17 @@ extraArgs:
   v: 4
   leader-elect-lease-duration: 40s
   leader-elect-renew-deadline: 20s
+nodeSelector:
+  node-role.kubernetes.io/master: ""
+tolerations: 
+  - effect: NoSchedule
+    operator: Exists
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
+priorityClassName: "system-cluster-critical"
+
 EOF
 }
 

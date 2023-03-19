@@ -49,7 +49,7 @@ image:
 imagePullSecrets: []
 
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "node-problem-detector"
 
 rbac:
   create: true
@@ -238,7 +238,7 @@ spec:
 EOF
 
 ## to do
-kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
+#kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 helm repo add deliveryhero https://charts.deliveryhero.io/
 helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}

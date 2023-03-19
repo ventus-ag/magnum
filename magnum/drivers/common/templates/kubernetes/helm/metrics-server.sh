@@ -26,5 +26,14 @@ service:
   labels:
    kubernetes.io/cluster-service: "true"
    kubernetes.io/name: "Metrics-server"
+nodeSelector:
+    node-role.kubernetes.io/master: ""
+tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
 EOF
 fi

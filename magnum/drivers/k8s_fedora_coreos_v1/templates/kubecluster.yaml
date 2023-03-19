@@ -134,7 +134,7 @@ parameters:
   metrics_server_chart_tag:
     type: string
     description: tag of the stable/metrics-server chart to install
-    default: 3.6.0
+    default: 3.8.4
 
   minion_flavor:
     type: string
