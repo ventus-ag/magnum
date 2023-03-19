@@ -11,22 +11,35 @@ if [[ "${auto_scaling_plugin_enabled}" = "true" || ("${auto_healing_enabled}" = 
 
 _autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/autoscaling/}
 
+CLUSTER_AUTOSCALER_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-autoscaler/values.yaml
+[ -f ${CLUSTER_AUTOSCALER_VALUES_YAML} ] || {
+    echo "Writing File: $CLUSTER_AUTOSCALER_VALUES_YAML"
+    mkdir -p $(dirname ${CLUSTER_AUTOSCALER_VALUES_YAML})
+    cat << EOF > ${CLUSTER_AUTOSCALER_VALUES_YAML}
+magnumClusterName: ${CLUSTER_UUID}
+image:
+  repository: ${_autoscaler_prefix}cluster-autoscaler
+  tag: ${AUTOSCALER_TAG}
+cloudProvider: magnum
+nameOverride: manager
+cloudConfigPath: /etc/kubernetes/cloud-config
+autoscalingGroups:
+  - name: default-worker
+    minSize: ${MIN_NODE_COUNT}
+    maxSize: ${MAX_NODE_COUNT}
+extraArgs:
+  logtostderr: true
+  stderrthreshold: info
+  v: 4
+  leader-elect-lease-duration: 40s
+  leader-elect-renew-deadline: 20s
+EOF
+}
+
+
+
 helm repo add autoscaler https://kubernetes.github.io/autoscaler
-helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.10.5 -n kube-system \
-  --set magnumClusterName=${CLUSTER_UUID} \
-  --set image.repository=${_autoscaler_prefix}cluster-autoscaler \
-  --set image.tag=${AUTOSCALER_TAG} \
-  --set cloudProvider=magnum \
-  --set nameOverride=manager \
-  --set cloudConfigPath=/etc/kubernetes/cloud-config \
-  --set autoscalingGroups[0].name=default-worker \
-  --set autoscalingGroups[0].minSize=${MIN_NODE_COUNT} \
-  --set autoscalingGroups[0].maxSize=${MAX_NODE_COUNT} \
-  --set extraArgs.logtostderr=true \
-  --set extraArgs.stderrthreshold=info \
-  --set extraArgs.v=4 \
-  --set extraArgs.leader-elect-lease-duration=40s \
-  --set extraArgs.leader-elect-renew-deadline=20s
+helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.25.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"

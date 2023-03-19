@@ -106,7 +106,7 @@ EOF
 
     cat > /etc/systemd/system/kube-proxy.service <<EOF
 [Unit]
-Description=kube-proxy via k8s.gcr.io/kube-proxy
+Description=kube-proxy via registry.k8s.io/kube-proxy
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -123,7 +123,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup:/sys/fs/cgroup \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
     kube-proxy \\
     \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
