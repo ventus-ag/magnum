@@ -31,7 +31,7 @@ done
 # Label self as master
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
     kubectl patch node ${INSTANCE_NAME} \
-        --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
+        --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
 do
     echo "Trying to label master node with node-role.kubernetes.io/master=\"\""
     sleep 5s

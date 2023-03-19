@@ -47,11 +47,10 @@ csi:
           type: File
     volumeMounts:
       - name: cacert
-        mountPath: /etc/kubernetes/ca-bundle.crt
+        mountPath: /etc/kubernetes/certs/ca-bundle.crt
         readOnly: true
       - name: cloud-config
-        mountPath: /etc/kubernetes/cloud-config
-        subPath: cloud-config
+        mountPath: /etc/kubernetes/config/
         readOnly: true
     nodePlugin:
       affinity: {}
@@ -67,16 +66,17 @@ csi:
 secret:
   enabled: true
   create: true
+  filename: config/cloud.conf
   name: cinder-csi-cloud-config
   data:
-    cloud-config: |-
+    cloud.conf: |-
       [Global]
       auth-url=${AUTH_URL}
       user-id=${TRUSTEE_USER_ID}
       password=${TRUSTEE_PASSWORD}
       trust-id=${TRUST_ID}
       region=${REGION_NAME}
-      ca-file=/etc/kubernetes/ca-bundle.crt
+      ca-file=/etc/kubernetes/certs/ca-bundle.crt
 
 storageClass:
   enabled: true
@@ -86,6 +86,10 @@ storageClass:
   retain:
     isDefault: false
     allowVolumeExpansion: true
+
+# You may set ID of the cluster where openstack-cinder-csi is deployed. This value will be appended
+# to volume metadata in newly provisioned volumes as cinder.csi.openstack.org/cluster=cluster ID.
+clusterID: ${CLUSTER_UUID}
 
 priorityClassName: ""
 EOF
