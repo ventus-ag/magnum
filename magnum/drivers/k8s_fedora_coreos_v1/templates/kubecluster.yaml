@@ -862,9 +862,9 @@ parameters:
   autoscaler_tag:
     type: string
     description: tag of the autoscaler container
-      tag of the openstackmagnum/cluster-autoscaler container
-      https://hub.docker.com/r/openstackmagnum/cluster-autoscaler/tags/
-    default: v1.21.0
+      tag of the autoscaling/cluster-autoscaler container
+      registry.k8s.io/autoscaling/cluster-autoscaler
+    default: v1.24.0
 
   min_node_count:
     type: number

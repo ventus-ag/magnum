@@ -50,7 +50,7 @@ EOF
 
 
 helm repo add autoscaler https://kubernetes.github.io/autoscaler
-helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.25.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
+helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.26.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"
