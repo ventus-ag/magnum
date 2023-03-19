@@ -88,7 +88,7 @@ data:
   cni-conf.json: |
     {
       "name": "cbr0",
-      "cniVersion": "0.3.1",
+      "cniVersion": "1.0.0",
       "plugins": [
         {
           "type": "flannel",
@@ -150,7 +150,7 @@ spec:
       initContainers:
       - name: install-cni-plugin
         #image: flannelcni/flannel-cni-plugin:v1.1.2 #for ppc64le and mips64le (dockerhub limitations may apply)
-        image: docker.io/rancher/mirrored-flannelcni-flannel-cni-plugin:v1.1.2
+        image: docker.io/rancher/mirrored-flannelcni-flannel-cni-plugin:${FLANNEL_CNI_TAG}
         command:
         - cp
         args:
@@ -162,7 +162,7 @@ spec:
           mountPath: /opt/cni/bin
       - name: install-cni
        #image: flannelcni/flannel:v0.20.2 #for ppc64le and mips64le (dockerhub limitations may apply)
-        image: docker.io/rancher/mirrored-flannelcni-flannel:v0.20.2
+        image: docker.io/rancher/mirrored-flannelcni-flannel:${FLANNEL_TAG}
         command:
         - cp
         args:
@@ -177,7 +177,7 @@ spec:
       containers:
       - name: kube-flannel
        #image: flannelcni/flannel:v0.20.2 #for ppc64le and mips64le (dockerhub limitations may apply)
-        image: docker.io/rancher/mirrored-flannelcni-flannel:v0.20.2
+        image: docker.io/rancher/mirrored-flannelcni-flannel:${FLANNEL_TAG}
         command:
         - /opt/bin/flanneld
         args:
@@ -238,6 +238,12 @@ EOF
             sleep 5
         done
     fi
+    ## delete old flannel before upgrade
+    kubectl delete ds kube-flannel-ds -n kube-system --ignore-not-found=true
+    kubectl delete ConfigMap kube-flannel-cfg -n kube-system --ignore-not-found=true
+    kubectl delete ServiceAccount flannel -n kube-system --ignore-not-found=true
+    kubectl delete ClusterRoleBinding flannel -n kube-system --ignore-not-found=true
+    kubectl delete ClusterRole flannel -n kube-system --ignore-not-found=true
 
     kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-flannel
 fi
