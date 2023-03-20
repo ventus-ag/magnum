@@ -22,18 +22,28 @@ EOF
 metrics-server:
   image:
     repository: ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/metrics-server/}metrics-server
-service:
-  labels:
-   kubernetes.io/cluster-service: "true"
-   kubernetes.io/name: "Metrics-server"
-nodeSelector:
-    node-role.kubernetes.io/master: ""
-tolerations:
-    - effect: NoSchedule
-      operator: Exists
-    - key: CriticalAddonsOnly
-      operator: Exists
-    - effect: NoExecute
-      operator: Exists
+  service:
+    labels:
+    kubernetes.io/cluster-service: "true"
+    kubernetes.io/name: "Metrics-server"
+  nodeSelector:
+      node-role.kubernetes.io/master: ""
+  tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+  apiService:
+    caBundle: ""
+    create: false
+    insecureSkipTLSVerify: true
+  args:
+    - --cert-dir=/tmp
+    - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+    - --kubelet-use-node-status-port
+    - --metric-resolution=15s
+    - --kubelet-insecure-tls=true
 EOF
 fi
