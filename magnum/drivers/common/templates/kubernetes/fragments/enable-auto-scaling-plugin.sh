@@ -9,7 +9,7 @@ auto_scaling_plugin_enabled=$(echo $AUTO_SCALING_ENABLED | tr '[:upper:]' '[:low
 
 if [[ "${auto_scaling_plugin_enabled}" = "true" || ("${auto_healing_enabled}" = "true" && "${autohealing_controller}" = "draino") ]]; then
 
-_autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/autoscaling/}
+_autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/autoscaling/}
 
 CLUSTER_AUTOSCALER_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-autoscaler/values.yaml
 [ -f ${CLUSTER_AUTOSCALER_VALUES_YAML} ] || {

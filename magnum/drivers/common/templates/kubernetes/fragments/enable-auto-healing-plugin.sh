@@ -8,7 +8,7 @@ auto_healing_plugin_enabled=$(echo $AUTO_HEALING_ENABLED | tr '[:upper:]' '[:low
 
 if [[ "${auto_healing_plugin_enabled}" = "true" ]]; then
 
-_gcr_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
+_gcr_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}
 _k8s_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}
 
 CLUSTER_NPD_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-npd/values.yaml
