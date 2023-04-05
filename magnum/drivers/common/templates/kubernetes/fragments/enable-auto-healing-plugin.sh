@@ -212,7 +212,7 @@ spec:
         - effect: NoExecute
           operator: Exists
       nodeSelector:
-        node-role.kubernetes.io/master: ""
+        node-role.kubernetes.io/control-plane: ""
       containers:
         - name: magnum-auto-healer
           image: ${_k8s_prefix}provider-os/magnum-auto-healer:v1.26.2
@@ -238,7 +238,7 @@ spec:
 EOF
 
 ## to do
-#kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
+kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 helm repo add deliveryhero https://charts.deliveryhero.io/
 helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
