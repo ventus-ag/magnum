@@ -237,7 +237,6 @@ spec:
             path: /etc/kubernetes
 EOF
 
-## to do
 kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 helm repo add deliveryhero https://charts.deliveryhero.io/
