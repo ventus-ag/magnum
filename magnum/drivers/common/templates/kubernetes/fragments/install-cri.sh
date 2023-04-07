@@ -49,14 +49,6 @@ oom_score = 0
     [plugins."io.containerd.grpc.v1.cri".containerd]
       default_runtime_name = "runc"
       snapshotter = "overlayfs"
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-          runtime_type = "io.containerd.runc.v2"
-          runtime_engine = ""
-          runtime_root = ""
-          base_runtime_spec = "/etc/containerd/cri-base.json"
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-            systemdCgroup = true
     [plugins."io.containerd.grpc.v1.cri".registry]
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]

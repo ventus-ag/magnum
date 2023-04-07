@@ -65,11 +65,8 @@ fi
 
 mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
-KUBE_LOG_LEVEL="--v=3"
-
-EOF
-cat > /etc/kubernetes/kubelet <<EOF
-KUBELET_ARGS="--fail-swap-on=false"
+KUBE_LOG_LEVEL="--v=2"
+KUBE_LOGTOSTDERR="--logtostderr=true"
 EOF
 
 cat > /etc/kubernetes/apiserver <<EOF
@@ -178,12 +175,13 @@ EOF
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
 Description=Kubelet
-Wants=rpc-statd.service
+After=containerd.service
+Wants=containerd.service
 
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
-EnvironmentFile=/etc/kubernetes/kubelet
+EnvironmentFile=-/etc/kubernetes/kubelet.env
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/cni/net.d
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/manifests
 ExecStartPre=/bin/mkdir -p /var/lib/calico
@@ -192,7 +190,7 @@ ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
-    \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
+    \$KUBE_LOG_LEVEL \$KUBE_LOGTOSTDERR \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
 RestartSec=10
@@ -470,10 +468,8 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--register-node=true --pod-manifest-path=/etc/kubernetes/manifests --hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="--register-node=true --hostname-override=${INSTANCE_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
-KUBELET_ARGS="${KUBELET_ARGS} --cluster_dns=${DNS_SERVICE_IP} --cluster_domain=${DNS_CLUSTER_DOMAIN}"
-KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
 if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
@@ -493,11 +489,11 @@ if [ -f /etc/sysconfig/docker ] ; then
 fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin"
-KUBELET_ARGS="${KUBELET_ARGS} --register-with-taints=node-role.kubernetes.io/master=:NoSchedule"
+
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 
-KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
+KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.conf
 cat << EOF >> ${KUBELET_KUBECONFIG}
 apiVersion: v1
 clusters:
@@ -547,10 +543,54 @@ if [ -z "${KUBE_NODE_IP}" ]; then
     KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 fi
 
-KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
+#KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
 
-sed -i '
-/^KUBELET_ADDRESS=/ s/=.*/=""/
-/^KUBELET_HOSTNAME=/ s/=.*/=""/
-/^KUBELET_ARGS=/ s|=.*|="'"${KUBELET_ARGS}"'"|
-' /etc/kubernetes/kubelet
+KUBELET_ARGS="${KUBELET_ARGS} --config=/etc/kubernetes/kubelet-config.yaml"
+KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
+cat > ${KUBELET_CONFIG} << EOF
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: true
+  x509:
+    clientCAFile: "/etc/kubernetes/certs/ca.crt"
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+cgroupDriver: ${CGROUP_DRIVER}
+clusterDNS:
+- ${DNS_SERVICE_IP}
+clusterDomain: ${DNS_CLUSTER_DOMAIN}
+address: ${KUBE_NODE_IP}
+failSwapOn: True
+port: 10250
+readOnlyPort: 0
+containerLogMaxFiles: 5
+containerLogMaxSize: 10Mi
+maxPods: 110
+podPidsLimit: -1
+registerWithTaints:
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/master"
+resolvConf: /run/systemd/resolve/resolv.conf
+volumePluginDir: /var/lib/kubelet/volumeplugins
+rotateCertificates: true
+staticPodPath: /etc/kubernetes/manifests
+eventRecordQPS: 5
+shutdownGracePeriod: 60s
+shutdownGracePeriodCriticalPods: 20s
+EOF
+
+
+cat > /etc/kubernetes/kubelet.env <<EOF
+KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
+KUBELET_HOSTNAME="--hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="${KUBELET_ARGS}"
+EOF
