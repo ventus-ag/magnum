@@ -66,7 +66,6 @@ fi
 mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOG_LEVEL="--v=2"
-KUBE_LOGTOSTDERR="--logtostderr=true"
 EOF
 
 cat > /etc/kubernetes/apiserver <<EOF
