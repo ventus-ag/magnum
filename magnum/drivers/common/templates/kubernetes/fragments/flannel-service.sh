@@ -149,7 +149,7 @@ spec:
       serviceAccountName: flannel
       initContainers:
       - name: install-cni-plugin
-        image: ddocker.io/flannelcni/flannel-cni-plugin:${FLANNEL_CNI_TAG}
+        image: docker.io/flannelcni/flannel-cni-plugin:${FLANNEL_CNI_TAG}
         command:
         - cp
         args:
