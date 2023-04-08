@@ -160,7 +160,7 @@ spec:
         - name: cni-plugin
           mountPath: /opt/cni/bin
       - name: install-cni
-        image: docker.io/flannelcni/flannel:${FLANNEL_TAG}
+        image: docker.io/flannel/flannel:${FLANNEL_TAG}
         command:
         - cp
         args:
