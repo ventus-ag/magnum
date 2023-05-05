@@ -1357,7 +1357,6 @@ resources:
           - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - if:
                 - calico_v3_3
                 - get_file: ../../common/templates/kubernetes/fragments/calico-service-v3-3-x.sh
@@ -1394,9 +1393,8 @@ resources:
                 params:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY":
                     { get_param: keystone_auth_default_policy }
+            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
-            #- get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
-            #- get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
