@@ -136,6 +136,6 @@ do
 done
 
 helm repo add coredns https://coredns.github.io/helm
-helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML}
+helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
 
 printf "Finished running ${step}\n"
