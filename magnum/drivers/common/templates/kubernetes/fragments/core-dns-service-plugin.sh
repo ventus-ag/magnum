@@ -15,7 +15,7 @@ CORE_DNS_VALUES_YAML=/srv/magnum/kubernetes/helm/coredns/values.yaml
     cat << EOF > ${CORE_DNS_VALUES_YAML}
 image:
   repository: ${_dns_prefix}coredns
-  tag: "${coredns_tag}"
+  tag: "${COREDNS_TAG}"
 
 replicaCount: 2
 
@@ -45,12 +45,6 @@ rollingUpdate:
   maxUnavailable: 1
   maxSurge: 25%
 
-# Under heavy load it takes more that standard time to remove Pod endpoint from a cluster.
-# This will delay termination of our pod by `preStopSleep`. To make sure kube-proxy has
-# enough time to catch up.
-# preStopSleep: 5
-terminationGracePeriodSeconds: 30
-
 prometheus:
   service:
     enabled: true
@@ -70,7 +64,7 @@ nodeSelector:
   kubernetes.io/os: linux
 
 # Configure SecurityContext for Pod.
-# Ensure that required linux capability to bind port number below 1024 is assigned (`CAP_NET_BIND_SERVICE`).
+# Ensure that required linux capability to bind port number below 1024 is assigned (CAP_NET_BIND_SERVICE).
 securityContext:
   capabilities:
     add:
