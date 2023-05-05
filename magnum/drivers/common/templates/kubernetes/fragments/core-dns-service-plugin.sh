@@ -15,7 +15,7 @@ CORE_DNS_VALUES_YAML=/srv/magnum/kubernetes/helm/coredns/values.yaml
     cat << EOF > ${CORE_DNS_VALUES_YAML}
 image:
   repository: ${_dns_prefix}coredns
-  tag: "1.10.1"
+  tag: "${coredns_tag}"
 
 replicaCount: 2
 
@@ -62,12 +62,6 @@ prometheus:
     additionalLabels: {}
     namespace: ""
 
-serviceAccount:
-  create: true
-  # The name of the ServiceAccount to use
-  # If not set and create is true, a name is generated using the fullname template
-  name: "coredns"
-
 service:
   clusterIP: "${DNS_SERVICE_IP}"
   name: "kube-dns"
@@ -75,8 +69,12 @@ service:
 nodeSelector:
   kubernetes.io/os: linux
 
-# Optional priority class to be used for the coredns pods. Used for autoscaler if autoscaler.priorityClassName not set.
-priorityClassName: "system-cluster-critical"
+# Configure SecurityContext for Pod.
+# Ensure that required linux capability to bind port number below 1024 is assigned (`CAP_NET_BIND_SERVICE`).
+securityContext:
+  capabilities:
+    add:
+      - NET_BIND_SERVICE
 
 # expects input structure as per specification https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.11/#toleration-v1-core
 tolerations:
@@ -101,15 +99,13 @@ servers:
   - name: health
     configBlock: |-
       lameduck 5s
-  - name: log
-    parameters: stdout
   # Serves a /ready endpoint on :8181, required for readinessProbe
   - name: ready
   # Required to query kubernetes API for data
   - name: kubernetes
     parameters: ${DNS_CLUSTER_DOMAIN} ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
     configBlock: |-
-      pods verified
+      pods insecure
       fallthrough in-addr.arpa ip6.arpa
       ttl 30
   # Serves a /metrics endpoint on :9153, required for serviceMonitor
@@ -123,36 +119,9 @@ servers:
   - name: reload
   - name: loadbalance
 
-## Alternative configuration for HPA deployment if wanted
-#
-hpa:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 2
-  metrics: {}
-
-## Configue a cluster-proportional-autoscaler for coredns
-# See https://github.com/kubernetes-incubator/cluster-proportional-autoscaler
-autoscaler:
-  # Enabled the cluster-proportional-autoscaler
-  enabled: false
-
-  # Number of cores in the cluster per coredns replica
-  coresPerReplica: 256
-  # Number of nodes in the cluster per coredns replica
-  nodesPerReplica: 16
-  # Min size of replicaCount
-  min: 0
-  # Max size of replicaCount (default of 0 is no max)
-  max: 0
-  # Whether to include unschedulable nodes in the nodes/cores calculations - this requires version 1.8.0+ of the autoscaler
-  includeUnschedulableNodes: false
-  # If true does not allow single points of failure to form
-  preventSinglePointFailure: true
-
   image:
     repository: ${_autoscaler_prefix}cluster-proportional-autoscaler-${ARCH}
-    tag: "1.10.1"
+    tag: "1.8.5"
 
 deployment:
   enabled: true
@@ -167,6 +136,6 @@ do
 done
 
 helm repo add coredns https://coredns.github.io/helm
-helm upgrade -i coredns coredns/coredns --version 1.19.7 -n kube-system -f ${CORE_DNS_VALUES_YAML}
+helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML}
 
 printf "Finished running ${step}\n"

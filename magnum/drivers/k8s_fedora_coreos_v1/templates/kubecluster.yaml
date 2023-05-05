@@ -491,17 +491,17 @@ parameters:
   coredns_tag:
     type: string
     description: tag for coredns
-    default: 1.8.4
+    default: 1.10.1
 
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.21.4
+    default: v0.21.5
 
   flannel_cni_tag:
     type: string
     description: tag of the flannel cni container
-    default: v1.2.0
+    default: v1.1.2
 
   kube_version:
     type: string

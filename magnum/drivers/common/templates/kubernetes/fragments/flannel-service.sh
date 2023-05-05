@@ -111,8 +111,7 @@ data:
       "Subnetlen": $FLANNEL_NETWORK_SUBNETLEN,
       "Backend": {
         "Type": "$FLANNEL_BACKEND"
-      },
-      "MTU": 1000
+      }
     }
 ---
 apiVersion: apps/v1
