@@ -491,7 +491,7 @@ parameters:
   coredns_tag:
     type: string
     description: tag for coredns
-    default: 1.10.1
+    default: v1.10.1
 
   flannel_tag:
     type: string
