@@ -96,6 +96,7 @@ servers:
   port: 53
   plugins:
   - name: errors
+  - name: log 
   # Serves a /health endpoint on :8080, required for livenessProbe
   - name: health
     configBlock: |-
