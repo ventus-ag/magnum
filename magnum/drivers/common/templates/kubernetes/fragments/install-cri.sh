@@ -39,10 +39,10 @@ oom_score = 0
 
 [plugins]
   [plugins."io.containerd.grpc.v1.cri"]
-    sandbox_image = "registry.k8s.io/pause:3.8"
-    max_container_log_line_size = -1
-    enable_unprivileged_ports = false
-    enable_unprivileged_icmp = false
+    sandbox_image = "k8s.gcr.io/pause:3.9"
+    max_container_log_line_size = 16384
+    enable_unprivileged_ports = true
+    enable_unprivileged_icmp = true
     [plugins."io.containerd.grpc.v1.cri".cni]
       bin_dir = "/opt/cni/bin/"
       conf_dir = "/etc/cni/net.d"
