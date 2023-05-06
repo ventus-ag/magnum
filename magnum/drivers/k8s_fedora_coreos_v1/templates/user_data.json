@@ -96,20 +96,6 @@
         "group": {
           "name": "root"
         },
-        "overwrite": true,
-        "path": "/etc/containerd/config.toml",
-        "user": {
-          "name": "root"
-        },
-        "contents": {
-          "source": "data:,version%20%3D%202%0Aroot%20%3D%20%22%2Fvar%2Flib%2Fcontainerd%22%0Astate%20%3D%20%22%2Frun%2Fcontainerd%22%0Aoom_score%20%3D%200%0A%0A%5Bgrpc%5D%0A%20%20address%20%3D%20%22%2Frun%2Fcontainerd%2Fcontainerd.sock%22%0A%20%20max_recv_message_size%20%3D%2016777216%0A%20%20max_send_message_size%20%3D%2016777216%0A%0A%5Bdebug%5D%0A%20%20level%20%3D%20%22info%22%0A%0A%5Bmetrics%5D%0A%20%20address%20%3D%20%22%22%0A%20%20grpc_histogram%20%3D%20false%0A%0A%5Bplugins%5D%0A%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22%5D%0A%20%20%20%20sandbox_image%20%3D%20%22k8s.gcr.io%2Fpause%3A3.9%22%0A%20%20%20%20max_container_log_line_size%20%3D%2016384%0A%20%20%20%20enable_unprivileged_ports%20%3D%20true%0A%20%20%20%20enable_unprivileged_icmp%20%3D%20true%0A%20%20%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22.cni%5D%0A%20%20%20%20%20%20bin_dir%20%3D%20%22%2Fopt%2Fcni%2Fbin%2F%22%0A%20%20%20%20%20%20conf_dir%20%3D%20%22%2Fetc%2Fcni%2Fnet.d%22%0A%20%20%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22.containerd%5D%0A%20%20%20%20%20%20default_runtime_name%20%3D%20%22runc%22%0A%20%20%20%20%20%20snapshotter%20%3D%20%22overlayfs%22%0A%20%20%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22.registry%5D%0A%20%20%20%20%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22.registry.mirrors%5D%0A%20%20%20%20%20%20%20%20%5Bplugins.%22io.containerd.grpc.v1.cri%22.registry.mirrors.%22docker.io%22%5D%0A%20%20%20%20%20%20%20%20%20%20endpoint%20%3D%20%5B%22https%3A%2F%2Fregistry-1.docker.io%22%5D%0A%20%20%5Bplugins.%22io.containerd.internal.v1.opt%22%5D%0A%20%20%20%20path%20%3D%20%22%2Fvar%2Flib%2Fcontainerd%2Fopt%22%0A"
-        },
-        "mode": 420
-      },
-      {
-        "group": {
-          "name": "root"
-        },
         "path": "/etc/containers/containers.conf",
         "user": {
           "name": "root"

@@ -7,6 +7,7 @@ printf "Starting to run ${step}\n"
 
 _dns_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/coredns/}
 _autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 CORE_DNS_VALUES_YAML=/srv/magnum/kubernetes/helm/coredns/values.yaml
 [ -f ${CORE_DNS_VALUES_YAML} ] || {
@@ -131,5 +132,9 @@ done
 
 helm repo add coredns https://coredns.github.io/helm
 helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
+
+if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
+  $ssh_cmd systemctl restart containerd
+fi
 
 printf "Finished running ${step}\n"
