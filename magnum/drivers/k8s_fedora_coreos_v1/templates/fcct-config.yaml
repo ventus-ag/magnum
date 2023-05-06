@@ -212,7 +212,6 @@ storage:
       user:
         name: root
       contents:
-        compression: "gzip"
         inline: |
           [updates]
           enabled = false
@@ -220,7 +219,6 @@ storage:
       overwrite: true
       mode: 0644
       contents:
-        compression: "gzip"
         inline: LEGACY
   links:
     - path: /etc/crypto-policies/back-ends/bind.config
