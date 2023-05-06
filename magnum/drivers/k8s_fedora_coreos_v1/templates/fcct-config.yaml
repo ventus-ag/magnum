@@ -8,16 +8,17 @@
 
 # docker run --rm \
 # -v /mnt/c/sync/repo/magnum/magnum/drivers/k8s_fedora_coreos_v1/templates:/opt/:z \
-# quay.io/coreos/fcct:release \
-# --pretty --strict --input /opt/fcct-config.yaml > ./user_data.json
+# quay.io/coreos/butane:v0.18.0 \
+# --pretty --strict /opt/fcct-config.yaml > ./user_data.json
 
 variant: fcos
-version: 1.1.0
+version: 1.0.0
 passwd:
   users:
     - name: core
       ssh_authorized_keys:
         - "__SSH_KEY_VALUE__"
+
 storage:
   directories:
     - path: /var/lib/cloud/data
@@ -211,6 +212,7 @@ storage:
       user:
         name: root
       contents:
+        compression: "gzip"
         inline: |
           [updates]
           enabled = false
@@ -218,6 +220,7 @@ storage:
       overwrite: true
       mode: 0644
       contents:
+        compression: "gzip"
         inline: LEGACY
   links:
     - path: /etc/crypto-policies/back-ends/bind.config
