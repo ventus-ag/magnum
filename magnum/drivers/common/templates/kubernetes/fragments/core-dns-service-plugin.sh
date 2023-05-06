@@ -28,6 +28,12 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# isClusterService specifies whether chart should be deployed as cluster-service or normal k8s app.
+isClusterService: true
+
+# Optional priority class to be used for the coredns pods. Used for autoscaler if autoscaler.priorityClassName not set.
+priorityClassName: "system-cluster-critical"
+
 ## Create HorizontalPodAutoscaler object.
 autoscaling:
   minReplicas: 2
@@ -135,6 +141,7 @@ helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${COR
 
 if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
   $ssh_cmd systemctl restart containerd
+  $ssh_cmd kubectl rollout restart deployment coredns -n kube-system
 fi
 
 printf "Finished running ${step}\n"
