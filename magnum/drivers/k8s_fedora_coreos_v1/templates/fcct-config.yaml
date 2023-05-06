@@ -102,6 +102,7 @@ storage:
         name: root
       group:
         name: root
+      overwrite: true
       contents:
         inline: |
           version = 2

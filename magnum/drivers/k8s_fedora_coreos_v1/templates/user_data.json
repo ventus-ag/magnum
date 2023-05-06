@@ -96,6 +96,7 @@
         "group": {
           "name": "root"
         },
+        "overwrite": true,
         "path": "/etc/containerd/config.toml",
         "user": {
           "name": "root"
