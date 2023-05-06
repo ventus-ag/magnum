@@ -3,19 +3,13 @@
 # To generate user_data.json you need to use [0].
 # For detailed instructions, please refer to the upstream documentation [1].
 #
-# You can use podman or docker to generate the ignition formatted json:
-# podman run --rm \
-# -v ./fcct-config.yaml:/config.fcc:z \
-# quay.io/coreos/fcct:release \
-# --pretty --strict --input /config.fcc > ./user_data.json
-#
 # [0] https://github.com/coreos/fcct
 # [1] https://github.com/coreos/fedora-coreos-docs/blob/master/modules/ROOT/pages/producing-ign.adoc
 
 # docker run --rm \
-# -v /home/ubuntu:/opt \
+# -v /mnt/c/sync/repo/magnum/magnum/drivers/k8s_fedora_coreos_v1/templates:/opt/:z \
 # quay.io/coreos/fcct:release \
-# --pretty --strict /opt/fcct-config.yaml > ./user_data.json
+# --pretty --strict --input /opt/fcct-config.yaml > ./user_data.json
 
 variant: fcos
 version: 1.1.0
@@ -63,6 +57,8 @@ storage:
           net.ipv4.conf.*.rp_filter=2
           net.ipv4.conf.all.promote_secondaries = 1
           net.ipv4.conf.*.accept_source_route = 1
+          net.ipv4.ip_unprivileged_port_start = 0
+          net.ipv4.ping_group_range = 0 2147483647
       overwrite: true
     - path: /etc/systemd/network/50-flannel.link
       mode: 420
@@ -143,11 +139,11 @@ storage:
       contents:
         inline: |
           #!/bin/bash
-          
+
           set -x
           set -e
           set +u
-          
+
           until [ -f /etc/pki/ca-trust/source/anchors/openstack-ca.pem ]
           do
               echo "waiting for /etc/pki/ca-trust/source/anchors/openstack-ca.pem"
@@ -155,26 +151,26 @@ storage:
           done
 
           /usr/bin/update-ca-trust
-          
+
           HTTP_PROXY="__HTTP_PROXY__"
           HTTPS_PROXY="__HTTPS_PROXY__"
           NO_PROXY="__NO_PROXY__"
-          
+
           if [ -n "${HTTP_PROXY}" ]; then
               export HTTP_PROXY
               echo "http_proxy=${HTTP_PROXY}" >> /etc/environment
           fi
-          
+
           if [ -n "${HTTPS_PROXY}" ]; then
               export HTTPS_PROXY
               echo "https_proxy=${HTTPS_PROXY}" >> /etc/environment
           fi
-          
+
           if [ -n "${NO_PROXY}" ]; then
               export NO_PROXY
               echo "no_proxy=${NO_PROXY}" >> /etc/environment
           fi
-          
+
           # Create a keypair for the heat-container-agent to
           # access the node over ssh. It is useful to operate
           # in host mount namespace and apply configuration.
@@ -201,7 +197,7 @@ storage:
                IdentityFile /srv/magnum/.ssh/heat_agent_rsa
                UserKnownHostsFile /srv/magnum/.ssh/known_hosts
           EOF
-          
+
           sed -i '/^PermitRootLogin/ s/ .*/ without-password/' /etc/ssh/sshd_config
           # Security enhancement: Disable password authentication
           sed -i '/^PasswordAuthentication yes/ s/ yes/ no/' /etc/ssh/sshd_config
@@ -265,14 +261,14 @@ systemd:
         [Unit]
         Description=Configure heat agent environment
         After=sshd.service
-        
+
         [Service]
         User=root
         Group=root
         Type=simple
         ExecStart=/bin/bash /root/configure-agent-env.sh
         Restart=on-failure
-        
+
         [Install]
         WantedBy=multi-user.target
     - name: heat-container-agent.service
@@ -282,7 +278,7 @@ systemd:
         Description=Run heat-container-agent
         After=network-online.target configure-agent-env.service
         Wants=network-online.target
-        
+
         [Service]
         EnvironmentFile=-/etc/environment
         ExecStartPre=mkdir -p /var/lib/heat-container-agent
@@ -311,8 +307,8 @@ systemd:
                 __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \
                 /usr/bin/start-heat-container-agent
         TimeoutStartSec=10min
-        
+
         ExecStop=/bin/podman stop heat-container-agent
-        
+
         [Install]
         WantedBy=multi-user.target
