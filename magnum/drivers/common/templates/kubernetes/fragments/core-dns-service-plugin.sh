@@ -110,6 +110,7 @@ servers:
     parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
     configBlock: |-
       pods verified
+      upstream
       fallthrough in-addr.arpa
       ttl 30
   # Serves a /metrics endpoint on :9153, required for serviceMonitor
