@@ -97,9 +97,9 @@ servers:
   - name: ready
   # Required to query kubernetes API for data
   - name: kubernetes
-    parameters: ${DNS_CLUSTER_DOMAIN} ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
+    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
     configBlock: |-
-      pods insecure
+      pods verified
       fallthrough in-addr.arpa ip6.arpa
       ttl 30
   # Serves a /metrics endpoint on :9153, required for serviceMonitor
