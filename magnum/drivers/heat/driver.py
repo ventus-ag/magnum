@@ -365,7 +365,15 @@ class FedoraKubernetesDriver(KubernetesDriver):
         new_labels = nodegroup.labels.copy()
         if 'kube_tag' in cluster_template.labels:
             new_kube_tag = cluster_template.labels['kube_tag']
-            new_labels.update({'kube_tag': new_kube_tag})
+
+            kube_tag_params = {
+                "kube_tag": new_kube_tag,
+                "kube_version": new_kube_tag,
+                "master_kube_tag": new_kube_tag,
+                "minion_kube_tag": new_kube_tag,
+            }
+
+            new_labels.update(kube_tag_params)
         return new_labels
 
     def upgrade_cluster(self, context, cluster, cluster_template,  # noqa: C901
@@ -380,7 +388,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
-
+            heat_params['kube_version'] = nodegroup.labels['kube_tag']
+            heat_params['master_kube_tag'] = nodegroup.labels['kube_tag']
+            heat_params['minion_kube_tag'] = nodegroup.labels['kube_tag']
         current_addons = {}
         new_addons = {}
         for label in cluster_template.labels:
