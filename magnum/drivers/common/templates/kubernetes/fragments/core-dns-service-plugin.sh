@@ -97,8 +97,6 @@ servers:
   plugins:
   - name: errors
   - name: log
-  - name: autopath
-    parameters: "@kubernetes"
   # Serves a /health endpoint on :8080, required for livenessProbe
   - name: health
     configBlock: |-
@@ -106,10 +104,11 @@ servers:
   # Serves a /ready endpoint on :8181, required for readinessProbe
   - name: ready
   # Required to query kubernetes API for data
+  #    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
   - name: kubernetes
-    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
+    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa
     configBlock: |-
-      pods verified
+      pods insecure
       fallthrough in-addr.arpa
       ttl 30
   # Serves a /metrics endpoint on :9153, required for serviceMonitor
