@@ -148,7 +148,7 @@ fi
 CERT_DIR=/etc/kubernetes/certs
 ETCD_SERVER_IP=${ETCD_SERVER_IP:-$KUBE_MASTER_IP}
 KUBE_PROTOCOL="https"
-KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
+KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.conf
 PROXY_KUBECONFIG=/etc/kubernetes/proxy-config.yaml
 
 if [ "$TLS_DISABLED" = "True" ]; then
