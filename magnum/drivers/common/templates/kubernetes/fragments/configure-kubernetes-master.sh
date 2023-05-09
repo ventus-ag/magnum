@@ -592,7 +592,6 @@ containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 maxPods: 110
 podPidsLimit: -1
-registerWithTaints:${TAINTS}
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true
@@ -606,6 +605,8 @@ shutdownGracePeriod: 60s
 shutdownGracePeriodCriticalPods: 20s
 EOF
 KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
+
+#registerWithTaints:${TAINTS}
 
 cat > /etc/kubernetes/kubelet.env <<EOF
 KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
