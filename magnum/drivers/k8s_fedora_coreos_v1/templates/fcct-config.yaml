@@ -308,6 +308,7 @@ systemd:
                 __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \
                 /usr/bin/start-heat-container-agent
         TimeoutStartSec=10min
+        Restart=on-failure
 
         ExecStop=/bin/podman stop heat-container-agent
 

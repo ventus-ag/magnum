@@ -18,7 +18,7 @@ image:
   repository: ${_dns_prefix}coredns
   tag: "${COREDNS_TAG}"
 
-replicaCount: 1
+replicaCount: 2
 
 resources:
   limits:
@@ -97,6 +97,8 @@ servers:
   plugins:
   - name: errors
   - name: log
+  - name: autopath
+    parameters: "@kubernetes"
   # Serves a /health endpoint on :8080, required for livenessProbe
   - name: health
     configBlock: |-
@@ -106,16 +108,16 @@ servers:
   # Required to query kubernetes API for data
   #    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
   - name: kubernetes
-    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa
+    parameters: ${DNS_CLUSTER_DOMAIN} in-addr.arpa ${PORTAL_NETWORK_CIDR} ${PODS_NETWORK_CIDR}
     configBlock: |-
-      pods insecure
+      pods verified
       fallthrough in-addr.arpa
       ttl 30
   # Serves a /metrics endpoint on :9153, required for serviceMonitor
   - name: prometheus
     parameters: 0.0.0.0:9153
   - name: forward
-    parameters: . 1.1.1.1 1.0.0.1 8.8.8.8 /etc/resolv.conf
+    parameters: . 1.1.1.1 1.0.0.1 /etc/resolv.conf
   - name: cache
     parameters: 30
   - name: loop
