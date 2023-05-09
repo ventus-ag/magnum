@@ -10,7 +10,7 @@ cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:
 
 if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
     _cindercsi_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/sig-storage/}
-    _cinderplugin_prefix=${CONTAINER_INFRA_PREFIX:-docker.io/k8scloudprovider/}
+    _cinderplugin_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/provider-os/}
 
 CINDER_CSI_VALUES_YAML=/srv/magnum/kubernetes/helm/cinder-csi/values.yaml
 [ -f ${CINDER_CSI_VALUES_YAML} ] || {
