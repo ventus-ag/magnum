@@ -42,6 +42,7 @@ tolerations:
     operator: Exists
   - effect: NoExecute
     operator: Exists
+dnsPolicy: Default
 priorityClassName: "system-cluster-critical"
 
 EOF

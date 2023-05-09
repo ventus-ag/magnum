@@ -141,10 +141,4 @@ done
 helm repo add coredns https://coredns.github.io/helm
 helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
 
-if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
-  $ssh_cmd systemctl restart containerd
-  $ssh_cmd kubectl rollout restart deployment coredns -n kube-system
-  $ssh_cmd kubectl rollout status deployment coredns -n kube-system
-fi
-
 printf "Finished running ${step}\n"
