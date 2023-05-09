@@ -115,7 +115,7 @@ servers:
   - name: prometheus
     parameters: 0.0.0.0:9153
   - name: forward
-    parameters: . 1.1.1.1 1.0.0.1
+    parameters: . 1.1.1.1 1.0.0.1 8.8.8.8 /etc/resolv.conf
   - name: cache
     parameters: 30
   - name: loop
