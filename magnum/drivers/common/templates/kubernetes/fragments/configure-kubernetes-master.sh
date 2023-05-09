@@ -467,7 +467,7 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--resolv-conf=/run/systemd/resolve/resolv.conf --hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="--fail-swap-on=false --pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
 # KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
@@ -534,8 +534,8 @@ chmod +x /etc/kubernetes/get_require_kubeconfig.sh
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
     # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
-    KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
-    KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+    # KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
+    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 fi
 
 if [ -z "${KUBE_NODE_IP}" ]; then
@@ -583,6 +583,8 @@ rotateCertificates: true
 tlsCertFile: ${CERT_DIR}/kubelet.crt
 tlsPrivateKeyFile: ${CERT_DIR}/kubelet.key
 staticPodPath: /etc/kubernetes/manifests
+containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+runtimeRequestTimeout: 15m
 eventRecordQPS: 5
 shutdownGracePeriod: 60s
 shutdownGracePeriodCriticalPods: 20s
