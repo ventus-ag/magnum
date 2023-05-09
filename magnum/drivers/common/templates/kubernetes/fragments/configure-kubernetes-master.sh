@@ -467,7 +467,7 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--fail-swap-on=false --pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
+KUBELET_ARGS="--fail-swap-on=false --pod-manifest-path=/etc/kubernetes/manifests"
 # KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
@@ -515,6 +515,8 @@ users:
     client-certificate: ${CERT_DIR}/kubelet.crt
     client-key: ${CERT_DIR}/kubelet.key
 EOF
+
+KUBELET_ARGS="${KUBELET_ARGS} --kubeconfig ${KUBELET_KUBECONFIG}"
 
 cat > /etc/kubernetes/get_require_kubeconfig.sh << EOF
 #!/bin/bash
