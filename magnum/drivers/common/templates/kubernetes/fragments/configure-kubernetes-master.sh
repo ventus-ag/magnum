@@ -303,9 +303,9 @@ KUBE_API_ARGS="${KUBE_API_ARGS} \
     --requestheader-username-headers=X-Remote-User"
 
 
-if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    KUBE_API_ARGS="$KUBE_API_ARGS --cloud-provider=external"
-fi
+# if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+#     KUBE_API_ARGS="$KUBE_API_ARGS --cloud-provider=external"
+# fi
 
 if [ "$KEYSTONE_AUTH_ENABLED" == "True" ]; then
     KEYSTONE_WEBHOOK_CONFIG=/etc/kubernetes/keystone_webhook_config.yaml
@@ -467,13 +467,13 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--resolv-conf=/run/systemd/resolve/resolv.conf --register-node=true --hostname-override=${INSTANCE_NAME}"
-KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
+KUBELET_ARGS="--resolv-conf=/run/systemd/resolve/resolv.conf --hostname-override=${INSTANCE_NAME}"
+# KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
-if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
-fi
+# if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+#     KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
+# fi
 
 if [ -f /etc/sysconfig/docker ] ; then
     # For using default log-driver, other options should be ignored
@@ -527,13 +527,13 @@ fi
 EOF
 chmod +x /etc/kubernetes/get_require_kubeconfig.sh
 
-KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key --kubeconfig ${KUBELET_KUBECONFIG}"
+# KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key --kubeconfig ${KUBELET_KUBECONFIG}"
 
 # specified cgroup driver
-KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
+# KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
-    KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
+    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
     KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 fi
@@ -544,7 +544,6 @@ fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
 
-KUBELET_ARGS="${KUBELET_ARGS} --config=/etc/kubernetes/kubelet-config.yaml"
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
 ---
@@ -557,7 +556,7 @@ authentication:
     cacheTTL: 0s
     enabled: true
   x509:
-    clientCAFile: "/etc/kubernetes/certs/ca.crt"
+    clientCAFile: "${CERT_DIR}/ca.crt"
 authorization:
   mode: Webhook
   webhook:
@@ -581,12 +580,14 @@ registerWithTaints:
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true
+tlsCertFile: ${CERT_DIR}/kubelet.crt
+tlsPrivateKeyFile: ${CERT_DIR}/kubelet.key
 staticPodPath: /etc/kubernetes/manifests
 eventRecordQPS: 5
 shutdownGracePeriod: 60s
 shutdownGracePeriodCriticalPods: 20s
 EOF
-
+KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
 cat > /etc/kubernetes/kubelet.env <<EOF
 KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"

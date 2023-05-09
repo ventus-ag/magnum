@@ -71,9 +71,7 @@ mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOG_LEVEL="--v=3"
 EOF
-cat > /etc/kubernetes/kubelet <<EOF
-KUBELET_ARGS="--fail-swap-on=false"
-EOF
+
 cat > /etc/kubernetes/proxy <<EOF
 KUBE_PROXY_ARGS=""
 EOF
@@ -86,7 +84,7 @@ Wants=rpc-statd.service
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
-EnvironmentFile=/etc/kubernetes/kubelet
+EnvironmentFile=/etc/kubernetes/kubelet.env
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/cni/net.d
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/manifests
 ExecStartPre=/bin/mkdir -p /var/lib/calico
@@ -230,7 +228,7 @@ sed -i '
 # the option --hostname-override for kubelet uses the hostname to register the node.
 # Using any other name will break the load balancer and cinder volume features.
 mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--resolv-conf=/run/systemd/resolve/resolv.conf --pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG} --hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="--fail-swap-on=false --resolv-conf=/run/systemd/resolve/resolv.conf --pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG} --hostname-override=${INSTANCE_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
 KUBELET_ARGS="${KUBELET_ARGS} --cluster_dns=${DNS_SERVICE_IP} --cluster_domain=${DNS_CLUSTER_DOMAIN}"
 KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
@@ -238,9 +236,9 @@ KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROU
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
-if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
-fi
+# if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+#     KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
+# fi
 
 if [ -f /etc/sysconfig/docker ] ; then
     # For using default log-driver, other options should be ignored
@@ -254,15 +252,15 @@ if [ -f /etc/sysconfig/docker ] ; then
     fi
 fi
 
-KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
+# KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
 
-KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key"
+# KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key"
 
 # specified cgroup driver
-KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
+# KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
-    KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
+    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
     KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 fi
@@ -275,12 +273,55 @@ fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin"
 
-sed -i '
-    /^KUBELET_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
-    /^KUBELET_HOSTNAME=/ s/=.*/=""/
-    s/^KUBELET_API_SERVER=.*$//
-    /^KUBELET_ARGS=/ s|=.*|="'"${KUBELET_ARGS}"'"|
-' /etc/kubernetes/kubelet
+KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
+cat > ${KUBELET_CONFIG} << EOF
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: true
+  x509:
+    clientCAFile: "${CERT_DIR}/ca.crt"
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+cgroupDriver: ${CGROUP_DRIVER}
+clusterDNS:
+- ${DNS_SERVICE_IP}
+clusterDomain: ${DNS_CLUSTER_DOMAIN}
+address: ${KUBE_NODE_IP}
+failSwapOn: True
+port: 10250
+readOnlyPort: 0
+containerLogMaxFiles: 5
+containerLogMaxSize: 10Mi
+maxPods: 110
+podPidsLimit: -1
+resolvConf: /run/systemd/resolve/resolv.conf
+volumePluginDir: /var/lib/kubelet/volumeplugins
+rotateCertificates: true
+tlsCertFile: ${CERT_DIR}/kubelet.crt
+tlsPrivateKeyFile: ${CERT_DIR}/kubelet.key
+staticPodPath: /etc/kubernetes/manifests
+eventRecordQPS: 5
+shutdownGracePeriod: 60s
+shutdownGracePeriodCriticalPods: 20s
+EOF
+
+KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
+
+cat > /etc/kubernetes/kubelet.env <<EOF
+KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
+KUBELET_HOSTNAME="--hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="${KUBELET_ARGS}"
+EOF
+
 
 KUBE_PROXY_ARGS="--kubeconfig=${PROXY_KUBECONFIG} --cluster-cidr=${PODS_NETWORK_CIDR} --hostname-override=${INSTANCE_NAME}"
 cat > /etc/kubernetes/proxy << EOF

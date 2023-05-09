@@ -30,10 +30,18 @@ done
 
 # Label self as master
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-    kubectl patch node ${INSTANCE_NAME} \
-        --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
+    version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+    KUBE_VERSION=$(kubelet --version | awk '{print $2}' | cut -c 2-)
+
+    if version_gt $KUBE_VERSION 1.27; then
+        kubectl patch node ${INSTANCE_NAME} \
+            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
+    else
+        kubectl patch node ${INSTANCE_NAME} \
+            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
+    fi
 do
-    echo "Trying to label master node with node-role.kubernetes.io/master=\"\""
+    echo "Trying to label node-role.kubernetes.io/control-plane"
     sleep 5s
 done
 
