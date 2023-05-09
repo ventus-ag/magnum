@@ -228,7 +228,7 @@ sed -i '
 # the option --hostname-override for kubelet uses the hostname to register the node.
 # Using any other name will break the load balancer and cinder volume features.
 mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--fail-swap-on=false --pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
+KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
