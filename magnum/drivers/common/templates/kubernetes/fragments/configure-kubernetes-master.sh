@@ -546,6 +546,24 @@ fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
 
+# Define version comparison function
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+
+KUBE_VERSION=$(kubelet --version | awk '{print $2}' | cut -c 2-)
+
+TAINTS=""
+if version_gt $KUBE_VERSION 1.27; then
+    TAINTS='
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/control-plane"'
+else
+    TAINTS='
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/master"
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/control-plane"'
+fi
+
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
 ---
@@ -576,9 +594,7 @@ containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 maxPods: 110
 podPidsLimit: -1
-registerWithTaints:
-  - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/master"
+registerWithTaints:${TAINTS}
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true

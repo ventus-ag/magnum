@@ -247,7 +247,7 @@ spec:
         "kubernetes.io/os": linux
       # Comment the following tolerations if Dashboard must not be deployed on master
       tolerations:
-        - key: node-role.kubernetes.io/master
+        - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
 
 ---
@@ -314,7 +314,7 @@ spec:
         "kubernetes.io/os": linux
       # Comment the following tolerations if Dashboard must not be deployed on master
       tolerations:
-        - key: node-role.kubernetes.io/master
+        - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
       volumes:
         - name: tmp-volume

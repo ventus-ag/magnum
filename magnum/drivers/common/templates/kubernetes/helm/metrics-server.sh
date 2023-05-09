@@ -27,7 +27,7 @@ metrics-server:
     kubernetes.io/cluster-service: "true"
     kubernetes.io/name: "Metrics-server"
   nodeSelector:
-      node-role.kubernetes.io/master: ""
+      node-role.kubernetes.io/control-plane: ""
   tolerations:
       - effect: NoSchedule
         operator: Exists

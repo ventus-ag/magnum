@@ -210,7 +210,7 @@ spec:
       namespace: kube-system
     spec:
       nodeSelector:
-        node-role.kubernetes.io/master: ""
+        node-role.kubernetes.io/control-plane: ""
       hostNetwork: true
       tolerations:
         - effect: NoSchedule
@@ -222,7 +222,7 @@ spec:
         - key: node.cloudprovider.kubernetes.io/uninitialized
           value: "true"
           effect: NoSchedule
-        - key: node-role.kubernetes.io/master
+        - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
       containers:
       # You'll want to change these labels and conditions to suit your deployment.

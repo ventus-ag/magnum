@@ -29,21 +29,21 @@ for action in enable restart; do
 done
 
 # Label self as master
-until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-    version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
-    KUBE_VERSION=$(kubelet --version | awk '{print $2}' | cut -c 2-)
+# until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
+#     version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+#     KUBE_VERSION=$(kubelet --version | awk '{print $2}' | cut -c 2-)
 
-    if version_gt $KUBE_VERSION 1.27; then
-        kubectl patch node ${INSTANCE_NAME} \
-            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
-    else
-        kubectl patch node ${INSTANCE_NAME} \
-            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
-    fi
-do
-    echo "Trying to label node-role.kubernetes.io/control-plane"
-    sleep 5s
-done
+#     if version_gt $KUBE_VERSION 1.27; then
+#         kubectl patch node ${INSTANCE_NAME} \
+#             --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
+#     else
+#         kubectl patch node ${INSTANCE_NAME} \
+#             --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
+#     fi
+# do
+#     echo "Trying to label node-role.kubernetes.io/control-plane"
+#     sleep 5s
+# done
 
 if [[ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" && -n "${KUBE_IMAGE_DIGEST}" ]]; then
     echo "Image inspect"

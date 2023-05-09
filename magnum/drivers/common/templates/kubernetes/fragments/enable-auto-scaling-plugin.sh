@@ -41,7 +41,7 @@ extraArgs:
   leader-elect-lease-duration: 40s
   leader-elect-renew-deadline: 20s
 nodeSelector:
-  node-role.kubernetes.io/master: ""
+  node-role.kubernetes.io/control-plane: ""
 tolerations: 
   - effect: NoSchedule
     operator: Exists

@@ -52,6 +52,16 @@ csi:
       - name: cloud-config
         mountPath: /etc/kubernetes/config/
         readOnly: true
+    controllerPlugin:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
     nodePlugin:
       affinity: {}
       nodeSelector: {}
@@ -106,7 +116,7 @@ EOF
     kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
     helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
-    helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.3.0 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
+    helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"
