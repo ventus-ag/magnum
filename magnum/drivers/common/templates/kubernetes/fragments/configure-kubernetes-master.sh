@@ -549,10 +549,8 @@ fi
 # Define version comparison function
 version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
 
-KUBE_VERSION=$(kubelet --version | awk '{print $2}' | cut -c 2-)
-
 TAINTS=""
-if version_gt $KUBE_VERSION 1.27; then
+if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
     TAINTS='
   - effect: "NoSchedule"
     key: "node-role.kubernetes.io/control-plane"'
