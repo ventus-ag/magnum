@@ -216,7 +216,7 @@ spec:
         nameservers:
          - 8.8.8.8
       nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
       containers:
         - name: magnum-auto-healer
           image: ${_k8s_prefix}provider-os/magnum-auto-healer:v1.26.2

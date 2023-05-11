@@ -28,20 +28,13 @@ for action in enable restart; do
     done
 done
 
-# Label self as master
+# Label leader nodes
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-    version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
-
-    if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
-        kubectl patch node ${INSTANCE_NAME} \
-            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
-    else
-        kubectl patch node ${INSTANCE_NAME} \
-            --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": "","node-role.kubernetes.io/control-plane": ""}}}'
-    fi
+  kubectl patch node ${INSTANCE_NAME} \
+      --patch '{"metadata": {"labels": {"node-role.kubernetes.io/'${LEAD_NODE_ROLE_NAME}'": ""}}}'
 do
-    echo "Trying to label node-role.kubernetes.io/control-plane"
-    sleep 5s
+  echo "Trying to label node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}"
+  sleep 5s
 done
 
 if [[ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" && -n "${KUBE_IMAGE_DIGEST}" ]]; then

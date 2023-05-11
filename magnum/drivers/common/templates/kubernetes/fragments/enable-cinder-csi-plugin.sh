@@ -54,7 +54,7 @@ csi:
         readOnly: true
     controllerPlugin:
       nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
       tolerations:
       - effect: NoSchedule
         operator: Exists
@@ -117,6 +117,9 @@ EOF
 
     helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
     helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
+
+    # Patch the deployment to use the default DNS policy
+    kubectl patch deployment openstack-cinder-csi-controllerplugin -p '{"spec": {"template": {"spec": {"dnsPolicy": "Default"}}}}' -n kube-system
 
 fi
 printf "Finished running ${step}\n"

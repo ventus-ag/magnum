@@ -546,22 +546,6 @@ fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
 
-# Define version comparison function
-version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
-
-TAINTS=""
-if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
-    TAINTS='
-  - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/control-plane"'
-else
-    TAINTS='
-  - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/master"
-  - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/control-plane"'
-fi
-
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
 ---
@@ -590,6 +574,9 @@ port: 10250
 readOnlyPort: 0
 containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
+registerWithTaints:
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}"
 maxPods: 110
 podPidsLimit: -1
 resolvConf: /run/systemd/resolve/resolv.conf
@@ -606,7 +593,6 @@ shutdownGracePeriodCriticalPods: 20s
 EOF
 KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
-#registerWithTaints:${TAINTS}
 
 cat > /etc/kubernetes/kubelet.env <<EOF
 KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"

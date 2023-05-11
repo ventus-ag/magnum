@@ -399,7 +399,7 @@ spec:
       # this is to restrict CCM to only run on master nodes
       # the node selector may vary depending on your cluster setup
       nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
 EOF
     }
 

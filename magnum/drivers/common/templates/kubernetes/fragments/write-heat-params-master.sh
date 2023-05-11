@@ -16,6 +16,15 @@ case "$arch" in
         ;;
 esac
 
+
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+
+if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.25; then
+    LEAD_NODE_ROLE_NAME="control-plane"
+else
+    LEAD_NODE_ROLE_NAME="master"
+fi
+
 HEAT_PARAMS=/etc/sysconfig/heat-params
 [ -f ${HEAT_PARAMS} ] || {
     echo "Writing File: $HEAT_PARAMS"
@@ -135,6 +144,7 @@ CSI_PROVISIONER_TAG="$CSI_PROVISIONER_TAG"
 CSI_SNAPSHOTTER_TAG="$CSI_SNAPSHOTTER_TAG"
 CSI_RESIZER_TAG="$CSI_RESIZER_TAG"
 CSI_NODE_DRIVER_REGISTRAR_TAG="$CSI_NODE_DRIVER_REGISTRAR_TAG"
+LEAD_NODE_ROLE_NAME="$LEAD_NODE_ROLE_NAME"
 DRAINO_TAG="$DRAINO_TAG"
 MAGNUM_AUTO_HEALER_TAG="$MAGNUM_AUTO_HEALER_TAG"
 AUTOSCALER_TAG="$AUTOSCALER_TAG"
