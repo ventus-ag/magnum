@@ -211,10 +211,7 @@ spec:
           operator: Exists
         - effect: NoExecute
           operator: Exists
-      dnsPolicy: None
-      dnsConfig:
-        nameservers:
-         - 8.8.8.8
+      dnsPolicy: Default
       nodeSelector:
         node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
       containers:

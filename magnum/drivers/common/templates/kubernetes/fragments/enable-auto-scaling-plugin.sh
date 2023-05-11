@@ -23,17 +23,13 @@ image:
 cloudProvider: magnum
 nameOverride: manager
 cloudConfigPath: /etc/kubernetes/cloud-config
-# autoDiscovery:
-#   clusterName: ${CLUSTER_UUID}
-#   tags:
-#     - k8s.io/cluster-autoscaler/enabled
-#     - k8s.io/cluster-autoscaler/${CLUSTER_UUID}
-#   roles:
-#     - worker
-autoscalingGroups:
-  - name: default-worker
-    minSize: ${MIN_NODE_COUNT}
-    maxSize: ${MAX_NODE_COUNT}
+autoDiscovery:
+  clusterName: ${CLUSTER_UUID}
+  tags:
+    - k8s.io/cluster-autoscaler/enabled
+    - k8s.io/cluster-autoscaler/${CLUSTER_UUID}
+  roles:
+    - worker
 extraArgs:
   logtostderr: true
   stderrthreshold: info
