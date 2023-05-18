@@ -542,8 +542,8 @@ chmod +x /etc/kubernetes/get_require_kubeconfig.sh
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
 
-  # if eq and less then 1.26, use remote runtime flags
-  if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.26; then
+  # if less than 1.27, use remote runtime flags
+  if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
       KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
