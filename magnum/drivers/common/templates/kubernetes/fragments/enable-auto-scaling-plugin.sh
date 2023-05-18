@@ -23,13 +23,14 @@ image:
 cloudProvider: magnum
 nameOverride: manager
 cloudConfigPath: /etc/kubernetes/cloud-config
-autoDiscovery:
-  clusterName: ${CLUSTER_UUID}
-  tags:
-    - k8s.io/cluster-autoscaler/enabled
-    - k8s.io/cluster-autoscaler/${CLUSTER_UUID}
-  roles:
-    - worker
+# autoDiscovery:
+#   clusterName: ${CLUSTER_UUID}
+#   roles:
+#     - worker
+autoscalingGroups:
+ - name: default-worker
+   minSize: ${MIN_NODE_COUNT}
+   maxSize: ${MAX_NODE_COUNT}
 extraArgs:
   logtostderr: true
   stderrthreshold: info
@@ -54,7 +55,7 @@ EOF
 
 
 helm repo add autoscaler https://kubernetes.github.io/autoscaler
-helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.26.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
+helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.28.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"

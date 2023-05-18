@@ -9,6 +9,8 @@ ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 echo "configuring kubernetes (minion)"
 
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+
 if [ ! -z "$HTTP_PROXY" ]; then
     export HTTP_PROXY
 fi
@@ -231,7 +233,8 @@ sed -i '
 # the option --hostname-override for kubelet uses the hostname to register the node.
 # Using any other name will break the load balancer and cinder volume features.
 mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
+# KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
+KUBELET_ARGS="--kubeconfig ${KUBELET_KUBECONFIG}"
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
@@ -260,10 +263,14 @@ fi
 # specified cgroup driver
 # KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
-    KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
-    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
-    # KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
-    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+  KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
+
+  # if eq and less then 1.26, use remote runtime flags
+  if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.26; then
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
+      KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+  fi
 fi
 
 auto_healing_enabled=$(echo ${AUTO_HEALING_ENABLED} | tr '[:upper:]' '[:lower:]')

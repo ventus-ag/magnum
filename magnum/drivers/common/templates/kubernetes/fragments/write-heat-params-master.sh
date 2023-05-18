@@ -21,8 +21,10 @@ version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
 
 if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.25; then
     LEAD_NODE_ROLE_NAME="control-plane"
+    echo "control-plane"
 else
     LEAD_NODE_ROLE_NAME="master"
+    echo "master"
 fi
 
 HEAT_PARAMS=/etc/sysconfig/heat-params

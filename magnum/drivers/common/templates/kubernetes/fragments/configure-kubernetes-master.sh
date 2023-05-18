@@ -9,6 +9,8 @@ echo "configuring kubernetes (master)"
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+
 if [ ! -z "$HTTP_PROXY" ]; then
     export HTTP_PROXY
 fi
@@ -470,7 +472,8 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests"
+# KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests"
+KUBELET_ARGS=""
 # KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
@@ -538,9 +541,14 @@ chmod +x /etc/kubernetes/get_require_kubeconfig.sh
 # KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
-    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
-    # KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
-    # KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+
+  # if eq and less then 1.26, use remote runtime flags
+  if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.26; then
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
+      KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+  fi
+
 fi
 
 if [ -z "${KUBE_NODE_IP}" ]; then
