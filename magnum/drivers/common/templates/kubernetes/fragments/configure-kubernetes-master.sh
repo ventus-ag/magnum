@@ -545,7 +545,6 @@ if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
   # if less than 1.27, use remote runtime flags
   if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
-      KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
   fi
 
@@ -556,6 +555,13 @@ if [ -z "${KUBE_NODE_IP}" ]; then
 fi
 
 #KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
+
+EXTRA_KUBELETCONFIG_PARAMETERS=""
+if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then
+  EXTRA_KUBELETCONFIG_PARAMETERS='containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+shutdownGracePeriod: 60s
+shutdownGracePeriodCriticalPods: 20s'
+fi
 
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
@@ -596,11 +602,9 @@ rotateCertificates: true
 tlsCertFile: ${CERT_DIR}/kubelet.crt
 tlsPrivateKeyFile: ${CERT_DIR}/kubelet.key
 staticPodPath: /etc/kubernetes/manifests
-containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
 runtimeRequestTimeout: 15m
 eventRecordQPS: 5
-shutdownGracePeriod: 60s
-shutdownGracePeriodCriticalPods: 20s
+${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
 KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
