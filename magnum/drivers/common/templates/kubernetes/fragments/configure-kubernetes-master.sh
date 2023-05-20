@@ -318,7 +318,7 @@ if [ "$KEYSTONE_AUTH_ENABLED" == "True" ]; then
     [ -f ${KEYSTONE_WEBHOOK_CONFIG} ] || {
 echo "Writing File: $KEYSTONE_WEBHOOK_CONFIG"
 mkdir -p $(dirname ${KEYSTONE_WEBHOOK_CONFIG})
-cat << EOF > ${KEYSTONE_WEBHOOK_CONFIG}
+cat > ${KEYSTONE_WEBHOOK_CONFIG} << EOF
 ---
 apiVersion: v1
 clusters:
@@ -356,7 +356,7 @@ sed -i '
 
 # root kubeconfig
 ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
-cat << EOF >> ${ADMIN_KUBECONFIG}
+cat > ${ADMIN_KUBECONFIG} << EOF
 apiVersion: v1
 clusters:
 - cluster:
@@ -499,7 +499,7 @@ KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROU
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 
 KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.conf
-cat << EOF >> ${KUBELET_KUBECONFIG}
+cat > ${KUBELET_KUBECONFIG} << EOF
 apiVersion: v1
 clusters:
 - cluster:

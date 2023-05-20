@@ -165,7 +165,7 @@ KUBE_MASTER_URI="$KUBE_PROTOCOL://$KUBE_MASTER_IP:$KUBE_API_PORT"
 if [ -z "${KUBE_NODE_IP}" ]; then
     KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 fi
-cat << EOF >> ${KUBELET_KUBECONFIG}
+cat > ${KUBELET_KUBECONFIG} << EOF
 apiVersion: v1
 clusters:
 - cluster:
@@ -187,7 +187,7 @@ users:
     client-certificate: ${CERT_DIR}/kubelet.crt
     client-key: ${CERT_DIR}/kubelet.key
 EOF
-cat << EOF >> ${PROXY_KUBECONFIG}
+cat > ${PROXY_KUBECONFIG} << EOF
 apiVersion: v1
 clusters:
 - cluster:
