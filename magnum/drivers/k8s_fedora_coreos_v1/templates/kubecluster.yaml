@@ -57,6 +57,10 @@ parameters:
     type: boolean
     default: false
 
+  is_upgrade:
+    type: boolean
+    default: false
+
   master_role:
     type: string
     default: ""
