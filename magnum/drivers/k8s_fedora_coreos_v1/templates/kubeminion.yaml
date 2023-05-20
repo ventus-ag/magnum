@@ -1,4 +1,4 @@
-heat_template_version: queens
+heat_template_version: rocky
 
 description: >
   This is a nested stack that defines a single Kubernetes minion, This stack is
@@ -9,6 +9,9 @@ parameters:
   name:
     type: string
     description: server name
+
+  is_upgrade:
+    type: boolean
 
   server_image:
     type: string
@@ -361,6 +364,10 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
+  upgrade_cluster_resources:
+    equals:
+      - get_param: is_upgrade
+      - true
 
 resources:
   agent_config:
@@ -607,7 +614,8 @@ resources:
       volume_id: { get_resource: docker_volume }
       mountpoint: /dev/vdb
 
-  upgrade_kubernetes:
+  upgrade_kubernetes_config:
+    condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -624,10 +632,11 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
+    condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
-      config: { get_resource: upgrade_kubernetes }
+      config: { get_resource: upgrade_kubernetes_config }
       server:
         {
           if:

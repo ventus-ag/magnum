@@ -62,5 +62,4 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
             $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
         fi
     fi
-    rm -f /tmp/service_list
 fi

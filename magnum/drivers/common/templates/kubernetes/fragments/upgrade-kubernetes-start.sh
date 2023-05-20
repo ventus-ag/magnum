@@ -93,3 +93,5 @@ elif [ "$new_ostree_remote" != "" ] && [ "$current_ostree_remote" != "$new_ostre
     ${ssh_cmd} rpm-ostree rebase $new_ostree_remote
     shutdown --reboot --no-wall -t 1
 fi
+
+rm -f /tmp/service_list
