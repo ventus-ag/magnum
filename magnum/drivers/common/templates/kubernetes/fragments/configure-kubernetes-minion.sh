@@ -23,7 +23,10 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-#$ssh_cmd rm -rf /etc/cni/net.d/*
+new_kube_tag="$kube_tag_input"
+if [[ -z "$new_kube_tag" ]]; then
+  $ssh_cmd rm -rf /etc/cni/net.d/*
+fi
 
 if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
     $ssh_cmd rm -rf /var/lib/cni/*
