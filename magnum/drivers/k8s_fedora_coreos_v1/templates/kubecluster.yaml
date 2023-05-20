@@ -1447,7 +1447,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
   kube_cluster_deploy:
-    condition: create_cluster_resources
+    #condition: create_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["CREATE"]
@@ -1458,7 +1458,7 @@ resources:
         get_attr: [kube_masters, resource.0]
 
   kube_cluster_upgrade:
-    condition: upgrade_cluster_resources
+    #condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
