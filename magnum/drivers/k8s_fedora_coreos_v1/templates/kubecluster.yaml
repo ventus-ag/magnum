@@ -1426,7 +1426,6 @@ resources:
         get_attr: [kube_masters, resource.0]
 
   kube_cluster_update:
-    condition: update_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
