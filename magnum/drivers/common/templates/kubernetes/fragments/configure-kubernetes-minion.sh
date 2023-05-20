@@ -23,7 +23,7 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-if [[ -z "$kube_tag_input" ]]; then
+if [[ -z "${kube_tag_input:-}" ]]; then
   $ssh_cmd rm -rf /etc/cni/net.d/*
 fi
 
