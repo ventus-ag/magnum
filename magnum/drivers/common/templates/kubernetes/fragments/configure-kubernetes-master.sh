@@ -23,7 +23,7 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-$ssh_cmd rm -rf /etc/cni/net.d/*
+#$ssh_cmd rm -rf /etc/cni/net.d/*
 
 if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
     $ssh_cmd rm -rf /var/lib/cni/*
