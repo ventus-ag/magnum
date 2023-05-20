@@ -33,7 +33,8 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
     drain
 
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-        SERVICE_LIST=$(cat /tmp/service_list)
+        SERVICE_LIST=$($ssh_cmd podman ps -f name=kube --format {{.Names}})
+        echo "${SERVICE_LIST}" > /tmp/service_list
 
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}

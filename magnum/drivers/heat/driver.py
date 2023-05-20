@@ -386,6 +386,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
             "update_max_batch_size": max_batch_size,
         }
 
+        heat_params['is_upgrade'] = True
+
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
             heat_params['kube_version'] = nodegroup.labels['kube_tag']

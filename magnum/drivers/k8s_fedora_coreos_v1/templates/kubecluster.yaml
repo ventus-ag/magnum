@@ -11,6 +11,11 @@ conditions:
       - get_param: is_cluster_stack
       - true
 
+  upgrade_cluster_resources:
+    equals:
+      - get_param: is_upgrade
+      - true
+
   is_master:
     and:
       - equals:
@@ -1414,6 +1419,28 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
+  kube_cluster_config_upgrade:
+    condition: upgrade_cluster_resources
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config:
+        list_join:
+          - "\n"
+          - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+            - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
+            - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh
+            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
+            # Helm Based Installation Configuration Scripts
+            - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
+            - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
+            - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
+
   kube_cluster_deploy:
     condition: create_cluster_resources
     type: OS::Heat::SoftwareDeployment
@@ -1426,12 +1453,13 @@ resources:
         get_attr: [kube_masters, resource.0]
 
   kube_cluster_update:
+    condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
       signal_transport: HEAT_SIGNAL
       config:
-        get_resource: kube_cluster_config
+        get_resource: kube_cluster_config_upgrade
       server:
         get_attr: [kube_masters, resource.0]
 
