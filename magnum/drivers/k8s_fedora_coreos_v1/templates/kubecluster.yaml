@@ -1425,6 +1425,17 @@ resources:
       server:
         get_attr: [kube_masters, resource.0]
 
+  kube_cluster_update:
+    condition: update_cluster_resources
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      actions: ["UPDATE"]
+      signal_transport: HEAT_SIGNAL
+      config:
+        get_resource: kube_cluster_config
+      server:
+        get_attr: [kube_masters, resource.0]
+
   ######################################################################
   #
   # kubernetes minions. This is an resource group that will initially

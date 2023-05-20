@@ -149,7 +149,7 @@ kubectl -n kube-system create secret generic os-trustee \
     --from-literal=os-trusteeID=${TRUSTEE_USER_ID} \
     --from-literal=os-trusteePassword=${TRUSTEE_PASSWORD} \
     --from-literal=os-region=${REGION_NAME} \
-    --from-file=os-certAuthority=/etc/kubernetes/ca-bundle.crt
+    --from-file=os-certAuthority=/etc/kubernetes/ca-bundle.crt 2>/dev/null
 
 #TODO: add heat variables for master count to determine leaderelect true/False ?
 if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
