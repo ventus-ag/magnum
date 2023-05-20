@@ -1457,7 +1457,7 @@ resources:
       server:
         get_attr: [kube_masters, resource.0]
 
-  kube_cluster_update:
+  kube_cluster_upgrade:
     condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:

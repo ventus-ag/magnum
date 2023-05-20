@@ -674,10 +674,6 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
-  upgrade_cluster_resources:
-    equals:
-      - get_param: is_upgrade
-      - true
 
 resources:
   ######################################################################
@@ -1094,8 +1090,7 @@ resources:
       volume_id: { get_resource: docker_volume }
       mountpoint: /dev/vdb
 
-  upgrade_kubernetes:
-    condition: upgrade_cluster_resources
+  upgrade_kubernetes_config:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1112,11 +1107,10 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
-    condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
-      config: { get_resource: upgrade_kubernetes }
+      config: { get_resource: upgrade_kubernetes_config }
       server:
         {
           if:
