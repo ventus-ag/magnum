@@ -33,10 +33,8 @@ function drain {
 if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
 
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-        SERVICE_LIST="kube-proxy
-kube-apiserver
-kube-scheduler
-kube-controller-manager"
+        SERVICE_LIST=$($ssh_cmd podman ps -f name=kube --format {{.Names}})
+        echo "${SERVICE_LIST}" > /tmp/service_list
 
         echo "KUBE_TAG=$new_kube_tag" >> /etc/sysconfig/heat-params
         

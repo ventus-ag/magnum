@@ -33,10 +33,7 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
     drain
 
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-        SERVICE_LIST="kube-proxy
-kube-apiserver
-kube-scheduler
-kube-controller-manager"
+        SERVICE_LIST=$(cat /tmp/service_list)
 
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}
@@ -64,4 +61,5 @@ kube-controller-manager"
             $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
         fi
     fi
+    rm -f /tmp/service_list
 fi
