@@ -1424,10 +1424,22 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
+  kube_cluster_deploy:
+    condition: create_cluster_resources
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      actions: ["CREATE"]
+      signal_transport: HEAT_SIGNAL
+      config:
+        get_resource: kube_cluster_config
+      server:
+        get_attr: [kube_masters, resource.0]
+
   kube_cluster_config_upgrade:
-    condition: upgrade_cluster_resources
+    #condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
+      actions: ["UPDATE"]
       group: script
       config:
         list_join:
@@ -1445,17 +1457,6 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-
-  kube_cluster_deploy:
-    #condition: create_cluster_resources
-    type: OS::Heat::SoftwareDeployment
-    properties:
-      actions: ["CREATE"]
-      signal_transport: HEAT_SIGNAL
-      config:
-        get_resource: kube_cluster_config
-      server:
-        get_attr: [kube_masters, resource.0]
 
   kube_cluster_upgrade:
     #condition: upgrade_cluster_resources
