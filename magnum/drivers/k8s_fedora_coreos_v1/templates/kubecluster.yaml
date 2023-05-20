@@ -1439,7 +1439,6 @@ resources:
     #condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
-      actions: ["UPDATE"]
       group: script
       config:
         list_join:
