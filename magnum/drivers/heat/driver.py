@@ -220,6 +220,7 @@ class HeatDriver(driver.Driver):
             heat_timeout = cfg.CONF.cluster_heat.create_timeout
 
         heat_params['is_cluster_stack'] = nodegroup is None
+        heat_params['is_upgrade'] = False
 
         if nodegroup:
             # In case we are creating a new stack for a new nodegroup then
@@ -252,6 +253,8 @@ class HeatDriver(driver.Driver):
             nodegroup.node_count,
             scale_manager,
             nodes_to_remove=None)
+        
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -274,6 +277,8 @@ class HeatDriver(driver.Driver):
             nodegroup.node_count,
             resize_manager,
             nodes_to_remove=nodes_to_remove)
+        
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
