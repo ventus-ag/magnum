@@ -466,6 +466,15 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             'parameters': heat_params,
         }
+        current_parameters = osc.heat().get_stack(stack_id).parameters
+
+        # Merge current parameters with new parameters. 
+        # Note that this will overwrite any old parameters with new ones if they have the same name.
+        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        current_parameters.update(fields['parameters'])
+        
+        # Replace the old parameters in fields with the merged parameters
+        fields['parameters'] = current_parameters
 
         # Update the Heat stack
         osc.heat().stacks.update(stack_id, **fields)
