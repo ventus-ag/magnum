@@ -460,6 +460,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                         env_files)
         tpl_files.update(env_map)
+
+        heat_params['is_upgrade'] = True
+        
         fields = {
             'template': template,
             'environment_files': environment_files,
