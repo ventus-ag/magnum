@@ -466,7 +466,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             'parameters': heat_params,
         }
-        current_parameters = osc.heat().get_stack(stack_id).parameters
+
+        # Fetch the current parameters of the stack
+        current_parameters = osc.heat().stacks.get(stack_id).parameters
 
         # Merge current parameters with new parameters. 
         # Note that this will overwrite any old parameters with new ones if they have the same name.
