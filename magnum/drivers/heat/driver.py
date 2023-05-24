@@ -405,7 +405,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             # but just focus on the version change.
             new_addons[label] = cluster_template.labels[label]
             if ((label.endswith('_tag') or
-                 label.endswith('_version')) and label in heat_params):
+                label.endswith('_version')) and label in heat_params):
                 current_addons[label] = heat_params[label]
                 try:
                     if (SV.from_pip_string(new_addons[label]) <
@@ -448,14 +448,36 @@ class FedoraKubernetesDriver(KubernetesDriver):
             other_default_ng.labels = new_labels
             other_default_ng.save()
 
+        # New code for applying heat template
+        nodegroups = [nodegroup] if nodegroup else None
+        template_path, heat_params, env_files = (
+            self._extract_template_definition(context, cluster,
+                                              nodegroups=nodegroups))
+
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+
+        environment_files, env_map = self._get_env_files(template_path,
+                                                        env_files)
+        tpl_files.update(env_map)
         fields = {
-            'existing': True,
+            'stack_name': stack_id,  # use stack id as name for uniqueness
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
             'parameters': heat_params,
-            'disable_rollback': not rollback
         }
-        LOG.info('Upgrading cluster %s stack %s with these params: %s',
-                 cluster.uuid, nodegroup.stack_id, heat_params)
-        osc.heat().stacks.update(stack_id, **fields)
+
+        # Update the Heat stack
+        osc.heat().stacks.update(**fields)
+
+        # save the nodegroup and cluster
+        nodegroup.save()
+        cluster.save()
+
+        # The update of a nodegroup will trigger a cluster upgrade.
+        LOG.info("Triggered upgrade of cluster %s", cluster.uuid)
+        return cluster.uuid
 
     def get_nodegroup_extra_params(self, cluster, osc):
         network = osc.heat().resources.get(cluster.stack_id, 'network')
