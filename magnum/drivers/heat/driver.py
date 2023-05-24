@@ -461,7 +461,6 @@ class FedoraKubernetesDriver(KubernetesDriver):
                                                         env_files)
         tpl_files.update(env_map)
         fields = {
-            'stack_name': stack_id,  # use stack id as name for uniqueness
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
@@ -469,7 +468,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
         }
 
         # Update the Heat stack
-        osc.heat().stacks.update(**fields)
+        osc.heat().stacks.update(stack_id, **fields)
 
         # save the nodegroup and cluster
         nodegroup.save()
