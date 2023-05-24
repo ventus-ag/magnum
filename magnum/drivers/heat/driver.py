@@ -469,6 +469,10 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         # Fetch the current parameters of the stack
         current_parameters = osc.heat().stacks.get(stack_id).parameters
+        # Remove the parameters to be ignored
+        parameters_to_ignore = ['OS::stack_id', 'OS::project_id', 'OS::stack_name']
+        for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
 
         # Merge current parameters with new parameters. 
         # Note that this will overwrite any old parameters with new ones if they have the same name.
