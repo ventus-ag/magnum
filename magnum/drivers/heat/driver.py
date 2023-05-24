@@ -15,6 +15,7 @@ import collections
 import os
 from pbr.version import SemanticVersion as SV
 import six
+import json
 
 from string import ascii_letters
 from string import digits
@@ -263,7 +264,7 @@ class HeatDriver(driver.Driver):
         }
 
         LOG.info('Updating cluster %s stack %s with these params: %s',
-                 cluster.uuid, nodegroup.stack_id, scale_params)
+                 cluster.uuid, nodegroup.stack_id, json.dumps(scale_params))
         osc = clients.OpenStackClients(context)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
 
@@ -462,7 +463,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         heat_params['is_upgrade'] = True
-        
+
         fields = {
             'template': template,
             'environment_files': environment_files,
