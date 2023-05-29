@@ -462,6 +462,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
                                                         env_files)
         tpl_files.update(env_map)
 
+        heat_params['is_cluster_stack'] = False
         heat_params['is_upgrade'] = True
 
         fields = {
