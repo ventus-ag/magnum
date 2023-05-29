@@ -1460,7 +1460,7 @@ resources:
   kube_cluster_upgrade:
     condition: upgrade_cluster_resources
     depends_on:
-      - kube_masters
+      # - kube_masters
       - kube_cluster_config_upgrade
     type: OS::Heat::SoftwareDeployment
     properties:
