@@ -474,7 +474,31 @@ class FedoraKubernetesDriver(KubernetesDriver):
         # Fetch the current parameters of the stack
         current_parameters = osc.heat().stacks.get(stack_id).parameters
         # Remove the parameters to be ignored
-        parameters_to_ignore = ['OS::stack_id', 'OS::project_id', 'OS::stack_name','container_infra_prefix']
+        parameters_to_ignore = [
+            'OS::stack_id',
+            'OS::project_id',
+            'OS::stack_name',
+            'container_infra_prefix',
+            'master_image',
+            'minion_image',
+            'master_flavor',
+            'minion_flavor',
+            'number_of_masters',
+            'number_of_minions',
+            'boot_volume_size',
+            'boot_volume_type',
+            'etcd_volume_size',
+            'etcd_volume_type',
+            'docker_volume_size',
+            'docker_volume_type',
+            'docker_storage_driver',
+            'trustee_password',
+            'trust_id',
+            'openstack_ca',
+            'ca_key',
+            'kube_service_account_key',
+            'kube_service_account_private_key'
+            ]
         for param in parameters_to_ignore:
             current_parameters.pop(param, None)
 
