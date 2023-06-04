@@ -3,6 +3,7 @@
 . /etc/sysconfig/heat-params
 
 set -x
+. /etc/sysconfig/heat-params
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
@@ -11,10 +12,12 @@ export KUBECONFIG=/etc/kubernetes/admin.conf
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     kubecontrol="/srv/magnum/bin/kubectl --kubeconfig $KUBECONFIG"
 fi
-new_kube_tag="$kube_tag_input"
-new_kube_image_digest="$kube_image_digest"
-new_ostree_remote="$ostree_remote_input"
-new_ostree_commit="$ostree_commit_input"
+new_kube_tag="$KUBE_TAG"
+new_ostree_remote="$OSTREE_REMOTE"
+new_ostree_commit="$OSTREE_COMMIT"
+
+KUBE_TAG=$($ssh_cmd kubelet --version | awk '{print $2}')
+echo "${KUBE_TAG}" > /tmp/old_kube_tag
 
 function drain {
     # If there is only one master and this is the master node, skip the drain, just cordon it

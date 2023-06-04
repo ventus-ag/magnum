@@ -489,8 +489,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
         current_parameters.update(fields['parameters'])
 
-        LOG.info("Cluster: %s", cluster)
-        LOG.info("Nodegroups: %s", nodegroups)
+        LOG.debug("Cluster: %s", cluster)
+        LOG.debug("Nodegroups: %s", nodegroups)
 
         # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters

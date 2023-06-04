@@ -16,10 +16,9 @@ case "$arch" in
         ;;
 esac
 
-
 version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
 
-if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.25; then
+if version_gt $(echo "$KUBE_TAG" | cut -c 2-) 1.25; then
     LEAD_NODE_ROLE_NAME="control-plane"
     echo "control-plane"
 else
@@ -165,6 +164,8 @@ POST_INSTALL_MANIFEST_URL="$POST_INSTALL_MANIFEST_URL"
 METRICS_SCRAPER_TAG="$METRICS_SCRAPER_TAG"
 KUBERNETES_TARBALL_SHA512="$KUBERNETES_TARBALL_SHA512"
 KUBERNETES_TARBALL_URL="$KUBERNETES_TARBALL_URL"
+OSTREE_REMOTE="$OSTREE_REMOTE"
+OSTREE_COMMIT="$OSTREE_COMMIT"
 EOF
 }
 

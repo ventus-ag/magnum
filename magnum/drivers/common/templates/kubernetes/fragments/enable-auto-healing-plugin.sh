@@ -5,6 +5,7 @@ printf "Starting to run ${step}\n"
 . /etc/sysconfig/heat-params
 
 auto_healing_plugin_enabled=$(echo $AUTO_HEALING_ENABLED | tr '[:upper:]' '[:lower:]')
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [[ "${auto_healing_plugin_enabled}" = "true" ]]; then
 
@@ -240,8 +241,8 @@ EOF
 
 kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
-helm repo add deliveryhero https://charts.deliveryhero.io/
-helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
+$ssh_cmd helm repo add deliveryhero https://charts.deliveryhero.io/
+$ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"

@@ -7,6 +7,7 @@ printf "Starting to run ${step}\n"
 
 volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
 cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
     _cindercsi_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/sig-storage/}
@@ -115,8 +116,8 @@ EOF
     kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
     kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
-    helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
-    helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
+    $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
+    $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
     # Patch the deployment to use the default DNS policy
     kubectl patch deployment openstack-cinder-csi-controllerplugin -p '{"spec": {"template": {"spec": {"dnsPolicy": "Default"}}}}' -n kube-system

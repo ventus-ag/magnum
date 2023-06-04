@@ -13,10 +13,10 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 else
     kubecontrol="/var/lib/containers/atomic/heat-container-agent.0/rootfs/usr/bin/kubectl --kubeconfig $KUBECONFIG"
 fi
-new_kube_tag="$kube_tag_input"
-new_kube_image_digest="$kube_image_digest"
-new_ostree_remote="$ostree_remote_input"
-new_ostree_commit="$ostree_commit_input"
+new_kube_tag="$KUBE_TAG"
+new_ostree_remote="$OSTREE_REMOTE"
+new_ostree_commit="$OSTREE_COMMIT"
+KUBE_TAG=$(cat /tmp/old_kube_tag)
 
 function drain {
     # If there is only one master and this is the master node, skip the drain, just cordon it
@@ -35,8 +35,6 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
         SERVICE_LIST=$(cat /tmp/service_list)
 
-        echo "KUBE_TAG=$new_kube_tag" >> /etc/sysconfig/heat-params
-        
         ${ssh_cmd} systemctl daemon-reload
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl start ${service}

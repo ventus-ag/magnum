@@ -6,6 +6,7 @@ printf "Starting to run ${step}\n"
 . /etc/sysconfig/heat-params
 
 auto_scaling_plugin_enabled=$(echo $AUTO_SCALING_ENABLED | tr '[:upper:]' '[:lower:]')
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [[ "${auto_scaling_plugin_enabled}" = "true" || ("${auto_healing_enabled}" = "true" && "${autohealing_controller}" = "draino") ]]; then
 
@@ -54,8 +55,8 @@ EOF
 
 
 
-helm repo add autoscaler https://kubernetes.github.io/autoscaler
-helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.28.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
+$ssh_cmd helm repo add autoscaler https://kubernetes.github.io/autoscaler
+$ssh_cmd helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.28.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"

@@ -41,8 +41,8 @@ else
     fi
 
     source /etc/bashrc
-    $ssh_cmd tar xzvf /srv/magnum/helm-client.tar.gz linux-amd64/helm -O > /srv/magnum/bin/helm
-    $ssh_cmd chmod +x /srv/magnum/bin/helm
+    $ssh_cmd tar xzvf /srv/magnum/helm-client.tar.gz linux-amd64/helm -O > $ssh_cmd helm
+    $ssh_cmd chmod +x $ssh_cmd helm
 
     if [[ "${HELM_CLIENT_TAG}" == v2.* ]]; then
         CERTS_DIR="/etc/kubernetes/helm/certs"

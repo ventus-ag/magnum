@@ -30,11 +30,11 @@ done
 if [[ "$(echo ${TILLER_ENABLED} | tr '[:upper:]' '[:lower:]')" != "true" && "${HELM_CLIENT_TAG}" == v2.* ]]; then
     echo "Use --labels tiller_enabled=True for helm_client_tag<v3.0.0 to allow for tiller dependent resources to be installed."
 else
-    helm_install_cmd="helm upgrade --install magnum . --namespace kube-system --values values.yaml --render-subchart-notes"
-    helm_history_cmd="helm history magnum --namespace kube-system"
+    helm_install_cmd="$ssh_cmd helm upgrade --install magnum . --namespace kube-system --values values.yaml --render-subchart-notes"
+    helm_history_cmd="$ssh_cmd helm history magnum --namespace kube-system"
     if [[ "${HELM_CLIENT_TAG}" == v2.* ]]; then
-        helm_install_cmd="helm upgrade --install --name magnum . --namespace kube-system --values values.yaml --render-subchart-notes"
-        helm_history_cmd="helm history magnum"
+        helm_install_cmd="$ssh_cmd helm upgrade --install --name magnum . --namespace kube-system --values values.yaml --render-subchart-notes"
+        helm_history_cmd="$ssh_cmd helm history magnum"
     fi
 
     HELM_CHART_DIR="/srv/magnum/kubernetes/helm/magnum"
