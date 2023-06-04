@@ -1436,7 +1436,6 @@ resources:
         get_attr: [kube_masters, resource.0]
 
   kube_cluster_config_upgrade:
-    condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1458,9 +1457,8 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
   kube_cluster_upgrade:
-    condition: upgrade_cluster_resources
     depends_on:
-      # - kube_masters
+      - kube_masters
       - kube_cluster_config_upgrade
     type: OS::Heat::SoftwareDeployment
     properties:
