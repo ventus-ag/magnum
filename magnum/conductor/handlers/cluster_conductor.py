@@ -314,7 +314,8 @@ class Handler(object):
             fields.ClusterStatus.ROLLBACK_COMPLETE,
             fields.ClusterStatus.SNAPSHOT_COMPLETE,
             fields.ClusterStatus.CHECK_COMPLETE,
-            fields.ClusterStatus.ADOPT_COMPLETE
+            fields.ClusterStatus.ADOPT_COMPLETE,
+            fields.ClusterStatus.UPDATE_FAILED,
         )
         if cluster.status not in allow_update_status:
             conductor_utils.notify_about_cluster_operation(
