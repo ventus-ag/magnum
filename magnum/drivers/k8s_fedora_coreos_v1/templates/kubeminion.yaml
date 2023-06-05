@@ -713,6 +713,14 @@ resources:
       actions: ["UPDATE"]
       input_values:
         kube_tag: { get_param: kube_tag }
+        random_value:
+          {
+            str_replace:
+              {
+                template: "RANDOM",
+                params: { RANDOM: { get_param: "kube_tag" } },
+              },
+          }
 
 outputs:
   kube_minion_ip:
