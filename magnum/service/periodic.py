@@ -53,7 +53,6 @@ class ClusterUpdateJob(object):
         objects.fields.ClusterStatus.DELETE_COMPLETE: taxonomy.ACTION_DELETE,
         objects.fields.ClusterStatus.CREATE_COMPLETE: taxonomy.ACTION_CREATE,
         objects.fields.ClusterStatus.UPDATE_COMPLETE: taxonomy.ACTION_UPDATE,
-        objects.fields.ClusterStatus.UPGRADE_COMPLETE: taxonomy.ACTION_UPDATE,
         objects.fields.ClusterStatus.ROLLBACK_COMPLETE: taxonomy.ACTION_UPDATE,
         objects.fields.ClusterStatus.CREATE_FAILED: taxonomy.ACTION_CREATE,
         objects.fields.ClusterStatus.DELETE_FAILED: taxonomy.ACTION_DELETE,
@@ -175,7 +174,6 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
             # get all the clusters that are IN_PROGRESS
             status = [objects.fields.ClusterStatus.CREATE_IN_PROGRESS,
                       objects.fields.ClusterStatus.UPDATE_IN_PROGRESS,
-                      objects.fields.ClusterStatus.UPGRADE_IN_PROGRESS,
                       objects.fields.ClusterStatus.DELETE_IN_PROGRESS,
                       objects.fields.ClusterStatus.ROLLBACK_IN_PROGRESS]
             filters = {'status': status}
@@ -207,9 +205,7 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
 
             status = [objects.fields.ClusterStatus.CREATE_COMPLETE,
                       objects.fields.ClusterStatus.UPDATE_COMPLETE,
-                      objects.fields.ClusterStatus.UPGRADE_COMPLETE,
                       objects.fields.ClusterStatus.UPDATE_IN_PROGRESS,
-                      objects.fields.ClusterStatus.UPGRADE_IN_PROGRESS,
                       objects.fields.ClusterStatus.ROLLBACK_IN_PROGRESS]
             filters = {'status': status}
             clusters = objects.Cluster.list(ctx, filters=filters)
@@ -243,8 +239,7 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
         for cluster in objects.Cluster.list(ctx):
             if cluster.status not in (
                     objects.fields.ClusterStatus.CREATE_COMPLETE,
-                    objects.fields.ClusterStatus.UPDATE_COMPLETE,
-                    objects.fields.ClusterStatus.UPGRADE_COMPLETE):
+                    objects.fields.ClusterStatus.UPDATE_COMPLETE):
                 continue
 
             monitor = monitors.create_monitor(ctx, cluster)
