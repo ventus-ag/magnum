@@ -316,6 +316,7 @@ class Handler(object):
             fields.ClusterStatus.CHECK_COMPLETE,
             fields.ClusterStatus.ADOPT_COMPLETE,
             fields.ClusterStatus.UPDATE_FAILED,
+            fields.ClusterStatus.UPGRADE_FAILED,
         )
         if cluster.status not in allow_update_status:
             conductor_utils.notify_about_cluster_operation(
@@ -337,14 +338,14 @@ class Handler(object):
                 cluster)
             cluster_driver.upgrade_cluster(context, cluster, cluster_template,
                                            max_batch_size, nodegroup, rollback)
-            cluster.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
-            nodegroup.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
+            cluster.status = fields.ClusterStatus.UPGRADE_IN_PROGRESS
+            nodegroup.status = fields.ClusterStatus.UPGRADE_IN_PROGRESS
             cluster.status_reason = None
         except Exception as e:
-            cluster.status = fields.ClusterStatus.UPDATE_FAILED
+            cluster.status = fields.ClusterStatus.UPGRADE_FAILED
             cluster.status_reason = six.text_type(e)
             cluster.save()
-            nodegroup.status = fields.ClusterStatus.UPDATE_FAILED
+            nodegroup.status = fields.ClusterStatus.UPGRADE_FAILED
             nodegroup.status_reason = six.text_type(e)
             nodegroup.save()
             conductor_utils.notify_about_cluster_operation(

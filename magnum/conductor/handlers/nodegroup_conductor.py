@@ -40,6 +40,7 @@ ALLOWED_NODEGROUP_STATES = (
     fields.ClusterStatus.CREATE_COMPLETE,
     fields.ClusterStatus.UPDATE_COMPLETE,
     fields.ClusterStatus.UPDATE_IN_PROGRESS,
+    fields.ClusterStatus.UPGRADE_IN_PROGRESS,
     fields.ClusterStatus.UPDATE_FAILED,
     fields.ClusterStatus.RESUME_COMPLETE,
     fields.ClusterStatus.RESTORE_COMPLETE,
