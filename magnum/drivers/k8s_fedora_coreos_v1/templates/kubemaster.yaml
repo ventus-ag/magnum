@@ -1221,7 +1221,9 @@ resources:
         list_join:
           - "\n"
           - - str_replace:
-                template: "echo 'stack_id'"
+                template: |
+                  #!/bin/sh
+                  echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
             - get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh
