@@ -8,13 +8,15 @@ set +x
 
 set -x
 
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
+
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
     echo "Waiting for Kubernetes API..."
     sleep 5
 done
 
-cat <<EOF | kubectl apply --validate=false -f -
+cat <<EOF | $ssh_cmd kubectl apply --validate=false -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -36,7 +38,7 @@ rules:
       - "*"
 EOF
 
-cat <<EOF | kubectl apply --validate=false -f -
+cat <<EOF | $ssh_cmd kubectl apply --validate=false -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -143,13 +145,19 @@ EOF
 #kubectl apply -f ${POD_SECURITY_POLICIES}
 
 # Add the openstack trustee as a secret under kube-system
-kubectl -n kube-system create secret generic os-trustee \
-    --from-literal=os-authURL=${AUTH_URL} \
-    --from-literal=os-trustID=${TRUST_ID} \
-    --from-literal=os-trusteeID=${TRUSTEE_USER_ID} \
-    --from-literal=os-trusteePassword=${TRUSTEE_PASSWORD} \
-    --from-literal=os-region=${REGION_NAME} \
-    --from-file=os-certAuthority=/etc/kubernetes/ca-bundle.crt 2>/dev/null
+# Check if the secret 'os-trustee' already exists
+if ! $ssh_cmd kubectl -n kube-system get secret os-trustee >/dev/null 2>&1; then
+  # If it doesn't exist, create it
+  $ssh_cmd kubectl -n kube-system create secret generic os-trustee \
+      --from-literal=os-authURL=${AUTH_URL} \
+      --from-literal=os-trustID=${TRUST_ID} \
+      --from-literal=os-trusteeID=${TRUSTEE_USER_ID} \
+      --from-literal=os-trusteePassword=${TRUSTEE_PASSWORD} \
+      --from-literal=os-region=${REGION_NAME} \
+      --from-file=os-certAuthority=/etc/kubernetes/ca-bundle.crt
+else
+  echo "Secret 'os-trustee' already exists. Skipping creation..."
+fi
 
 #TODO: add heat variables for master count to determine leaderelect true/False ?
 if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
@@ -403,11 +411,11 @@ spec:
 EOF
     }
 
-    kubectl apply -f ${OCCM}
+    $ssh_cmd kubectl apply -f ${OCCM}
 fi
 
 # Assgin read daemonset/replicaset/statefulset permssion to allow node drain itself
-cat <<EOF | kubectl apply --validate=false -f -
+cat <<EOF | $ssh_cmd kubectl apply --validate=false -f -
 ---
 apiVersion: v1
 items:
@@ -455,7 +463,7 @@ EOF
 
 # Post install file to setup some cloud provider/vendor specific configs
 if [ "$POST_INSTALL_MANIFEST_URL" != "" ]; then
-    kubectl apply -f "$POST_INSTALL_MANIFEST_URL"
+    $ssh_cmd kubectl apply -f "$POST_INSTALL_MANIFEST_URL"
 fi
 
 printf "Finished running ${step}\n"
