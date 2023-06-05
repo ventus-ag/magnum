@@ -105,6 +105,7 @@ class Handler(object):
         allow_update_status = (
             fields.ClusterStatus.CREATE_COMPLETE,
             fields.ClusterStatus.UPDATE_COMPLETE,
+            fields.ClusterStatus.UPGRADE_COMPLETE,
             fields.ClusterStatus.RESUME_COMPLETE,
             fields.ClusterStatus.RESTORE_COMPLETE,
             fields.ClusterStatus.ROLLBACK_COMPLETE,
@@ -241,6 +242,7 @@ class Handler(object):
         allow_update_status = (
             fields.ClusterStatus.CREATE_COMPLETE,
             fields.ClusterStatus.UPDATE_COMPLETE,
+            fields.ClusterStatus.UPGRADE_COMPLETE,
             fields.ClusterStatus.RESUME_COMPLETE,
             fields.ClusterStatus.RESTORE_COMPLETE,
             fields.ClusterStatus.ROLLBACK_COMPLETE,
@@ -248,6 +250,7 @@ class Handler(object):
             fields.ClusterStatus.CHECK_COMPLETE,
             fields.ClusterStatus.ADOPT_COMPLETE,
             fields.ClusterStatus.UPDATE_FAILED,
+            fields.ClusterStatus.UPGRADE_FAILED,
             fields.ClusterStatus.UPDATE_IN_PROGRESS,
         )
         if cluster.status not in allow_update_status:
@@ -309,6 +312,7 @@ class Handler(object):
         allow_update_status = (
             fields.ClusterStatus.CREATE_COMPLETE,
             fields.ClusterStatus.UPDATE_COMPLETE,
+            fields.ClusterStatus.UPGRADE_COMPLETE,
             fields.ClusterStatus.RESUME_COMPLETE,
             fields.ClusterStatus.RESTORE_COMPLETE,
             fields.ClusterStatus.ROLLBACK_COMPLETE,
