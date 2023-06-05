@@ -239,7 +239,7 @@ spec:
             path: /etc/kubernetes
 EOF
 
-kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
+$ssh_cmd kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 $ssh_cmd helm repo add deliveryhero https://charts.deliveryhero.io/
 $ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}

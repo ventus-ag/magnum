@@ -107,20 +107,20 @@ EOF
 }
 
     echo "Waiting for Kubernetes API..."
-    until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
+    until  [ "ok" = "$($ssh_cmd kubectl get --raw='/healthz' 2>nil)" ]
     do
         sleep 5
     done
 
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
     $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
     # Patch the deployment to use the default DNS policy
-    kubectl patch deployment openstack-cinder-csi-controllerplugin -p '{"spec": {"template": {"spec": {"dnsPolicy": "Default"}}}}' -n kube-system
+    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin -p '{"spec": {"template": {"spec": {"dnsPolicy": "Default"}}}}' -n kube-system
 
 fi
 printf "Finished running ${step}\n"

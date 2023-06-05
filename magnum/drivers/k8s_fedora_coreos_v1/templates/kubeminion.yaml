@@ -688,6 +688,7 @@ resources:
           - - get_file: ../../common/templates/kubernetes/fragments/write-heat-params.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
+            - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
