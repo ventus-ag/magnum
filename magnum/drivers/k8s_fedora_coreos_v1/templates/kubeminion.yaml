@@ -616,9 +616,6 @@ resources:
       group: script
       inputs:
         - name: kube_tag_input
-        - name: kube_image_digest_input
-        - name: ostree_remote_input
-        - name: ostree_commit_input
       config:
         list_join:
           - "\n"
@@ -714,6 +711,8 @@ resources:
             ],
         }
       actions: ["UPDATE"]
+      input_values:
+        kube_tag_input: { get_param: kube_tag }
 
 outputs:
   kube_minion_ip:
