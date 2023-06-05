@@ -482,6 +482,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
             - get_file: ../../common/templates/kubernetes/fragments/make-cert-client.sh
             - get_file: ../../common/templates/fragments/configure-docker-registry.sh
+            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
             - str_replace:
@@ -680,6 +681,7 @@ resources:
         list_join:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/write-heat-params.sh
+            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh

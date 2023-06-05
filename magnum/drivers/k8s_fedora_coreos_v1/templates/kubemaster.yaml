@@ -909,6 +909,7 @@ resources:
                   "$CA_KEY": { get_param: ca_key }
             - get_file: ../../common/templates/kubernetes/fragments/configure-etcd.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
+            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-master.sh
             - str_replace:
                 template:
@@ -1221,6 +1222,7 @@ resources:
         list_join:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh
+            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
