@@ -364,6 +364,10 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
+  upgrade_minions:
+    equals:
+      - get_param: is_upgrade
+      - true
 
 resources:
   agent_config:
@@ -612,6 +616,7 @@ resources:
       mountpoint: /dev/vdb
 
   upgrade_kubernetes_config:
+    condition: upgrade_minions
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -687,6 +692,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
+    condition: upgrade_minions
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL

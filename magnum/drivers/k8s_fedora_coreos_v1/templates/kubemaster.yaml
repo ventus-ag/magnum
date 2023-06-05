@@ -674,6 +674,10 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
+  upgrade_masters:
+    equals:
+      - get_param: is_upgrade
+      - true
 
 resources:
   ######################################################################
@@ -1082,6 +1086,7 @@ resources:
       mountpoint: /dev/vdb
 
   upgrade_kubernetes_config:
+    condition: upgrade_masters
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1228,6 +1233,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
+    condition: upgrade_masters
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL

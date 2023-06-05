@@ -1370,6 +1370,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
@@ -1385,6 +1386,7 @@ resources:
         get_attr: [kube_masters, resource.0]
 
   kube_cluster_upgrade:
+    condition: update_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
