@@ -4,6 +4,8 @@ set +x
 . /etc/sysconfig/heat-params
 set -x
 
+CERT_DIR=/etc/kubernetes/certs
+
 # root kubeconfig
 ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
 cat > ${ADMIN_KUBECONFIG} << EOF
