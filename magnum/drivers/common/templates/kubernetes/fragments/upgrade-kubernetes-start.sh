@@ -16,7 +16,7 @@ fi
 new_kube_tag="$KUBE_TAG"
 new_ostree_remote="$OSTREE_REMOTE"
 new_ostree_commit="$OSTREE_COMMIT"
-KUBE_TAG=$(cat /tmp/old_kube_tag)
+OLD_KUBE_TAG=$(cat /tmp/old_kube_tag)
 
 function drain {
     # If there is only one master and this is the master node, skip the drain, just cordon it
@@ -30,7 +30,7 @@ function drain {
     fi
 }
 
-if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
+if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
 
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
         SERVICE_LIST=$(cat /tmp/service_list)

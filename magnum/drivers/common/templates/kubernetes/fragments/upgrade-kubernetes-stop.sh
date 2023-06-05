@@ -16,8 +16,8 @@ new_kube_tag="$KUBE_TAG"
 new_ostree_remote="$OSTREE_REMOTE"
 new_ostree_commit="$OSTREE_COMMIT"
 
-KUBE_TAG=$($ssh_cmd kubelet --version | awk '{print $2}')
-echo "${KUBE_TAG}" > /tmp/old_kube_tag
+OLD_KUBE_TAG=$($ssh_cmd kubelet --version | awk '{print $2}')
+echo "${OLD_KUBE_TAG}" > /tmp/old_kube_tag
 
 function drain {
     # If there is only one master and this is the master node, skip the drain, just cordon it
@@ -31,7 +31,7 @@ function drain {
     fi
 }
 
-if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
+if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
 
     drain
 
@@ -42,7 +42,7 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}
             ${ssh_cmd} podman rm $(${ssh_cmd} podman ps --filter name=${service} -a -q)
-            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}*:${KUBE_TAG} -a -q)
+            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}*:${OLD_KUBE_TAG} -a -q)
         done
 
         $ssh_cmd systemctl stop kubelet
