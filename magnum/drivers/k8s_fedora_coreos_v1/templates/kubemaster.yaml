@@ -1224,6 +1224,8 @@ resources:
                 template: |
                   #!/bin/sh
                   echo 'stack_id'
+                  KUBE_TAG_TEST="$KUBE_TAG"
+                  echo "KUBE_TAG_TEST=$KUBE_TAG_TEST"
                 params:
                   stack_id: { get_param: "OS::stack_id" }
             - get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh
