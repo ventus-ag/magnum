@@ -1357,7 +1357,6 @@ resources:
           metrics_scraper_tag: { get_param: metrics_scraper_tag }
 
   kube_cluster_config:
-    condition: create_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1367,59 +1366,9 @@ resources:
           - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - if:
-                - calico_v3_3
-                - get_file: ../../common/templates/kubernetes/fragments/calico-service-v3-3-x.sh
-                - get_file: ../../common/templates/kubernetes/fragments/calico-service.sh
             - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-helm-tiller.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/enable-prometheus-monitoring.sh,
-                  }
-                params:
-                  "${GRAFANA_ADMIN_PASSWD}": { get_param: grafana_admin_passwd }
-            - str_replace:
-                params:
-                  $enable-ingress-traefik:
-                    {
-                      get_file: ../../common/templates/kubernetes/fragments/enable-ingress-traefik.sh,
-                    }
-                  $enable-ingress-octavia:
-                    {
-                      get_file: ../../common/templates/kubernetes/fragments/enable-ingress-octavia.sh,
-                    }
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/enable-ingress-controller.sh,
-                  }
-            - get_file: ../../common/templates/kubernetes/fragments/kube-dashboard-service.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/enable-keystone-auth.sh,
-                  }
-                params:
-                  "$KEYSTONE_AUTH_DEFAULT_POLICY":
-                    { get_param: keystone_auth_default_policy }
             - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
-            # Helm Based Installation Configuration Scripts
-            - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/helm/prometheus-operator.sh,
-                  }
-                params:
-                  "${GRAFANA_ADMIN_PASSWD}": { get_param: grafana_admin_passwd }
-                  "${KUBE_MASTERS_PRIVATE}":
-                    { get_attr: [kube_masters, kube_master_external_ip] }
-            - get_file: ../../common/templates/kubernetes/helm/prometheus-adapter.sh
-            - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
@@ -1435,37 +1384,13 @@ resources:
       server:
         get_attr: [kube_masters, resource.0]
 
-  kube_cluster_config_upgrade:
-    type: OS::Heat::SoftwareConfig
-    properties:
-      group: script
-      config:
-        list_join:
-          - "\n"
-          - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
-            - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh
-            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
-            # Helm Based Installation Configuration Scripts
-            - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
-            - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-
   kube_cluster_upgrade:
-    depends_on:
-      - kube_masters
-      - kube_cluster_config_upgrade
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
       signal_transport: HEAT_SIGNAL
       config:
-        get_resource: kube_cluster_config_upgrade
+        get_resource: kube_cluster_config
       server:
         get_attr: [kube_masters, resource.0]
 

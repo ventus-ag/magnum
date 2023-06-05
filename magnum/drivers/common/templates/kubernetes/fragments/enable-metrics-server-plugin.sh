@@ -1,27 +1,23 @@
-#!/bin/bash
+#!/bin/sh
 
-set +x
+step="enable-metrics-server-plugin"
+printf "Starting to run ${step}\n"
+
 . /etc/sysconfig/heat-params
-set -ex
 
-CHART_NAME="metrics-server"
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [ "$(echo ${METRICS_SERVER_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    echo "Writing ${CHART_NAME} config"
 
-    HELM_CHART_DIR="/srv/magnum/kubernetes/helm/magnum"
-    mkdir -p ${HELM_CHART_DIR}
+_metrics_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/metrics-server/}
 
-    cat << EOF >> ${HELM_CHART_DIR}/requirements.yaml
-- name: ${CHART_NAME}
-  version: ${METRICS_SERVER_CHART_TAG}
-  repository: https://kubernetes-sigs.github.io/metrics-server/
-EOF
-
-    cat << EOF >> ${HELM_CHART_DIR}/values.yaml
+METRICS_SERVER_VALUES_YAML=/srv/magnum/kubernetes/helm/metrics-server/values.yaml
+echo "Writing File: $METRICS_SERVER_VALUES_YAML"
+mkdir -p $(dirname ${METRICS_SERVER_VALUES_YAML})
+cat << EOF > ${METRICS_SERVER_VALUES_YAML}
 metrics-server:
   image:
-    repository: ${CONTAINER_INFRA_PREFIX:-registry.k8s.io/metrics-server/}metrics-server
+    repository: ${_metrics_prefix}metrics-server
   service:
     labels:
     kubernetes.io/cluster-service: "true"
@@ -46,4 +42,10 @@ metrics-server:
     - --metric-resolution=15s
     - --kubelet-insecure-tls=true
 EOF
+
+
+$ssh_cmd helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server
+$ssh_cmd helm upgrade -i metrics-server metrics-server/metrics-server --version ${METRICS_SERVER_CHART_TAG} -n kube-system -f ${METRICS_SERVER_VALUES_YAML}
+
 fi
+printf "Finished running ${step}\n"

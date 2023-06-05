@@ -382,7 +382,7 @@ users:
 EOF
 echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
 chown root:root ${ADMIN_KUBECONFIG}
-chmod 755 ${ADMIN_KUBECONFIG}
+chmod 600 ${ADMIN_KUBECONFIG}
 export KUBECONFIG=${ADMIN_KUBECONFIG}
 
 # kube-config controller 
