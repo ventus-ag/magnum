@@ -282,6 +282,7 @@ users:
     client-certificate: ${CERT_DIR}/proxy.crt
     client-key: ${CERT_DIR}/proxy.key
 EOF
+chmod 0640 ${PROXY_KUBECONFIG}
 
 sed -i '
     /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged='"$KUBE_ALLOW_PRIV"'"/
@@ -382,7 +383,7 @@ users:
 EOF
 echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
 chown root:root ${ADMIN_KUBECONFIG}
-chmod 600 ${ADMIN_KUBECONFIG}
+chmod 640 ${ADMIN_KUBECONFIG}
 export KUBECONFIG=${ADMIN_KUBECONFIG}
 
 # kube-config controller 
@@ -409,6 +410,7 @@ users:
     client-certificate: ${CERT_DIR}/controller.crt
     client-key: ${CERT_DIR}/controller.key
 EOF
+chmod 0640 ${CONTROLLER_KUBECONFIG}
 
 # Add controller manager args
 KUBE_CONTROLLER_MANAGER_ARGS="--leader-elect=true"
@@ -462,6 +464,8 @@ users:
     client-certificate: ${CERT_DIR}/scheduler.crt
     client-key: ${CERT_DIR}/scheduler.key
 EOF
+chmod 0640 ${SCHEDULER_KUBECONFIG}
+
 
 # Add scheduler args
 KUBE_SCHEDULER_ARGS="--leader-elect=true"
@@ -523,6 +527,7 @@ users:
     client-certificate: ${CERT_DIR}/kubelet.crt
     client-key: ${CERT_DIR}/kubelet.key
 EOF
+chmod 0640 ${KUBELET_KUBECONFIG}
 
 KUBELET_ARGS="${KUBELET_ARGS} --kubeconfig ${KUBELET_KUBECONFIG}"
 
