@@ -93,3 +93,4 @@ elif [ "$new_ostree_remote" != "" ] && [ "$current_ostree_remote" != "$new_ostre
 fi
 
 rm -f /tmp/service_list
+rm -f /tmp/old_kube_tag

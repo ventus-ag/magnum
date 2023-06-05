@@ -42,7 +42,7 @@ if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}
             ${ssh_cmd} podman rm $(${ssh_cmd} podman ps --filter name=${service} -a -q)
-            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}*:${OLD_KUBE_TAG} -a -q)
+            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}* -a -q)
         done
 
         $ssh_cmd systemctl stop kubelet
