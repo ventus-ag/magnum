@@ -120,7 +120,7 @@ EOF
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
     # Patch the deployment to use the default DNS policy
-    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin -p '{"spec": {"template": {"spec": {"dnsPolicy": "Default"}}}}' -n kube-system
+    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin -p "{\"spec\": {\"template\": {\"spec\": {\"dnsPolicy\": \"Default\"}}}}" -n kube-system
 
 fi
 printf "Finished running ${step}\n"
