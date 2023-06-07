@@ -578,6 +578,7 @@ resources:
       group: script
       inputs:
         - name: INSTANCE_NAME
+        - name: IS_UPGRADE
         - name: PROMETHEUS_MONITORING
         - name: KUBE_ALLOW_PRIV
         - name: KUBE_MASTER_IP
@@ -664,6 +665,7 @@ resources:
       actions: ["UPDATE"]
       input_values:
         INSTANCE_NAME: { get_param: name }
+        IS_UPGRADE: { get_param: is_upgrade }
         PROMETHEUS_MONITORING: { get_param: prometheus_monitoring }
         KUBE_ALLOW_PRIV: { get_param: kube_allow_priv }
         KUBE_MASTER_IP: { get_param: kube_master_ip }

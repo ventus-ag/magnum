@@ -23,6 +23,7 @@ mkdir -p "$(dirname ${HEAT_PARAMS})"
 cat << EOF > ${HEAT_PARAMS}
 ARCH="$ARCH"
 INSTANCE_NAME="$INSTANCE_NAME"
+IS_UPGRADE="$IS_UPGRADE"
 HEAPSTER_ENABLED="$HEAPSTER_ENABLED"
 METRICS_SERVER_ENABLED="$METRICS_SERVER_ENABLED"
 METRICS_SERVER_TAG="$METRICS_SERVER_TAG"
@@ -88,6 +89,12 @@ KUBERNETES_TARBALL_URL="$KUBERNETES_TARBALL_URL"
 OSTREE_REMOTE="$OSTREE_REMOTE"
 OSTREE_COMMIT="$OSTREE_COMMIT"
 EOF
+
+## NOTE: The following is a workaround for the fact that the we will get rid of registry.ventuscloud.eu prefix
+if [ "$(echo "$IS_UPGRADE" | tr '[:upper:]' '[:lower:]')" == "true" ] && [ "$CONTAINER_INFRA_PREFIX" == "registry.ventuscloud.eu/ventus/" ]; then
+    echo "CONTAINER_INFRA_PREFIX=\"\"" >> ${HEAT_PARAMS}
+fi
+
 
 chown root:root "${HEAT_PARAMS}"
 chmod 600 "${HEAT_PARAMS}"

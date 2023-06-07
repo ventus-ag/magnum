@@ -1040,6 +1040,7 @@ resources:
       group: script
       inputs:
         - name: INSTANCE_NAME
+        - name: IS_UPGRADE
         - name: HEAPSTER_ENABLED
         - name: METRICS_SERVER_ENABLED
         - name: METRICS_SERVER_CHART_TAG
@@ -1197,6 +1198,7 @@ resources:
       actions: ["UPDATE"]
       input_values:
         INSTANCE_NAME: { get_param: name }
+        IS_UPGRADE: { get_param: is_upgrade }
         HEAPSTER_ENABLED: { get_param: heapster_enabled }
         METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
         METRICS_SERVER_CHART_TAG: { get_param: metrics_server_chart_tag }

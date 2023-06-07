@@ -68,7 +68,15 @@ vxlan
 br_netfilter
 EOF
 fi
-    
+
+cat <<EOF > /etc/sysctl.d/k8s_custom.conf
+net.ipv4.conf.default.rp_filter=2
+net.ipv4.conf.*.rp_filter=2
+net.ipv4.conf.all.promote_secondaries = 1
+net.ipv4.conf.*.accept_source_route = 1
+net.ipv4.ip_unprivileged_port_start = 0
+net.ipv4.ping_group_range = 0 2147483647
+EOF
 
 mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
