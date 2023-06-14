@@ -1360,15 +1360,15 @@ resources:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
+      inputs:
+        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
           - - str_replace:
                 template: |
                   #!/bin/sh
-                  echo 'stack_id'
-                params:
-                  stack_id: { get_param: "OS::stack_id" }
+                  echo 'OS_STACK_ID'
             - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
@@ -1390,6 +1390,8 @@ resources:
         get_resource: kube_cluster_config
       server:
         get_attr: [kube_masters, resource.0]
+      input_values:
+        OS_STACK_ID: { get_param: "OS::stack_id" }
 
   kube_cluster_upgrade:
     condition: upgrade_cluster_resources
@@ -1401,6 +1403,8 @@ resources:
         get_resource: kube_cluster_config
       server:
         get_attr: [kube_masters, resource.0]
+      input_values:
+        OS_STACK_ID: { get_param: "OS::stack_id" }
 
   ######################################################################
   #
