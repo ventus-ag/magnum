@@ -478,10 +478,17 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'OS::stack_id',
             'OS::project_id',
             'OS::stack_name',
-            'container_runtime'
+            'container_runtime',
+            'containerd_version',
+            'container_infra_prefix'
             ]
         for param in parameters_to_ignore:
             current_parameters.pop(param, None)
+
+        # Remove parameters ending with '_tag'
+        keys_to_remove = [k for k in current_parameters if k.endswith('_tag')]
+        for k in keys_to_remove:
+            current_parameters.pop(k, None)
 
         # Merge current parameters with new parameters. 
         # Note that this will overwrite any old parameters with new ones if they have the same name.
