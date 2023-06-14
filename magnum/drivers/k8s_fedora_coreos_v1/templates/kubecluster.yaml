@@ -1365,11 +1365,7 @@ resources:
       config:
         list_join:
           - "\n"
-          - - str_replace:
-                template: |
-                  #!/bin/sh
-                  echo 'OS_STACK_ID'
-            - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+          - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
             - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh

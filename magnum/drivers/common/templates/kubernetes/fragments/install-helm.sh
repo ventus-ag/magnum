@@ -2,6 +2,7 @@
 
 step="install-helm"
 echo "START: ${step}"
+echo "STACK ID: $OS_STACK_ID"
 
 set +x
 . /etc/sysconfig/heat-params
