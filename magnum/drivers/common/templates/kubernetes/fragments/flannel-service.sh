@@ -5,6 +5,7 @@ set +x
 . /etc/sysconfig/heat-params
 
 set -x
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
@@ -236,11 +237,11 @@ EOF
         done
     fi
     ## delete old flannel before upgrade
-    kubectl delete ds kube-flannel-ds -n kube-system --ignore-not-found=true
-    kubectl delete ConfigMap kube-flannel-cfg -n kube-system --ignore-not-found=true
-    kubectl delete ServiceAccount flannel -n kube-system --ignore-not-found=true
-    kubectl delete ClusterRoleBinding flannel -n kube-system --ignore-not-found=true
-    kubectl delete ClusterRole flannel -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ds kube-flannel-ds -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ConfigMap kube-flannel-cfg -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ServiceAccount flannel -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ClusterRoleBinding flannel -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ClusterRole flannel -n kube-system --ignore-not-found=true
 
-    kubectl apply -f "${FLANNEL_DEPLOY}" --wait=true
+    $ssh_cmd kubectl apply -f "${FLANNEL_DEPLOY}" --wait=true
 fi

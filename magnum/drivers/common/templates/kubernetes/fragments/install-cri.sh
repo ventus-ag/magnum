@@ -10,10 +10,12 @@ set -x
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
+    $ssh_cmd docker network prune  2>/dev/null
+    $ssh_cmd systemctl stop docker
     $ssh_cmd systemctl disable docker
+    $ssh_cmd ip link delete cni0  2>/dev/null
     if [ -z "${CONTAINERD_TARBALL_URL}"  ] ; then
         CONTAINERD_TARBALL_URL="https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
-        #CONTAINERD_TARBALL_URL="https://magnum.ventuscloud.eu/public/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
     fi
 
     $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
