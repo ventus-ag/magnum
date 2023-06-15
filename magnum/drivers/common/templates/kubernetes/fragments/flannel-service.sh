@@ -242,5 +242,5 @@ EOF
     kubectl delete ClusterRoleBinding flannel -n kube-system --ignore-not-found=true
     kubectl delete ClusterRole flannel -n kube-system --ignore-not-found=true
 
-    kubectl apply -f "${FLANNEL_DEPLOY}" --namespace=kube-flannel --wait=true
+    kubectl apply -f "${FLANNEL_DEPLOY}" --wait=true
 fi
