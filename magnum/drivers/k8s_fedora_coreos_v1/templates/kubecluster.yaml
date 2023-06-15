@@ -938,7 +938,7 @@ parameters:
   containerd_version:
     type: string
     description: The containerd version to download from https://github.com/containerd/containerd/releases
-    default: "1.7.0"
+    default: "1.7.2"
 
   containerd_tarball_url:
     type: string
