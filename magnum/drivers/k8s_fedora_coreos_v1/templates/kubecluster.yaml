@@ -1390,7 +1390,7 @@ resources:
         OS_STACK_ID: { get_param: "OS::stack_id" }
 
   kube_cluster_upgrade:
-    condition: upgrade_cluster_resources
+    #condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["UPDATE"]
