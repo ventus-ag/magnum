@@ -484,8 +484,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         for param in parameters_to_ignore:
             current_parameters.pop(param, None)
 
-        # Remove parameters ending with '_tag'
-        keys_to_remove = [k for k in current_parameters if k.endswith('_tag')]
+        # Remove parameters ending with '_tag' or '_sha256'
+        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
         for k in keys_to_remove:
             current_parameters.pop(k, None)
 
