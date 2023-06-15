@@ -13,7 +13,6 @@ if [[ "${auto_scaling_plugin_enabled}" = "true" || ("${auto_healing_enabled}" = 
 _autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/autoscaling/}
 
 CLUSTER_AUTOSCALER_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-autoscaler/values.yaml
-[ -f ${CLUSTER_AUTOSCALER_VALUES_YAML} ] || {
     echo "Writing File: $CLUSTER_AUTOSCALER_VALUES_YAML"
     mkdir -p $(dirname ${CLUSTER_AUTOSCALER_VALUES_YAML})
     cat << EOF > ${CLUSTER_AUTOSCALER_VALUES_YAML}
@@ -51,7 +50,6 @@ dnsPolicy: Default
 priorityClassName: "system-cluster-critical"
 
 EOF
-}
 
 
 

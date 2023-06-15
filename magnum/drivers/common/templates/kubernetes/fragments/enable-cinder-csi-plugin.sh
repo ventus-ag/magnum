@@ -14,7 +14,6 @@ if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true
     _cinderplugin_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/provider-os/}
 
 CINDER_CSI_VALUES_YAML=/srv/magnum/kubernetes/helm/cinder-csi/values.yaml
-[ -f ${CINDER_CSI_VALUES_YAML} ] || {
     echo "Writing File: $CINDER_CSI_VALUES_YAML"
     mkdir -p $(dirname ${CINDER_CSI_VALUES_YAML})
     cat << EOF > ${CINDER_CSI_VALUES_YAML}
@@ -104,7 +103,7 @@ clusterID: ${CLUSTER_UUID}
 
 priorityClassName: ""
 EOF
-}
+
 
     echo "Waiting for Kubernetes API..."
     until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]

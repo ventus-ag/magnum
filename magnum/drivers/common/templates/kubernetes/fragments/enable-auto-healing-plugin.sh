@@ -13,7 +13,6 @@ _gcr_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
 _k8s_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
 
 CLUSTER_NPD_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-npd/values.yaml
-[ -f ${CLUSTER_NPD_VALUES_YAML} ] || {
     echo "Writing File: $CLUSTER_NPD_VALUES_YAML"
     mkdir -p $(dirname ${CLUSTER_NPD_VALUES_YAML})
     cat << EOF > ${CLUSTER_NPD_VALUES_YAML}
@@ -120,7 +119,6 @@ updateStrategy: RollingUpdate
 # maxUnavailable -- The max pods unavailable during an update
 maxUnavailable: 1
 EOF
-}
 
     MAGNUM_AUTOHEALER_YAML=/srv/magnum/kubernetes/magnum-autohealer.yaml
     echo "Writing File: $MAGNUM_AUTOHEALER_YAML"

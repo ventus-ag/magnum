@@ -12,7 +12,6 @@ if [ "$NETWORK_DRIVER" = "flannel" ]; then
     _prefix=${CONTAINER_INFRA_PREFIX:-quay.io/coreos/}
     FLANNEL_DEPLOY=/srv/magnum/kubernetes/manifests/flannel-deploy.yaml
 
-    [ -f ${FLANNEL_DEPLOY} ] || {
     echo "Writing File: $FLANNEL_DEPLOY"
     mkdir -p "$(dirname ${FLANNEL_DEPLOY})"
     set +x
@@ -225,7 +224,7 @@ spec:
           path: /run/xtables.lock
           type: FileOrCreate
 EOF
-    }
+
     set -x
 
     if [ "$MASTER_INDEX" = "0" ]; then

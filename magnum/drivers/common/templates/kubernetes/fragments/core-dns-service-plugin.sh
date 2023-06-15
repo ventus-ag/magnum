@@ -10,7 +10,6 @@ _autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 CORE_DNS_VALUES_YAML=/srv/magnum/kubernetes/helm/coredns/values.yaml
-[ -f ${CORE_DNS_VALUES_YAML} ] || {
     echo "Writing File: $CORE_DNS_VALUES_YAML"
     mkdir -p $(dirname ${CORE_DNS_VALUES_YAML})
     cat << EOF > ${CORE_DNS_VALUES_YAML}
@@ -132,7 +131,6 @@ deployment:
   enabled: true
   name: "coredns"
 EOF
-}
 
 echo "Waiting for Kubernetes API..."
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
