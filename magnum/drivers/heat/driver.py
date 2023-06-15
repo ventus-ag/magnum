@@ -479,8 +479,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'OS::project_id',
             'OS::stack_name',
             'container_runtime',
-            'containerd_version',
-            'container_infra_prefix'
+            'containerd_version'
             ]
         for param in parameters_to_ignore:
             current_parameters.pop(param, None)
