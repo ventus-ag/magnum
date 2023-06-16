@@ -36,5 +36,8 @@ if [ "${is_upgrade}" = "true" ]; then
     # Delete old occ as it migrated to helm
     OCC_DEPLOY=/srv/magnum/kubernetes/openstack-cloud-controller-manager.yaml
     $ssh_cmd kubectl delete -f "${OCC_DEPLOY}" --ignore-not-found=true
+
+    # Delete old magnum release as it deprecated
+    $ssh_cmd helm uninstall magnum -n kube-system 2>/dev/nul
 fi
 printf "Finished running ${step}\n"

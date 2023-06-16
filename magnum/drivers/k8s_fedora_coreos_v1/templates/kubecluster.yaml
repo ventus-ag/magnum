@@ -1372,6 +1372,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh
             - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-occm-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
