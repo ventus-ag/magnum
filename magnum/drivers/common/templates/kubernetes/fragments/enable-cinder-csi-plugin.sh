@@ -118,8 +118,20 @@ EOF
     $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
+
+
+    CINDER_CSI_VALUES_YAML_PATCH=/srv/magnum/kubernetes/helm/cinder-csi/patch.yaml
+    echo "Writing File: $CINDER_CSI_VALUES_YAML_PATCH"
+    mkdir -p $(dirname ${CINDER_CSI_VALUES_YAML_PATCH})
+    cat << EOF > ${CINDER_CSI_VALUES_YAML_PATCH}
+spec:
+  template:
+    spec:
+      dnsPolicy: Default
+EOF
+
     # Patch the deployment to use the default DNS policy
-    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin -p "{\"spec\": {\"template\": {\"spec\": {\"dnsPolicy\": \"Default\"}}}}" -n kube-system
+    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin --patch-file ${CINDER_CSI_VALUES_YAML_PATCH} -n kube-system
 
 fi
 printf "Finished running ${step}\n"
