@@ -35,7 +35,34 @@ cloudConfig:
     password: ${TRUSTEE_PASSWORD}
     trust-id: ${TRUST_ID}
     region: ${REGION_NAME}
-    ca-file: /etc/kubernetes/certs/ca-bundle.crt
+    ca-file: /etc/kubernetes/ca-bundle.crt
+
+# List of controllers should be enabled.
+# Use '*' to enable all controllers.
+# Prefix a controller with '-' to disable it.
+enabledControllers:
+  - cloud-node
+  - cloud-node-lifecycle
+  - service
+
+# The following three volumes are required to use all OCCM controllers,
+# but might not be needed if you just use a specific controller
+# Additional volumes that should be available to the pods:
+extraVolumes:
+  - name: flexvolume-dir
+    hostPath:
+      path: /var/lib/kubelet/volumeplugins
+  - name: k8s-certs
+    hostPath:
+      path: /etc/kubernetes
+# Where the additional volumes should be mounted into the pods:
+extraVolumeMounts:
+  - name: flexvolume-dir
+    mountPath: /var/lib/kubelet/volumeplugins
+    readOnly: true
+  - name: k8s-certs
+    mountPath: /etc/kubernetes
+    readOnly: true
 EOF
 
 
