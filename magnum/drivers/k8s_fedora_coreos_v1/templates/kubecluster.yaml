@@ -495,7 +495,7 @@ parameters:
   etcd_tag:
     type: string
     description: tag of the etcd system container
-    default: v3.5.7
+    default: v3.5.9
 
   coredns_tag:
     type: string

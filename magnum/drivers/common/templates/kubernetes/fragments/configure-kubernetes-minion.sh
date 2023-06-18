@@ -38,12 +38,10 @@ if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
     cni_plugin_version="1.0.1"
     flannel_plugin_version="1.0"
     $ssh_cmd mkdir -p ${cni_plugin_path}
-    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
     $ssh_cmd mkdir -p /opt/cni/bin
     $ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
-    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/flannel-amd64 -o /opt/cni/bin/flannel
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
     $ssh_cmd chmod +x /opt/cni/bin/*
 fi
 
@@ -244,17 +242,12 @@ sed -i '
 # the option --hostname-override for kubelet uses the hostname to register the node.
 # Using any other name will break the load balancer and cinder volume features.
 mkdir -p /etc/kubernetes/manifests
-# KUBELET_ARGS="--pod-manifest-path=/etc/kubernetes/manifests --kubeconfig ${KUBELET_KUBECONFIG}"
 KUBELET_ARGS="--kubeconfig ${KUBELET_KUBECONFIG}"
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
-
-# if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-#     KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
-# fi
 
 if [ -f /etc/sysconfig/docker ] ; then
     # For using default log-driver, other options should be ignored
@@ -268,12 +261,6 @@ if [ -f /etc/sysconfig/docker ] ; then
     fi
 fi
 
-# KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
-
-# KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key"
-
-# specified cgroup driver
-# KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
   KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
 
@@ -289,8 +276,6 @@ autohealing_controller=$(echo ${AUTO_HEALING_CONTROLLER} | tr '[:upper:]' '[:low
 if [[ "${auto_healing_enabled}" = "true" && "${autohealing_controller}" = "draino" ]]; then
     KUBELET_ARGS="${KUBELET_ARGS} --node-labels=draino-enabled=true"
 fi
-
-#KUBELET_ARGS="${KUBELET_ARGS} --cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin"
 
 EXTRA_KUBELETCONFIG_PARAMETERS=""
 if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then

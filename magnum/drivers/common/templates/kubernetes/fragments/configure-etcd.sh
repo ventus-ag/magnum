@@ -150,7 +150,7 @@ fi
 
 if [ "$TLS_DISABLED" = "False" ]; then
 
-    cat >> /etc/etcd/etcd.conf.yaml <<EOF
+    cat > /etc/etcd/etcd.conf.yaml <<EOF
 client-transport-security:
   # Path to the client server TLS cert file.
   cert-file: $cert_dir/server.crt
@@ -209,3 +209,6 @@ fi
 if [ -n "$HTTP_PROXY" ]; then
     echo "ETCD_DISCOVERY_PROXY=$HTTP_PROXY" >> /etc/etcd/etcd.conf
 fi
+
+$ssh_cmd systemctl daemon-reload
+$ssh_cmd systemctl restart etcd
