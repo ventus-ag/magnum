@@ -150,7 +150,7 @@ fi
 
 if [ "$TLS_DISABLED" = "False" ]; then
 
-    cat > /etc/etcd/etcd.conf.yaml <<EOF
+    cat >> /etc/etcd/etcd.conf.yaml <<EOF
 client-transport-security:
   # Path to the client server TLS cert file.
   cert-file: $cert_dir/server.crt
