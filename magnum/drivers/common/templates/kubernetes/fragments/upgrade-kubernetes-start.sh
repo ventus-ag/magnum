@@ -49,6 +49,13 @@ if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
             echo "Trying to uncordon node..."
             sleep 5s
         done
+
+        all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
+        for master in ${all_masters}; do
+          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/control-plane-
+          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/master-
+          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
+        done
     fi
 fi
 
