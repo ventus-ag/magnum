@@ -9,8 +9,7 @@ ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [[ "${auto_healing_plugin_enabled}" = "true" ]]; then
 
-_gcr_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
-_k8s_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}
+_k8s_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}
 
 CLUSTER_NPD_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-npd/values.yaml
     echo "Writing File: $CLUSTER_NPD_VALUES_YAML"
@@ -40,7 +39,7 @@ logDir:
   pod: ""
 
 image:
-  repository: ${_gcr_prefix}node-problem-detector/node-problem-detector
+  repository: ${_k8s_prefix}node-problem-detector/node-problem-detector
   tag: v0.8.12
   # image.digest -- the image digest. If given it takes precedence over a given tag.
   digest: ""

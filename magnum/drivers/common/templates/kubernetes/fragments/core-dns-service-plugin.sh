@@ -5,7 +5,7 @@ printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
 
-_dns_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/coredns/}
+_dns_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/coredns/}
 _autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
