@@ -27,21 +27,13 @@ if [[ ! -f "/tmp/old_kube_tag" ]]; then
   $ssh_cmd rm -rf /etc/cni/net.d/*
 fi
 
-if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
-    $ssh_cmd rm -rf /var/lib/cni/*
-    $ssh_cmd rm -rf /opt/cni/*
-    $ssh_cmd mkdir -p /opt/cni
+if [ "$NETWORK_DRIVER" = "flannel" ]; then
     $ssh_cmd mkdir -p /opt/cni/bin
-    $ssh_cmd mkdir -p /etc/cni/net.d/
 
     cni_plugin_path="/srv/magnum/kubernetes/cni"
-    cni_plugin_version="1.0.1"
-    flannel_plugin_version="1.0"
     $ssh_cmd mkdir -p ${cni_plugin_path}
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-    $ssh_cmd mkdir -p /opt/cni/bin
-    $ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/${FLANNEL_CNI_TAG}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
+    $ssh_cmd tar -C /opt/cni/bin -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
     $ssh_cmd chmod +x /opt/cni/bin/*
 fi
 

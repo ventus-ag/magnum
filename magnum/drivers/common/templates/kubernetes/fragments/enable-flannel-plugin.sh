@@ -62,16 +62,6 @@ EOF
         $ssh_cmd helm mapkubeapis flannel --namespace kube-flannel
     fi
 
-
-    $ssh_cmd rm -rf /opt/cni/bin/*
-    $ssh_cmd mkdir -p /opt/cni/bin
-
-    cni_plugin_path="/srv/magnum/kubernetes/cni"
-    $ssh_cmd mkdir -p ${cni_plugin_path}
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/${FLANNEL_CNI_TAG}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
-    $ssh_cmd tar -C /opt/cni/bin -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
-    $ssh_cmd chmod +x /opt/cni/bin/*
-
     $ssh_cmd helm upgrade -i flannel flannel/flannel --version ${FLANNEL_TAG} -n kube-flannel -f ${FLANNEL_VALUES_YAML}
     
     if $ssh_cmd helm list --namespace kube-flannel| grep -q "flannel"; then
