@@ -1519,6 +1519,7 @@ resources:
           ostree_remote: { get_param: ostree_remote }
           ostree_commit: { get_param: ostree_commit }
           use_podman: { get_param: use_podman }
+          flannel_cni_tag: { get_param: flannel_cni_tag }
           selinux_mode: { get_param: selinux_mode }
           container_runtime: { get_param: container_runtime }
           containerd_version: { get_param: containerd_version }

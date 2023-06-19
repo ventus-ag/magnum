@@ -336,6 +336,10 @@ parameters:
     description: >
       If true, run system containers for kubernetes, etcd and heat-agent
 
+  flannel_cni_tag:
+    type: string
+    description: tag of the flannel cni container
+
   selinux_mode:
     type: string
     description: >
@@ -476,6 +480,7 @@ resources:
                   $NODEGROUP_ROLE: { get_param: nodegroup_role }
                   $NODEGROUP_NAME: { get_param: nodegroup_name }
                   $USE_PODMAN: { get_param: use_podman }
+                  $FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }
                   $CONTAINER_RUNTIME: { get_param: container_runtime }
                   $CONTAINERD_VERSION: { get_param: containerd_version }
                   $CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
@@ -633,6 +638,7 @@ resources:
         - name: NODEGROUP_ROLE
         - name: NODEGROUP_NAME
         - name: USE_PODMAN
+        - name: FLANNEL_CNI_TAG
         - name: CONTAINER_RUNTIME
         - name: CONTAINERD_VERSION
         - name: CONTAINERD_TARBALL_URL
@@ -721,6 +727,7 @@ resources:
         NODEGROUP_ROLE: { get_param: nodegroup_role }
         NODEGROUP_NAME: { get_param: nodegroup_name }
         USE_PODMAN: { get_param: use_podman }
+        FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }
         CONTAINER_RUNTIME: { get_param: container_runtime }
         CONTAINERD_VERSION: { get_param: containerd_version }
         CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
