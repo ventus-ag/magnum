@@ -22,14 +22,14 @@ image:
 cloudProvider: magnum
 nameOverride: manager
 cloudConfigPath: /etc/kubernetes/cloud-config
-# autoDiscovery:
-#   clusterName: ${CLUSTER_UUID}
-#   roles:
-#     - worker
-autoscalingGroups:
- - name: default-worker
-   minSize: ${MIN_NODE_COUNT}
-   maxSize: ${MAX_NODE_COUNT}
+autoDiscovery:
+  clusterName: ${CLUSTER_UUID}
+  roles:
+    - worker
+# autoscalingGroups:
+#  - name: default-worker
+#    minSize: ${MIN_NODE_COUNT}
+#    maxSize: ${MAX_NODE_COUNT}
 extraArgs:
   logtostderr: true
   stderrthreshold: info

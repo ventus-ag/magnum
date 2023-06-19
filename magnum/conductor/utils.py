@@ -190,6 +190,11 @@ def _get_nodegroup_object(context, cluster, node_count, is_master=False):
         ng.min_node_count = cluster.labels['min_node_count']
     else:
         ng.min_node_count = 0
+
+    if (cluster.labels != wtypes.Unset and cluster.labels is not None
+       and 'max_node_count' in cluster.labels):
+        ng.max_node_count = cluster.labels['max_node_count']
+
     ng.name = "default-%s" % ng.role
     ng.is_default = True
     ng.status = fields.ClusterStatus.CREATE_IN_PROGRESS
