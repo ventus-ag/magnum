@@ -343,6 +343,9 @@ class Handler(object):
             nodegroup.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
             cluster.status_reason = None
             if (cluster.labels != wtypes.Unset and cluster.labels is not None
+              and 'min_node_count' in cluster.labels):
+                nodegroup.min_node_count = cluster.labels['min_node_count']
+            if (cluster.labels != wtypes.Unset and cluster.labels is not None
               and 'max_node_count' in cluster.labels):
                 nodegroup.max_node_count = cluster.labels['max_node_count']
         except Exception as e:
