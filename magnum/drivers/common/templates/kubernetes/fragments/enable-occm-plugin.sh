@@ -74,8 +74,10 @@ else
     echo "mapkubeapis is not installed. Installing now..."
     $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
 fi
+if $ssh_cmd helm list --namespace kube-system | grep -q "openstack-ccm"; then
+    $ssh_cmd helm mapkubeapis openstack-ccm --namespace kube-system
+fi
 
-$ssh_cmd helm mapkubeapis openstack-ccm --namespace kube-system
 $ssh_cmd helm upgrade -i openstack-ccm cpo/openstack-cloud-controller-manager --version 2.27.1 -n kube-system -f ${OCCM_VALUES_YAML}
 
 fi

@@ -147,7 +147,10 @@ else
     $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
 fi
 
-$ssh_cmd helm mapkubeapis coredns --namespace kube-system
+if $ssh_cmd helm list --namespace kube-system | grep -q "coredns"; then
+    $ssh_cmd helm mapkubeapis coredns --namespace kube-system
+fi
+
 $ssh_cmd helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
 
 printf "Finished running ${step}\n"

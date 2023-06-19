@@ -245,8 +245,10 @@ else
     echo "mapkubeapis is not installed. Installing now..."
     $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
 fi
+if $ssh_cmd helm list --namespace kube-system | grep -q "npd"; then
+    $ssh_cmd helm mapkubeapis npd --namespace kube-system
+fi
 
-$ssh_cmd helm mapkubeapis npd --namespace kube-system
 $ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.4 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
 
 fi

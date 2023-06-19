@@ -53,7 +53,10 @@ else
     $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
 fi
 
-$ssh_cmd helm mapkubeapis metrics-server --namespace kube-system
+if $ssh_cmd helm list --namespace kube-system | grep -q "metrics-server"; then
+    $ssh_cmd helm mapkubeapis metrics-server --namespace kube-system
+fi
+
 $ssh_cmd helm upgrade -i metrics-server metrics-server/metrics-server --version ${METRICS_SERVER_CHART_TAG} -n kube-system -f ${METRICS_SERVER_VALUES_YAML}
 
 fi

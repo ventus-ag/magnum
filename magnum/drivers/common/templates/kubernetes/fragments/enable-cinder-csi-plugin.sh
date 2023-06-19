@@ -116,15 +116,17 @@ EOF
     $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
     $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
-    
+
     if $ssh_cmd helm plugin list | grep -q "mapkubeapis"; then
         echo "mapkubeapis is already installed."
     else
         echo "mapkubeapis is not installed. Installing now..."
         $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
     fi
+    if $ssh_cmd helm list --namespace kube-system | grep -q "cinder-csi"; then
+        $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system
+    fi
 
-    $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
 
