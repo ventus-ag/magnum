@@ -16,6 +16,7 @@ from heatclient import exc
 from oslo_log import log as logging
 from pycadf import cadftaxonomy as taxonomy
 import six
+from wsme import types as wtypes
 
 from magnum.common import clients
 from magnum.common import exception
@@ -331,6 +332,7 @@ class Handler(object):
                                                   ct.cluster_distro,
                                                   ct.coe)
         # Upgrade cluster
+
         try:
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_PENDING,
@@ -340,6 +342,9 @@ class Handler(object):
             cluster.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
             nodegroup.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
             cluster.status_reason = None
+            if (cluster.labels != wtypes.Unset and cluster.labels is not None
+              and 'max_node_count' in cluster.labels):
+                nodegroup.max_node_count = cluster.labels['max_node_count']
         except Exception as e:
             cluster.status = fields.ClusterStatus.UPDATE_FAILED
             cluster.status_reason = six.text_type(e)
