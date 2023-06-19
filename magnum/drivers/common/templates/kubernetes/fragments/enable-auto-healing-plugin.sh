@@ -40,7 +40,6 @@ logDir:
 
 image:
   repository: ${_k8s_prefix}node-problem-detector/node-problem-detector
-  tag: v0.8.12
   # image.digest -- the image digest. If given it takes precedence over a given tag.
   digest: ""
   pullPolicy: IfNotPresent
@@ -214,7 +213,7 @@ spec:
         node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
       containers:
         - name: magnum-auto-healer
-          image: ${_k8s_prefix}provider-os/magnum-auto-healer:v1.26.2
+          image: ${_k8s_prefix}provider-os/magnum-auto-healer:v1.27.1
           imagePullPolicy: Always
           args:
             - /bin/magnum-auto-healer
@@ -239,7 +238,7 @@ EOF
 $ssh_cmd kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 $ssh_cmd helm repo add deliveryhero https://charts.deliveryhero.io/
-$ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.3 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
+$ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.4 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"

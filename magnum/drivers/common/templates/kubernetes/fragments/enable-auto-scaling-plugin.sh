@@ -19,7 +19,6 @@ CLUSTER_AUTOSCALER_VALUES_YAML=/srv/magnum/kubernetes/helm/cluster-autoscaler/va
 magnumClusterName: ${CLUSTER_UUID}
 image:
   repository: ${_autoscaler_prefix}cluster-autoscaler
-  tag: ${AUTOSCALER_TAG}
 cloudProvider: magnum
 nameOverride: manager
 cloudConfigPath: /etc/kubernetes/cloud-config
@@ -54,7 +53,7 @@ EOF
 
 
 $ssh_cmd helm repo add autoscaler https://kubernetes.github.io/autoscaler
-$ssh_cmd helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.28.0 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
+$ssh_cmd helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.29.1 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 fi
 printf "Finished running ${step}\n"
