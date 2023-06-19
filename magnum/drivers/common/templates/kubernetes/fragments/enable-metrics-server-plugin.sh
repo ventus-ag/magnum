@@ -45,6 +45,15 @@ EOF
 
 
 $ssh_cmd helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server
+
+if $ssh_cmd helm plugin list | grep -q "mapkubeapis"; then
+    echo "mapkubeapis is already installed."
+else
+    echo "mapkubeapis is not installed. Installing now..."
+    $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
+fi
+
+$ssh_cmd helm mapkubeapis metrics-server --namespace kube-system
 $ssh_cmd helm upgrade -i metrics-server metrics-server/metrics-server --version ${METRICS_SERVER_CHART_TAG} -n kube-system -f ${METRICS_SERVER_VALUES_YAML}
 
 fi

@@ -54,8 +54,14 @@ EOF
 
 $ssh_cmd helm repo add autoscaler https://kubernetes.github.io/autoscaler
 
-$ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis 2>/dev/null
-$ssh_cmd helm mapkubeapis openstack-autoscaler --namespace kube-system 2>/dev/null
+if $ssh_cmd helm plugin list | grep -q "mapkubeapis"; then
+    echo "mapkubeapis is already installed."
+else
+    echo "mapkubeapis is not installed. Installing now..."
+    $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
+fi
+
+$ssh_cmd helm mapkubeapis openstack-autoscaler --namespace kube-system
 
 $ssh_cmd helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.29.1 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 

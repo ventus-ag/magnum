@@ -139,8 +139,15 @@ do
 done
 
 $ssh_cmd helm repo add coredns https://coredns.github.io/helm
-$ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis 2>/dev/null
-$ssh_cmd helm mapkubeapis coredns --namespace kube-system 2>/dev/null
+
+if $ssh_cmd helm plugin list | grep -q "mapkubeapis"; then
+    echo "mapkubeapis is already installed."
+else
+    echo "mapkubeapis is not installed. Installing now..."
+    $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
+fi
+
+$ssh_cmd helm mapkubeapis coredns --namespace kube-system
 $ssh_cmd helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
 
 printf "Finished running ${step}\n"
