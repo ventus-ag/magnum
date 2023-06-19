@@ -40,22 +40,24 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
         ${ssh_cmd} systemctl start ${service}
     done
     ${ssh_cmd} systemctl start kubelet
+    if [[ ${INSTANCE_NAME} != *"node"* ]]; then
+      i=0
+      until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}
+      do
+          i=$((i+1))
+          [ $i -lt 30 ] || break;
+          echo "Trying to uncordon node..."
+          sleep 5s
+      done
 
-    i=0
-    until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}
-    do
-        i=$((i+1))
-        [ $i -lt 30 ] || break;
-        echo "Trying to uncordon node..."
-        sleep 5s
-    done
+      all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
 
-    all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
-    for master in ${all_masters}; do
-      ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane-
-      ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master-
-      ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
-    done
+      for master in ${all_masters}; do
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane-
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master-
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
+      done
+    fi
 fi
 # fi
 
