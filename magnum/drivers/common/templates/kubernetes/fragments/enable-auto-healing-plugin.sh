@@ -238,6 +238,8 @@ EOF
 $ssh_cmd kubectl apply -f ${MAGNUM_AUTOHEALER_YAML}
 
 $ssh_cmd helm repo add deliveryhero https://charts.deliveryhero.io/
+$ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis 2>/dev/null
+$ssh_cmd helm mapkubeapis npd --namespace kube-system 2>/dev/null
 $ssh_cmd helm upgrade -i npd deliveryhero/node-problem-detector --version 2.3.4 -n kube-system -f ${CLUSTER_NPD_VALUES_YAML}
 
 fi

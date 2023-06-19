@@ -116,6 +116,8 @@ EOF
     $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
     $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
+    $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis 2>/dev/null
+    $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system 2>/dev/null
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
 

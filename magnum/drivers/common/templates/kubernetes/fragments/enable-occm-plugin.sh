@@ -67,6 +67,8 @@ EOF
 
 
 $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
+$ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis 2>/dev/null
+$ssh_cmd helm mapkubeapis openstack-ccm --namespace kube-system 2>/dev/null
 $ssh_cmd helm upgrade -i openstack-ccm cpo/openstack-cloud-controller-manager --version 2.27.1 -n kube-system -f ${OCCM_VALUES_YAML}
 
 fi
