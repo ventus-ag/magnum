@@ -17,6 +17,8 @@ case "$arch" in
         ;;
 esac
 
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
+
 version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
 
 if version_gt $(echo "$KUBE_TAG" | cut -c 2-) 1.25; then
@@ -170,7 +172,7 @@ EOF
 
 
 ## NOTE: The following is a workaround for the fact that the we will get rid of registry.ventuscloud.eu prefix
-sed -i 's|CONTAINER_INFRA_PREFIX="registry.ventuscloud.eu/ventus/"|CONTAINER_INFRA_PREFIX=""|g' ${HEAT_PARAMS}
+$ssh_cmd "sed -i 's|CONTAINER_INFRA_PREFIX=\"registry.ventuscloud.eu/ventus/\"|CONTAINER_INFRA_PREFIX=\"\"|g' ${HEAT_PARAMS}"
 
 chown root:root "${HEAT_PARAMS}"
 chmod 600 "${HEAT_PARAMS}"
