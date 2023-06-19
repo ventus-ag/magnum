@@ -31,38 +31,38 @@ function drain {
     fi
 }
 
-if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
+# if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
 
-    drain
+drain
 
-    if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-        SERVICE_LIST=$($ssh_cmd podman ps -f name=kube --format {{.Names}})
-        echo "${SERVICE_LIST}" > /tmp/service_list
+if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
+    SERVICE_LIST=$($ssh_cmd podman ps -f name=kube --format {{.Names}})
+    echo "${SERVICE_LIST}" > /tmp/service_list
 
-        for service in ${SERVICE_LIST}; do
-            ${ssh_cmd} systemctl stop ${service}
-            ${ssh_cmd} podman rm $(${ssh_cmd} podman ps --filter name=${service} -a -q)
-            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}* -a -q)
-        done
+    for service in ${SERVICE_LIST}; do
+        ${ssh_cmd} systemctl stop ${service}
+        ${ssh_cmd} podman rm $(${ssh_cmd} podman ps --filter name=${service} -a -q)
+        ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}* -a -q)
+    done
 
-        $ssh_cmd systemctl stop kubelet
-        $ssh_cmd rm /usr/local/bin/kube*
-        $ssh_cmd mkdir -p /srv/magnum/k8s/
+    $ssh_cmd systemctl stop kubelet
+    $ssh_cmd rm /usr/local/bin/kube*
+    $ssh_cmd mkdir -p /srv/magnum/k8s/
 
-        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubelet
-        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubectl
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubelet
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubectl
 
-        $ssh_cmd chmod +x /usr/local/bin/kube*
+    $ssh_cmd chmod +x /usr/local/bin/kube*
 
-        if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
-            $ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
-        fi
+    if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
+        $ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
+    fi
 
-        $ssh_cmd cp /usr/local/bin/kubectl /srv/magnum/bin/
-        $ssh_cmd chmod +x /srv/magnum/bin/kube*
+    $ssh_cmd cp /usr/local/bin/kubectl /srv/magnum/bin/
+    $ssh_cmd chmod +x /srv/magnum/bin/kube*
 
-        if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
-            $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
-        fi
+    if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
+        $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
     fi
 fi
+# fi

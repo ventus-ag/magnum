@@ -30,34 +30,34 @@ function drain {
     fi
 }
 
-if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
+# if [ "${new_kube_tag}" != "${OLD_KUBE_TAG}" ]; then
 
-    if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-        SERVICE_LIST=$(cat /tmp/service_list)
+if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
+    SERVICE_LIST=$(cat /tmp/service_list)
 
-        ${ssh_cmd} systemctl daemon-reload
-        for service in ${SERVICE_LIST}; do
-            ${ssh_cmd} systemctl start ${service}
-        done
-        ${ssh_cmd} systemctl start kubelet
+    ${ssh_cmd} systemctl daemon-reload
+    for service in ${SERVICE_LIST}; do
+        ${ssh_cmd} systemctl start ${service}
+    done
+    ${ssh_cmd} systemctl start kubelet
 
-        i=0
-        until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}
-        do
-            i=$((i+1))
-            [ $i -lt 30 ] || break;
-            echo "Trying to uncordon node..."
-            sleep 5s
-        done
+    i=0
+    until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}
+    do
+        i=$((i+1))
+        [ $i -lt 30 ] || break;
+        echo "Trying to uncordon node..."
+        sleep 5s
+    done
 
-        all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
-        for master in ${all_masters}; do
-          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/control-plane-
-          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/master-
-          ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
-        done
-    fi
+    all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
+    for master in ${all_masters}; do
+      ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/control-plane-
+      ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/master-
+      ${ssh_cmd} ${kubecontrol} label nodes ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
+    done
 fi
+# fi
 
 function setup_uncordon {
     # Create a service to uncordon the node itself after reboot
