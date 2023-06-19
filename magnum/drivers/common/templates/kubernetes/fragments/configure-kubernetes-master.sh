@@ -513,12 +513,18 @@ fi
 if [ -z "${KUBE_NODE_IP}" ]; then
     KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 fi
-
+EXTRA_REGISTER_WITH_TAINTS=""
 EXTRA_KUBELETCONFIG_PARAMETERS=""
 if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then
   EXTRA_KUBELETCONFIG_PARAMETERS='containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
 shutdownGracePeriod: 60s
 shutdownGracePeriodCriticalPods: 20s'
+fi
+
+if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
+EXTRA_REGISTER_WITH_TAINTS='
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/control-plane"'
 fi
 
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
@@ -551,9 +557,8 @@ containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 registerWithTaints:
   - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/control-plane"
-  - effect: "NoSchedule"
     key: "node-role.kubernetes.io/master"
+${EXTRA_REGISTER_WITH_TAINTS}
 maxPods: 110
 podPidsLimit: -1
 resolvConf: /run/systemd/resolve/resolv.conf

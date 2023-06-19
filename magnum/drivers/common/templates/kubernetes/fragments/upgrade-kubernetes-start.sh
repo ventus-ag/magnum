@@ -53,10 +53,7 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
       all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=magnum.openstack.org/role=master -o name)
 
       for master in ${all_masters}; do
-          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane-
-          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master-
-          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane=
-          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master=
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}= --overwrite
       done
     fi
 fi
