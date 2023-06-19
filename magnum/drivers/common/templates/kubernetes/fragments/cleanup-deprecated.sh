@@ -39,5 +39,12 @@ if [ "${is_upgrade}" = "true" ]; then
 
     # Delete old magnum release as it deprecated
     $ssh_cmd helm uninstall magnum -n kube-system 2>/dev/nul
+
+    ## delete old flannel before upgrade
+    $ssh_cmd kubectl delete ds kube-flannel-ds -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ConfigMap kube-flannel-cfg -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ServiceAccount flannel -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ClusterRoleBinding flannel -n kube-system --ignore-not-found=true
+    $ssh_cmd kubectl delete ClusterRole flannel -n kube-system --ignore-not-found=true
 fi
 printf "Finished running ${step}\n"

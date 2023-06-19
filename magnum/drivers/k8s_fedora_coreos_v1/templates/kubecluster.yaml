@@ -505,12 +505,12 @@ parameters:
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.21.5
+    default: v0.22.0
 
   flannel_cni_tag:
     type: string
     description: tag of the flannel cni container
-    default: v1.1.2
+    default: v1.3.0
 
   kube_version:
     type: string
@@ -1369,7 +1369,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/flannel-service.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-flannel-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-occm-plugin.sh
