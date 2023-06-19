@@ -55,7 +55,8 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
       for master in ${all_masters}; do
           ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane-
           ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master-
-          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}=
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/control-plane=
+          ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/master=
       done
     fi
 fi

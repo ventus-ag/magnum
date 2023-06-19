@@ -551,7 +551,9 @@ containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 registerWithTaints:
   - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}"
+    key: "node-role.kubernetes.io/control-plane"
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/master"
 maxPods: 110
 podPidsLimit: -1
 resolvConf: /run/systemd/resolve/resolv.conf
