@@ -153,4 +153,8 @@ fi
 
 $ssh_cmd helm upgrade -i coredns coredns/coredns --version 1.22.0 -n kube-system -f ${CORE_DNS_VALUES_YAML} --wait
 
+if $ssh_cmd helm list --namespace kube-system | grep -q "coredns"; then
+    $ssh_cmd helm mapkubeapis coredns --namespace kube-system
+fi
+
 printf "Finished running ${step}\n"

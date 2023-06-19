@@ -73,7 +73,10 @@ EOF
     $ssh_cmd chmod +x /opt/cni/bin/*
 
     $ssh_cmd helm upgrade -i flannel flannel/flannel --version ${FLANNEL_TAG} -n kube-flannel -f ${FLANNEL_VALUES_YAML}
-
+    
+    if $ssh_cmd helm list --namespace kube-flannel| grep -q "flannel"; then
+        $ssh_cmd helm mapkubeapis flannel --namespace kube-flannel
+    fi
 fi
 
 

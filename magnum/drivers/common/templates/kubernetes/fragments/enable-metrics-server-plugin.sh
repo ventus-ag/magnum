@@ -59,5 +59,9 @@ fi
 
 $ssh_cmd helm upgrade -i metrics-server metrics-server/metrics-server --version ${METRICS_SERVER_CHART_TAG} -n kube-system -f ${METRICS_SERVER_VALUES_YAML}
 
+if $ssh_cmd helm list --namespace kube-system | grep -q "metrics-server"; then
+    $ssh_cmd helm mapkubeapis metrics-server --namespace kube-system
+fi
+
 fi
 printf "Finished running ${step}\n"
