@@ -522,8 +522,7 @@ shutdownGracePeriodCriticalPods: 20s'
 fi
 
 if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
-EXTRA_REGISTER_WITH_TAINTS='
-  - effect: "NoSchedule"
+EXTRA_REGISTER_WITH_TAINTS='  - effect: "NoSchedule"
     key: "node-role.kubernetes.io/control-plane"'
 fi
 

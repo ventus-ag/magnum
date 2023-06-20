@@ -30,8 +30,8 @@ done
 
 # Label leader nodes
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-  kubectl patch node ${INSTANCE_NAME} \
-      --patch '{"metadata": {"labels": {"node-role.kubernetes.io/'${LEAD_NODE_ROLE_NAME}'": ""}}}'
+  ${ssh_cmd} kubectl label node ${INSTANCE_NAME} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}= --overwrite
+  ${ssh_cmd} kubectl label node ${INSTANCE_NAME} node-role.kubernetes.io/master= --overwrite
 do
   echo "Trying to label node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}"
   sleep 5s
