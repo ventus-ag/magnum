@@ -29,16 +29,18 @@ for action in enable restart; do
 done
 
 # Label leader nodes
-until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-  ${ssh_cmd} kubectl label node ${INSTANCE_NAME} node-role.kubernetes.io/master= --overwrite
+# Label self as master
+until  [ "ok" = "$(kubectl get --raw='/healthz')" ] && \
+    kubectl patch node ${INSTANCE_NAME} \
+        --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
 do
-  echo "Trying to label node-role.kubernetes.io/master"
-  sleep 5s
+    echo "Trying to label master node with node-role.kubernetes.io/master=\"\""
+    sleep 5s
 done
 
 if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
   until  [ "ok" = "$(kubectl get --raw='/healthz')" ] && \
-      $ssh_cmd kubectl patch node ${INSTANCE_NAME} \
+      kubectl patch node ${INSTANCE_NAME} \
           --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
   do
       echo "Trying to label master node with node-role.kubernetes.io/control-plane=\"\""
