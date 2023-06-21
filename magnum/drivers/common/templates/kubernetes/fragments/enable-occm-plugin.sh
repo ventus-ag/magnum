@@ -45,16 +45,9 @@ enabledControllers:
   - cloud-node-lifecycle
   - service
 
-# Set nodeSelector where the controller shut run, i.e. controlplane nodes
-nodeSelector:
-  node-role.kubernetes.io/master: ""
-
 # Set tolerations for nodes where the controller should run, i.e. node should uninitialized, controlplane...
 tolerations:
   - key: node.cloudprovider.kubernetes.io/uninitialized
-    value: "true"
-    effect: NoSchedule
-  - key: node-role.kubernetes.io/master
     value: "true"
     effect: NoSchedule
 
