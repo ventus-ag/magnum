@@ -571,7 +571,6 @@ eventRecordQPS: 5
 ${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
 
-KUBELET_ARGS="${KUBELET_ARGS} --node-labels node-role.kubernetes.io/master="
 KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
 
 

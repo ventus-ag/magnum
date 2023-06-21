@@ -30,11 +30,21 @@ done
 
 # Label leader nodes
 until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
-  ${ssh_cmd} kubectl label node ${INSTANCE_NAME} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}= --overwrite
+  ${ssh_cmd} kubectl label node ${INSTANCE_NAME} node-role.kubernetes.io/master= --overwrite
 do
-  echo "Trying to label node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}"
+  echo "Trying to label node-role.kubernetes.io/master"
   sleep 5s
 done
+
+if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
+  until  [ "ok" = "$(kubectl get --raw='/healthz')" ] && \
+      $ssh_cmd kubectl patch node ${INSTANCE_NAME} \
+          --patch '{"metadata": {"labels": {"node-role.kubernetes.io/control-plane": ""}}}'
+  do
+      echo "Trying to label master node with node-role.kubernetes.io/control-plane=\"\""
+      sleep 5s
+  done
+fi
 
 if [[ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" && -n "${KUBE_IMAGE_DIGEST}" ]]; then
     echo "Image inspect"

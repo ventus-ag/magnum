@@ -45,6 +45,9 @@ enabledControllers:
   - cloud-node-lifecycle
   - service
 
+nodeSelector:
+  node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
+
 # Set tolerations for nodes where the controller should run, i.e. node should uninitialized, controlplane...
 tolerations:
   - key: node.cloudprovider.kubernetes.io/uninitialized
