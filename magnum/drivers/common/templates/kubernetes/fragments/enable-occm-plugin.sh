@@ -53,6 +53,12 @@ tolerations:
   - key: node.cloudprovider.kubernetes.io/uninitialized
     value: "true"
     effect: NoSchedule
+  - effect: NoSchedule
+    operator: Exists
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
 
 # The following three volumes are required to use all OCCM controllers,
 # but might not be needed if you just use a specific controller
