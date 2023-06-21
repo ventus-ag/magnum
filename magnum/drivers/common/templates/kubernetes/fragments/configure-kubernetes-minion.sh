@@ -10,6 +10,7 @@ ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 echo "configuring kubernetes (minion)"
 
 version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+version_lt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" = "$1"; }
 
 if [ ! -z "$HTTP_PROXY" ]; then
     export HTTP_PROXY
@@ -257,7 +258,7 @@ if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
   KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
 
   # if less than 1.27, use remote runtime flags
-  if ! version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
+  if version_lt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
       KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
   fi
