@@ -45,6 +45,19 @@ enabledControllers:
   - cloud-node-lifecycle
   - service
 
+# Set nodeSelector where the controller shut run, i.e. controlplane nodes
+nodeSelector:
+  node-role.kubernetes.io/master: "true"
+
+# Set tolerations for nodes where the controller should run, i.e. node should uninitialized, controlplane...
+tolerations:
+  - key: node.cloudprovider.kubernetes.io/uninitialized
+    value: "true"
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    value: "true"
+    effect: NoSchedule
+
 # The following three volumes are required to use all OCCM controllers,
 # but might not be needed if you just use a specific controller
 # Additional volumes that should be available to the pods:
