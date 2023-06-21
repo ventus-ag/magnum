@@ -47,7 +47,7 @@ enabledControllers:
 
 # Set nodeSelector where the controller shut run, i.e. controlplane nodes
 nodeSelector:
-  node-role.kubernetes.io/master: "true"
+  node-role.kubernetes.io/master: ""
 
 # Set tolerations for nodes where the controller should run, i.e. node should uninitialized, controlplane...
 tolerations:
