@@ -570,7 +570,7 @@ runtimeRequestTimeout: 15m
 eventRecordQPS: 5
 ${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
-KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
+KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
 
 
 cat > /etc/kubernetes/kubelet.env <<EOF
