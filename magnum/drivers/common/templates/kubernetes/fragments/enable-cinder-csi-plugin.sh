@@ -7,67 +7,39 @@ printf "Starting to run ${step}\n"
 
 volume_driver=$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')
 cinder_csi_plugin_enabled=$(echo $CINDER_CSI_PLUGIN_ENABLED | tr '[:upper:]' '[:lower:]')
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 if [ "${volume_driver}" = "cinder" ] && [ "${cinder_csi_plugin_enabled}" = "true" ]; then
-    _cindercsi_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/sig-storage/}
-    _cinderplugin_prefix=${CONTAINER_INFRA_PREFIX:-docker.io/k8scloudprovider/}
+    _cindercsi_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/sig-storage/}
+    _cinderplugin_prefix=${CONTAINER_INFRA_PREFIX:-registry.k8s.io/provider-os/}
 
 CINDER_CSI_VALUES_YAML=/srv/magnum/kubernetes/helm/cinder-csi/values.yaml
-[ -f ${CINDER_CSI_VALUES_YAML} ] || {
     echo "Writing File: $CINDER_CSI_VALUES_YAML"
     mkdir -p $(dirname ${CINDER_CSI_VALUES_YAML})
     cat << EOF > ${CINDER_CSI_VALUES_YAML}
-nameOverride: ""
-fullnameOverride: ""
-timeout: 3m
-
 csi:
   attacher:
     image:
       repository: ${_cindercsi_prefix}csi-attacher
-      tag: v3.1.0
-      pullPolicy: IfNotPresent
-    resources: {}
   provisioner:
     topology: "true"
     image:
       repository: ${_cindercsi_prefix}csi-provisioner
-      tag: v2.2.0
-      pullPolicy: IfNotPresent
-    resources: {}
   snapshotter:
     image:
       repository: ${_cindercsi_prefix}csi-snapshotter
-      tag: v4.2.1
-      pullPolicy: IfNotPresent
-    resources: {}
   resizer:
     image:
       repository: ${_cindercsi_prefix}csi-resizer
-      tag: v1.1.0
-      pullPolicy: IfNotPresent
-    resources: {}
   livenessprobe:
     image:
       repository: ${_cindercsi_prefix}livenessprobe
-      tag: v2.2.0
-      pullPolicy: IfNotPresent
-    failureThreshold: 5
-    initialDelaySeconds: 10
-    timeoutSeconds: 10
-    periodSeconds: 60
-    resources: {}
   nodeDriverRegistrar:
     image:
       repository: ${_cindercsi_prefix}csi-node-driver-registrar
-      tag: v2.1.0
-      pullPolicy: IfNotPresent
-    resources: {}
   plugin:
     image:
       repository: ${_cinderplugin_prefix}cinder-csi-plugin
-      pullPolicy: IfNotPresent
-      tag:  # defaults to .Chart.AppVersion
     volumes:
       - name: cacert
         hostPath:
@@ -75,46 +47,46 @@ csi:
           type: File
     volumeMounts:
       - name: cacert
-        mountPath: /etc/kubernetes/ca-bundle.crt
+        mountPath: /etc/kubernetes/certs/ca-bundle.crt
         readOnly: true
       - name: cloud-config
-        mountPath: /etc/kubernetes/cloud-config
-        subPath: cloud-config
+        mountPath: /etc/kubernetes/config/
         readOnly: true
+    controllerPlugin:
+      nodeSelector:
+        node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
     nodePlugin:
       affinity: {}
       nodeSelector: {}
       tolerations:
         - operator: Exists
       kubeletDir: /var/lib/kubelet
-    controllerPlugin:
-      affinity: {}
-      nodeSelector: {}
-      tolerations: []
-    resources: {}
   snapshotController:
     enabled: true
     image:
       repository: ${_cindercsi_prefix}snapshot-controller
-      tag: v4.2.1
-    resources: {}
-    affinity: {}
-    nodeSelector: {}
-    tolerations: []
 
 secret:
   enabled: true
   create: true
+  filename: config/cloud.conf
   name: cinder-csi-cloud-config
   data:
-    cloud-config: |-
+    cloud.conf: |-
       [Global]
-      auth-url=$AUTH_URL
-      user-id=$TRUSTEE_USER_ID
-      password=$TRUSTEE_PASSWORD
-      trust-id=$TRUST_ID
-      region=$REGION_NAME
-      ca-file=/etc/kubernetes/ca-bundle.crt
+      auth-url=${AUTH_URL}
+      user-id=${TRUSTEE_USER_ID}
+      password=${TRUSTEE_PASSWORD}
+      trust-id=${TRUST_ID}
+      region=${REGION_NAME}
+      ca-file=/etc/kubernetes/certs/ca-bundle.crt
 
 storageClass:
   enabled: true
@@ -125,9 +97,13 @@ storageClass:
     isDefault: false
     allowVolumeExpansion: true
 
+# You may set ID of the cluster where openstack-cinder-csi is deployed. This value will be appended
+# to volume metadata in newly provisioned volumes as cinder.csi.openstack.org/cluster=cluster ID.
+clusterID: ${CLUSTER_UUID}
+
 priorityClassName: ""
 EOF
-}
+
 
     echo "Waiting for Kubernetes API..."
     until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
@@ -135,12 +111,40 @@ EOF
         sleep 5
     done
 
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-4.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+    $ssh_cmd kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
-    helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
-    helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 1.4.9 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
+    $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
+
+    if $ssh_cmd helm plugin list | grep -q "mapkubeapis"; then
+        echo "mapkubeapis is already installed."
+    else
+        echo "mapkubeapis is not installed. Installing now..."
+        $ssh_cmd helm plugin install https://github.com/helm/helm-mapkubeapis
+    fi
+    if $ssh_cmd helm list --namespace kube-system | grep -q "cinder-csi"; then
+        $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system
+    fi
+
+    $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
+
+    if $ssh_cmd helm list --namespace kube-system | grep -q "cinder-csi"; then
+        $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system
+    fi
+
+    CINDER_CSI_VALUES_YAML_PATCH=/srv/magnum/kubernetes/helm/cinder-csi/patch.yaml
+    echo "Writing File: $CINDER_CSI_VALUES_YAML_PATCH"
+    mkdir -p $(dirname ${CINDER_CSI_VALUES_YAML_PATCH})
+    cat << EOF > ${CINDER_CSI_VALUES_YAML_PATCH}
+spec:
+  template:
+    spec:
+      dnsPolicy: Default
+EOF
+
+    # Patch the deployment to use the default DNS policy
+    $ssh_cmd kubectl patch deployment openstack-cinder-csi-controllerplugin --patch-file ${CINDER_CSI_VALUES_YAML_PATCH} -n kube-system
 
 fi
 printf "Finished running ${step}\n"

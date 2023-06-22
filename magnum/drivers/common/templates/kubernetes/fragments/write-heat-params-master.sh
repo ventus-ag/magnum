@@ -1,6 +1,7 @@
 #!/bin/sh
 
 echo "START: write-heat-params"
+set +x
 
 arch=$(uname -m)
 
@@ -16,13 +17,24 @@ case "$arch" in
         ;;
 esac
 
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
+
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+
+if version_gt $(echo "$KUBE_TAG" | cut -c 2-) 1.25; then
+    LEAD_NODE_ROLE_NAME="control-plane"
+else
+    LEAD_NODE_ROLE_NAME="master"
+fi
+
 HEAT_PARAMS=/etc/sysconfig/heat-params
-[ -f ${HEAT_PARAMS} ] || {
-    echo "Writing File: $HEAT_PARAMS"
-    mkdir -p "$(dirname ${HEAT_PARAMS})"
-    cat > ${HEAT_PARAMS} <<EOF
+
+echo "Writing File: $HEAT_PARAMS"
+mkdir -p "$(dirname ${HEAT_PARAMS})"
+cat << EOF > ${HEAT_PARAMS}
 ARCH="$ARCH"
 INSTANCE_NAME="$INSTANCE_NAME"
+IS_UPGRADE="$IS_UPGRADE"
 HEAPSTER_ENABLED="$HEAPSTER_ENABLED"
 METRICS_SERVER_ENABLED="$METRICS_SERVER_ENABLED"
 METRICS_SERVER_CHART_TAG="$METRICS_SERVER_CHART_TAG"
@@ -135,6 +147,7 @@ CSI_PROVISIONER_TAG="$CSI_PROVISIONER_TAG"
 CSI_SNAPSHOTTER_TAG="$CSI_SNAPSHOTTER_TAG"
 CSI_RESIZER_TAG="$CSI_RESIZER_TAG"
 CSI_NODE_DRIVER_REGISTRAR_TAG="$CSI_NODE_DRIVER_REGISTRAR_TAG"
+LEAD_NODE_ROLE_NAME="$LEAD_NODE_ROLE_NAME"
 DRAINO_TAG="$DRAINO_TAG"
 MAGNUM_AUTO_HEALER_TAG="$MAGNUM_AUTO_HEALER_TAG"
 AUTOSCALER_TAG="$AUTOSCALER_TAG"
@@ -153,8 +166,13 @@ POST_INSTALL_MANIFEST_URL="$POST_INSTALL_MANIFEST_URL"
 METRICS_SCRAPER_TAG="$METRICS_SCRAPER_TAG"
 KUBERNETES_TARBALL_SHA512="$KUBERNETES_TARBALL_SHA512"
 KUBERNETES_TARBALL_URL="$KUBERNETES_TARBALL_URL"
+OSTREE_REMOTE="$OSTREE_REMOTE"
+OSTREE_COMMIT="$OSTREE_COMMIT"
 EOF
-}
+
+
+## NOTE: The following is a workaround for the fact that the we will get rid of registry.ventuscloud.eu prefix
+$ssh_cmd "sed -i 's|CONTAINER_INFRA_PREFIX=\"registry.ventuscloud.eu/ventus/\"|CONTAINER_INFRA_PREFIX=\"\"|g' ${HEAT_PARAMS}"
 
 chown root:root "${HEAT_PARAMS}"
 chmod 600 "${HEAT_PARAMS}"

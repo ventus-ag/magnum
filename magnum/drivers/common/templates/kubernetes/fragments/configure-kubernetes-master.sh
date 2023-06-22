@@ -9,6 +9,9 @@ echo "configuring kubernetes (master)"
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
+version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
+version_lt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" = "$1"; }
+
 if [ ! -z "$HTTP_PROXY" ]; then
     export HTTP_PROXY
 fi
@@ -21,24 +24,17 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-$ssh_cmd rm -rf /etc/cni/net.d/*
+if [[ ! -f "/tmp/old_kube_tag" ]]; then
+  $ssh_cmd rm -rf /etc/cni/net.d/*
+fi
 
-if [ "${CONTAINER_RUNTIME}" = "host-docker"  ] ; then
-    $ssh_cmd rm -rf /var/lib/cni/*
-    $ssh_cmd rm -rf /opt/cni/*
+if [ "$NETWORK_DRIVER" = "flannel" ]; then
     $ssh_cmd mkdir -p /opt/cni/bin
-    $ssh_cmd mkdir -p /etc/cni/net.d/
 
     cni_plugin_path="/srv/magnum/kubernetes/cni"
-    cni_plugin_version="1.0.1"
-    flannel_plugin_version="1.0"
     $ssh_cmd mkdir -p ${cni_plugin_path}
-    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/v${cni_plugin_version}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz
-    $ssh_cmd mkdir -p /opt/cni/bin
-    $ssh_cmd tar zxf ${cni_plugin_path}/cni-plugins-linux-amd64-v${cni_plugin_version}.tgz -C /opt/cni/bin
-    # $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/flannel-io/cni-plugin/releases/download/v${flannel_plugin_version}/flannel-${ARCH} -o /opt/cni/bin/flannel
-    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://magnum.ventuscloud.eu/public/flannel-amd64 -o /opt/cni/bin/flannel
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/${FLANNEL_CNI_TAG}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
+    $ssh_cmd tar -C /opt/cni/bin -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
     $ssh_cmd chmod +x /opt/cni/bin/*
 fi
 
@@ -58,19 +54,25 @@ EOF
         systemctl restart NetworkManager
     fi
 elif [ "$NETWORK_DRIVER" = "flannel" ]; then
-    $ssh_cmd modprobe vxlan
-    echo "vxlan" > /etc/modules-load.d/vxlan.conf
+    $ssh_cmd modprobe -a vxlan br_netfilter
+    cat <<EOF > /etc/modules-load.d/flannel.conf
+vxlan
+br_netfilter
+EOF
 fi
 
+cat <<EOF > /etc/sysctl.d/k8s_custom.conf
+net.ipv4.conf.default.rp_filter=2
+net.ipv4.conf.*.rp_filter=2
+net.ipv4.conf.all.promote_secondaries = 1
+net.ipv4.conf.*.accept_source_route = 1
+net.ipv4.ip_unprivileged_port_start = 0
+net.ipv4.ping_group_range = 0 2147483647
+EOF
 
 mkdir -p /srv/magnum/kubernetes/
 cat > /etc/kubernetes/config <<EOF
-KUBE_LOGTOSTDERR="--logtostderr=true"
-KUBE_LOG_LEVEL="--v=3"
-
-EOF
-cat > /etc/kubernetes/kubelet <<EOF
-KUBELET_ARGS="--fail-swap-on=false"
+KUBE_LOG_LEVEL="--v=2"
 EOF
 
 cat > /etc/kubernetes/apiserver <<EOF
@@ -107,9 +109,9 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-apiserver \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-apiserver-\${ARCH}:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}kube-apiserver-\${ARCH}:\${KUBE_TAG} \\
     kube-apiserver \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_API_ARGS'
+    \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_API_ARGS'
 ExecStop=-/usr/bin/podman stop kube-apiserver
 Delegate=yes
 Restart=always
@@ -135,10 +137,10 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-controller-manager \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-controller-manager-\${ARCH}:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}kube-controller-manager-\${ARCH}:\${KUBE_TAG} \\
     kube-controller-manager \\
     --secure-port=0 \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
+    \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-controller-manager
 Delegate=yes
 Restart=always
@@ -164,9 +166,9 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-scheduler \\
     --volume /etc/ssl/certs:/etc/ssl/certs:ro \\
     --volume /run:/run \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-scheduler-\${ARCH}:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}kube-scheduler-\${ARCH}:\${KUBE_TAG} \\
     kube-scheduler \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
+    \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-scheduler
 Delegate=yes
 Restart=always
@@ -179,12 +181,13 @@ EOF
     cat > /etc/systemd/system/kubelet.service <<EOF
 [Unit]
 Description=Kubelet
-Wants=rpc-statd.service
+After=containerd.service
+Wants=containerd.service
 
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
-EnvironmentFile=/etc/kubernetes/kubelet
+EnvironmentFile=-/etc/kubernetes/kubelet.env
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/cni/net.d
 ExecStartPre=/bin/mkdir -p /etc/kubernetes/manifests
 ExecStartPre=/bin/mkdir -p /var/lib/calico
@@ -193,7 +196,7 @@ ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
+    \$KUBE_LOG_LEVEL \$KUBE_LOGTOSTDERR \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
 Restart=always
 RestartSec=10
@@ -221,9 +224,9 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     --volume /sys/fs/cgroup:/sys/fs/cgroup \\
     --volume /lib/modules:/lib/modules:ro \\
     --volume /etc/pki/tls/certs:/usr/share/ca-certificates:ro \\
-    \${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
+    \${CONTAINER_INFRA_PREFIX:-registry.k8s.io/}kube-proxy-\${ARCH}:\${KUBE_TAG} \\
     kube-proxy \\
-    \$KUBE_LOGTOSTDERR \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
+    \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
 Delegate=yes
 Restart=always
@@ -279,6 +282,7 @@ users:
     client-certificate: ${CERT_DIR}/proxy.crt
     client-key: ${CERT_DIR}/proxy.key
 EOF
+chmod 0640 ${PROXY_KUBECONFIG}
 
 sed -i '
     /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged='"$KUBE_ALLOW_PRIV"'"/
@@ -306,18 +310,13 @@ KUBE_API_ARGS="${KUBE_API_ARGS} \
     --requestheader-group-headers=X-Remote-Group \
     --requestheader-username-headers=X-Remote-User"
 
-
-if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    KUBE_API_ARGS="$KUBE_API_ARGS --cloud-provider=external"
-fi
-
 if [ "$KEYSTONE_AUTH_ENABLED" == "True" ]; then
     KEYSTONE_WEBHOOK_CONFIG=/etc/kubernetes/keystone_webhook_config.yaml
 
     [ -f ${KEYSTONE_WEBHOOK_CONFIG} ] || {
 echo "Writing File: $KEYSTONE_WEBHOOK_CONFIG"
 mkdir -p $(dirname ${KEYSTONE_WEBHOOK_CONFIG})
-cat << EOF > ${KEYSTONE_WEBHOOK_CONFIG}
+cat > ${KEYSTONE_WEBHOOK_CONFIG} << EOF
 ---
 apiVersion: v1
 clusters:
@@ -353,35 +352,6 @@ sed -i '
     /^KUBE_ETCD_SERVERS=/ s/=.*/="--etcd-servers=http:\/\/127.0.0.1:2379"/
 ' /etc/kubernetes/apiserver
 
-# root kubeconfig
-ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
-cat << EOF >> ${ADMIN_KUBECONFIG}
-apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: $(cat ${CERT_DIR}/ca.crt | base64 | tr -d '\n')
-    server: https://127.0.0.1:${KUBE_API_PORT}
-  name: ${CLUSTER_UUID}
-contexts:
-- context:
-    cluster: ${CLUSTER_UUID}
-    user: admin
-  name: default
-current-context: default
-kind: Config
-preferences: {}
-users:
-- name: admin
-  user:
-    as-user-extra: {}
-    client-certificate-data: $(cat ${CERT_DIR}/admin.crt | base64 | tr -d '\n')
-    client-key-data: $(cat ${CERT_DIR}/admin.key | base64 | tr -d '\n')
-EOF
-echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
-chown root:root ${ADMIN_KUBECONFIG}
-chmod 755 ${ADMIN_KUBECONFIG}
-export KUBECONFIG=${ADMIN_KUBECONFIG}
-
 # kube-config controller 
 CONTROLLER_KUBECONFIG=/etc/kubernetes/controller-kubeconfig.yaml
 cat > ${CONTROLLER_KUBECONFIG} << EOF
@@ -406,6 +376,7 @@ users:
     client-certificate: ${CERT_DIR}/controller.crt
     client-key: ${CERT_DIR}/controller.key
 EOF
+chmod 0640 ${CONTROLLER_KUBECONFIG}
 
 # Add controller manager args
 KUBE_CONTROLLER_MANAGER_ARGS="--leader-elect=true"
@@ -420,9 +391,6 @@ fi
 
 if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
     KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS --cloud-provider=external"
-    if [ "$(echo "${VOLUME_DRIVER}" | tr '[:upper:]' '[:lower:]')" = "cinder" ] && [ "$(echo "${CINDER_CSI_ENABLED}" | tr '[:upper:]' '[:lower:]')" != "true" ]; then
-        KUBE_CONTROLLER_MANAGER_ARGS="$KUBE_CONTROLLER_MANAGER_ARGS --external-cloud-volume-plugin=openstack --cloud-config=/etc/kubernetes/cloud-config"
-    fi
 fi
 
 
@@ -459,6 +427,8 @@ users:
     client-certificate: ${CERT_DIR}/scheduler.crt
     client-key: ${CERT_DIR}/scheduler.key
 EOF
+chmod 0640 ${SCHEDULER_KUBECONFIG}
+
 
 # Add scheduler args
 KUBE_SCHEDULER_ARGS="--leader-elect=true"
@@ -471,15 +441,9 @@ sed -i '
 
 # Add kubelet args
 $ssh_cmd mkdir -p /etc/kubernetes/manifests
-KUBELET_ARGS="--register-node=true --pod-manifest-path=/etc/kubernetes/manifests --hostname-override=${INSTANCE_NAME}"
-KUBELET_ARGS="${KUBELET_ARGS} --pod-infra-container-image=${CONTAINER_INFRA_PREFIX:-gcr.io/google_containers/}pause:3.1"
-KUBELET_ARGS="${KUBELET_ARGS} --cluster_dns=${DNS_SERVICE_IP} --cluster_domain=${DNS_CLUSTER_DOMAIN}"
-KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
+KUBELET_ARGS=""
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
-if [ "$(echo "${CLOUD_PROVIDER_ENABLED}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-    KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external"
-fi
 
 if [ -f /etc/sysconfig/docker ] ; then
     # For using default log-driver, other options should be ignored
@@ -493,13 +457,12 @@ if [ -f /etc/sysconfig/docker ] ; then
     fi
 fi
 
-KUBELET_ARGS="${KUBELET_ARGS} --network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin"
-KUBELET_ARGS="${KUBELET_ARGS} --register-with-taints=node-role.kubernetes.io/master=:NoSchedule"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
+KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 
-KUBELET_KUBECONFIG=/etc/kubernetes/kubelet-config.yaml
-cat << EOF >> ${KUBELET_KUBECONFIG}
+KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.conf
+cat > ${KUBELET_KUBECONFIG} << EOF
 apiVersion: v1
 clusters:
 - cluster:
@@ -521,6 +484,9 @@ users:
     client-certificate: ${CERT_DIR}/kubelet.crt
     client-key: ${CERT_DIR}/kubelet.key
 EOF
+chmod 0640 ${KUBELET_KUBECONFIG}
+
+KUBELET_ARGS="${KUBELET_ARGS} --kubeconfig ${KUBELET_KUBECONFIG}"
 
 cat > /etc/kubernetes/get_require_kubeconfig.sh << EOF
 #!/bin/bash
@@ -533,25 +499,88 @@ fi
 EOF
 chmod +x /etc/kubernetes/get_require_kubeconfig.sh
 
-KUBELET_ARGS="${KUBELET_ARGS} --client-ca-file=${CERT_DIR}/ca.crt --tls-cert-file=${CERT_DIR}/kubelet.crt --tls-private-key-file=${CERT_DIR}/kubelet.key --kubeconfig ${KUBELET_KUBECONFIG}"
-
 # specified cgroup driver
-KUBELET_ARGS="${KUBELET_ARGS} --cgroup-driver=${CGROUP_DRIVER}"
 if [ ${CONTAINER_RUNTIME} = "containerd"  ] ; then
     KUBELET_ARGS="${KUBELET_ARGS} --runtime-cgroups=/system.slice/containerd.service"
-    KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
-    KUBELET_ARGS="${KUBELET_ARGS} --runtime-request-timeout=15m"
-    KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+
+  # if less than 1.27, use remote runtime flags
+  if version_lt $(echo ${KUBE_TAG} | cut -c 2-) 1.27; then
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime=remote"
+      KUBELET_ARGS="${KUBELET_ARGS} --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+  fi
+
 fi
 
 if [ -z "${KUBE_NODE_IP}" ]; then
     KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 fi
+EXTRA_REGISTER_WITH_TAINTS=""
+EXTRA_KUBELETCONFIG_PARAMETERS=""
+if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then
+  EXTRA_KUBELETCONFIG_PARAMETERS='containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+shutdownGracePeriod: 60s
+shutdownGracePeriodCriticalPods: 20s'
+fi
 
-KUBELET_ARGS="${KUBELET_ARGS} --address=${KUBE_NODE_IP} --port=10250 --read-only-port=0 --anonymous-auth=false --authorization-mode=Webhook --authentication-token-webhook=true"
+if version_lt $(echo ${KUBE_TAG} | cut -c 2-) 1.23; then
+  KUBELET_ARGS="${KUBELET_ARGS} --register-with-taints=node-role.kubernetes.io/master=:NoSchedule"
+fi
 
-sed -i '
-/^KUBELET_ADDRESS=/ s/=.*/=""/
-/^KUBELET_HOSTNAME=/ s/=.*/=""/
-/^KUBELET_ARGS=/ s|=.*|="'"${KUBELET_ARGS}"'"|
-' /etc/kubernetes/kubelet
+if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
+EXTRA_REGISTER_WITH_TAINTS='  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/control-plane"'
+fi
+
+KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
+cat > ${KUBELET_CONFIG} << EOF
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: true
+  x509:
+    clientCAFile: "${CERT_DIR}/ca.crt"
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+cgroupDriver: ${CGROUP_DRIVER}
+clusterDNS:
+- ${DNS_SERVICE_IP}
+clusterDomain: ${DNS_CLUSTER_DOMAIN}
+address: ${KUBE_NODE_IP}
+failSwapOn: True
+port: 10250
+readOnlyPort: 0
+containerLogMaxFiles: 5
+containerLogMaxSize: 10Mi
+registerWithTaints:
+  - effect: "NoSchedule"
+    key: "node-role.kubernetes.io/master"
+${EXTRA_REGISTER_WITH_TAINTS}
+maxPods: 110
+podPidsLimit: -1
+resolvConf: /run/systemd/resolve/resolv.conf
+volumePluginDir: /var/lib/kubelet/volumeplugins
+rotateCertificates: true
+tlsCertFile: ${CERT_DIR}/kubelet.crt
+tlsPrivateKeyFile: ${CERT_DIR}/kubelet.key
+staticPodPath: /etc/kubernetes/manifests
+runtimeRequestTimeout: 15m
+eventRecordQPS: 5
+${EXTRA_KUBELETCONFIG_PARAMETERS}
+EOF
+
+KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
+
+
+cat > /etc/kubernetes/kubelet.env <<EOF
+KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
+KUBELET_HOSTNAME="--hostname-override=${INSTANCE_NAME}"
+KUBELET_ARGS="${KUBELET_ARGS}"
+EOF
