@@ -468,35 +468,35 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
-            'existing': True,
+            # 'existing': True, 
             'parameters': heat_params,
         }
 
-        # # Fetch the current parameters of the stack
-        # current_parameters = osc.heat().stacks.get(stack_id).parameters
-        # # Remove the parameters to be ignored
-        # parameters_to_ignore = [
-        #     'OS::stack_id',
-        #     'OS::project_id',
-        #     'OS::stack_name',
-        #     'container_runtime',
-        #     'containerd_version'
-        #     ]
-        # for param in parameters_to_ignore:
-        #     current_parameters.pop(param, None)
+        # Fetch the current parameters of the stack
+        current_parameters = osc.heat().stacks.get(stack_id).parameters
+        # Remove the parameters to be ignored
+        parameters_to_ignore = [
+            'OS::stack_id',
+            'OS::project_id',
+            'OS::stack_name',
+            'container_runtime',
+            'containerd_version'
+            ]
+        for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
 
-        # # Remove parameters ending with '_tag' or '_sha256'
-        # keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
-        # for k in keys_to_remove:
-        #     current_parameters.pop(k, None)
+        # Remove parameters ending with '_tag' or '_sha256'
+        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
+        for k in keys_to_remove:
+            current_parameters.pop(k, None)
 
-        # # Merge current parameters with new parameters. 
-        # # Note that this will overwrite any old parameters with new ones if they have the same name.
-        # # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
-        # current_parameters.update(fields['parameters'])
+        # Merge current parameters with new parameters. 
+        # Note that this will overwrite any old parameters with new ones if they have the same name.
+        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        current_parameters.update(fields['parameters'])
 
-        # # Replace the old parameters in fields with the merged parameters
-        # fields['parameters'] = current_parameters
+        # Replace the old parameters in fields with the merged parameters
+        fields['parameters'] = current_parameters
 
         # Update the Heat stack
         osc.heat().stacks.update(stack_id, **fields)
