@@ -5,8 +5,6 @@ description: >
   included by an ResourceGroup resource in the parent template
   (kubecluster.yaml).
 
-timeout: 60
-
 parameters:
   name:
     type: string
