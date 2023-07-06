@@ -1193,7 +1193,7 @@ resources:
     condition: upgrade_masters
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: HEAT_SIGNAL
+      signal_transport: NO_SIGNAL
       config: { get_resource: upgrade_kubernetes_config }
       server: { get_resource: kube-master }
       actions: ["CREATE", "UPDATE"]
