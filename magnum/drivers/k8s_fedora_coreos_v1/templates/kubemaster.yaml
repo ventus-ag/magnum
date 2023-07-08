@@ -931,7 +931,7 @@ resources:
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: CFN_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: master_config }
       server: { get_resource: kube-master }
       actions: ["CREATE"]
@@ -1193,7 +1193,7 @@ resources:
     condition: upgrade_masters
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: CFN_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: upgrade_kubernetes_config }
       server: { get_resource: kube-master }
       actions: ["CREATE", "UPDATE"]
