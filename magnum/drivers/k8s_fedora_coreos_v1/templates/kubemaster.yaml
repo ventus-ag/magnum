@@ -911,6 +911,7 @@ resources:
                   $POST_INSTALL_MANIFEST_URL:
                     { get_param: post_install_manifest_url }
                   $METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
+            - get_file: ../../common/templates/kubernetes/fragments/signal-init.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
             - get_file: ../../common/templates/kubernetes/fragments/make-cert.sh
@@ -937,7 +938,7 @@ resources:
                     }
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
-            - get_file: ../../common/templates/kubernetes/fragments/cfn-signal.sh
+            - get_file: ../../common/templates/kubernetes/fragments/signal-success.sh
 
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
