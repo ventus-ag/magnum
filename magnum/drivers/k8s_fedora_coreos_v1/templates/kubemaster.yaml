@@ -942,7 +942,7 @@ resources:
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: NO_SIGNAL
+      signal_transport: TEMP_URL_SIGNAL
       config: { get_resource: master_config }
       server: { get_resource: kube-master }
       actions: ["CREATE"]
