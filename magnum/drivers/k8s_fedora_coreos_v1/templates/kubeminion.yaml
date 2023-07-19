@@ -532,7 +532,6 @@ resources:
                       get_file: ../../common/templates/fragments/configure_docker_storage_driver_fedora_coreos.sh,
                     }
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
-            - get_file: ../../common/templates/fragments/enable-docker-registry.sh
             - str_replace:
                 template:
                   {
@@ -696,14 +695,12 @@ resources:
                 params:
                   $WAIT_CURL:
                     { get_attr: ["wait_handle_upgrade_minion", "curl_cli"] }
-            - get_file: ../../common/templates/kubernetes/fragments/signal-init.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-heat-params.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
-            - get_file: ../../common/templates/kubernetes/fragments/signal-success.sh
             - str_replace:
                 template:
                   {

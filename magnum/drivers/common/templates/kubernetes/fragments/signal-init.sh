@@ -2,7 +2,7 @@
 set -o pipefail
 . /etc/sysconfig/heat-params
 
-echo "notifying failed to heat"
+echo "heat signal init"
 
 if [ "$VERIFY_CA" == "True" ]; then
     VERIFY_CA=""
