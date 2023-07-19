@@ -510,7 +510,7 @@ resources:
   node_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: CFN_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: node_config }
       server: { get_resource: kube-minion }
       actions: ["CREATE"]
