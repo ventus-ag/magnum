@@ -963,6 +963,28 @@ parameters:
     default: []
 
 resources:
+  wait_handle_cluster:
+    condition: create_cluster_resources
+    type: OS::Heat::WaitConditionHandle
+  wait_condition_cluster:
+    condition: create_cluster_resources
+    type: OS::Heat::WaitCondition
+    depends_on: kube_cluster_deploy
+    properties:
+      handle: { get_resource: wait_handle_cluster }
+      timeout: 900
+
+  wait_handle_cluster_upgrade:
+    condition: upgrade_cluster_resources
+    type: OS::Heat::WaitConditionHandle
+  wait_condition_cluster_upgrade:
+    condition: upgrade_cluster_resources
+    type: OS::Heat::WaitCondition
+    depends_on: kube_cluster_upgrade
+    properties:
+      handle: { get_resource: wait_handle_cluster_upgrade }
+      timeout: 900
+
   ######################################################################
   #
   # network resources.  allocate a network and router for our server.
@@ -1366,6 +1388,7 @@ resources:
         list_join:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+            - get_file: ../../common/templates/kubernetes/fragments/signal-init.sh
             - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
@@ -1377,13 +1400,14 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/signal-success.sh
 
   kube_cluster_deploy:
     condition: create_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["CREATE"]
-      signal_transport: HEAT_SIGNAL
+      signal_transport: NO_SIGNAL
       config:
         get_resource: kube_cluster_config
       server:

@@ -680,14 +680,25 @@ conditions:
       - true
 
 resources:
-  wait_handle:
+  wait_handle_master:
     type: OS::Heat::WaitConditionHandle
-  wait_condition:
+  wait_condition_master:
     type: OS::Heat::WaitCondition
     depends_on: master_config_deployment
     properties:
-      handle: { get_resource: wait_handle }
-      timeout: 600
+      handle: { get_resource: wait_handle_master }
+      timeout: 900
+
+  wait_handle_upgrade_master:
+    condition: upgrade_masters
+    type: OS::Heat::WaitConditionHandle
+  wait_condition_upgrade_master:
+    condition: upgrade_masters
+    type: OS::Heat::WaitCondition
+    depends_on: upgrade_kubernetes_deployment
+    properties:
+      handle: { get_resource: wait_handle_upgrade_master }
+      timeout: 900
 
   ######################################################################
   #
@@ -752,7 +763,7 @@ resources:
                   }
                 params:
                   $INSTANCE_NAME: { get_param: name }
-                  $WAIT_CURL: { get_attr: ["wait_handle", "curl_cli"] }
+                  $WAIT_CURL: { get_attr: ["wait_handle_master", "curl_cli"] }
                   $HEAPSTER_ENABLED: { get_param: heapster_enabled }
                   $METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
                   $METRICS_SERVER_CHART_TAG:
@@ -1052,6 +1063,7 @@ resources:
       group: script
       inputs:
         - name: INSTANCE_NAME
+        - name: WAIT_CURL
         - name: IS_UPGRADE
         - name: HEAPSTER_ENABLED
         - name: METRICS_SERVER_ENABLED
@@ -1193,6 +1205,7 @@ resources:
                   echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
+            - get_file: ../../common/templates/kubernetes/fragments/signal-init.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
@@ -1200,6 +1213,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
+            - get_file: ../../common/templates/kubernetes/fragments/signal-success.sh
 
   upgrade_kubernetes_deployment:
     condition: upgrade_masters
@@ -1211,6 +1225,7 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         INSTANCE_NAME: { get_param: name }
+        WAIT_CURL: { get_attr: ["wait_handle_upgrade_master", "curl_cli"] }
         IS_UPGRADE: { get_param: is_upgrade }
         HEAPSTER_ENABLED: { get_param: heapster_enabled }
         METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
