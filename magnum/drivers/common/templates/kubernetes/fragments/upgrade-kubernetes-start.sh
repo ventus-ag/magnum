@@ -1,8 +1,6 @@
 #!/bin/bash
-
-. /etc/sysconfig/heat-params
-
 set -x
+. /etc/sysconfig/heat-params
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
