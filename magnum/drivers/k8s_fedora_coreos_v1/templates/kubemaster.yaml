@@ -684,6 +684,7 @@ resources:
     type: OS::Heat::WaitConditionHandle
   wait_condition:
     type: OS::Heat::WaitCondition
+    depends_on: master_config_deployment
     properties:
       handle: { get_resource: wait_handle }
       timeout: 600
@@ -940,7 +941,6 @@ resources:
 
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
-    depends_on: wait_condition
     properties:
       signal_transport: NO_SIGNAL
       config: { get_resource: master_config }
