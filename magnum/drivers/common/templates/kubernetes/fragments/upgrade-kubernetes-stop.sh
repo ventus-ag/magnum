@@ -4,7 +4,7 @@ set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
-export KUBECONFIG=/etc/kubernetes/kubelet.conf
+export KUBECONFIG=/etc/kubernetes/admin.conf
 
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     kubecontrol="/srv/magnum/bin/kubectl --kubeconfig $KUBECONFIG"
