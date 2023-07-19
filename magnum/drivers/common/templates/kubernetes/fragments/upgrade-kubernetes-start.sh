@@ -80,24 +80,25 @@ EOF
     fi
 }
 
+### to fix
 # NOTE(flwang): Record starts with "*" means the current one
-current_ostree_commit=`${ssh_cmd} rpm-ostree status | grep -A 3 "* ostree://" | grep Commit | awk '{print $2}'`
-current_ostree_remote=`${ssh_cmd} rpm-ostree status | awk '/* ostree/{print $0}' | awk '{match($0,"* ostree://([^ ]+)",a)}END{print a[1]}'`
-remote_list=`${ssh_cmd} ostree remote list`
+# current_ostree_commit=`${ssh_cmd} rpm-ostree status | grep -A 3 "* ostree://" | grep Commit | awk '{print $2}'`
+# current_ostree_remote=`${ssh_cmd} rpm-ostree status | awk '/* ostree/{print $0}' | awk '{match($0,"* ostree://([^ ]+)",a)}END{print a[1]}'`
+# remote_list=`${ssh_cmd} ostree remote list`
 
 # NOTE(flwang): 1. Either deploy or rebase for only one upgrade
 #               2. Using rpm-ostree command instead of atomic command to keep the possibility of supporting fedora coreos 30
-if [ "$new_ostree_commit" != "" ] && [ "$current_ostree_commit" != "$new_ostree_commit" ]; then
-    drain
-    setup_uncordon
-    ${ssh_cmd} rpm-ostree deploy $new_ostree_commit
-    shutdown --reboot --no-wall -t 1
-elif [ "$new_ostree_remote" != "" ] && [ "$current_ostree_remote" != "$new_ostree_remote" ]; then
-    drain
-    setup_uncordon
-    ${ssh_cmd} rpm-ostree rebase $new_ostree_remote
-    shutdown --reboot --no-wall -t 1
-fi
+# if [ "$new_ostree_commit" != "" ] && [ "$current_ostree_commit" != "$new_ostree_commit" ]; then
+#     drain
+#     setup_uncordon
+#     ${ssh_cmd} rpm-ostree deploy $new_ostree_commit
+#     shutdown --reboot --no-wall -t 1
+# elif [ "$new_ostree_remote" != "" ] && [ "$current_ostree_remote" != "$new_ostree_remote" ]; then
+#     drain
+#     setup_uncordon
+#     ${ssh_cmd} rpm-ostree rebase $new_ostree_remote
+#     shutdown --reboot --no-wall -t 1
+# fi
 
 rm -f /tmp/service_list
 rm -f /tmp/old_kube_tag
