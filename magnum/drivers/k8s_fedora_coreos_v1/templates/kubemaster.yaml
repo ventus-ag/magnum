@@ -680,6 +680,14 @@ conditions:
       - true
 
 resources:
+  wait_handle:
+    type: OS::Heat::WaitConditionHandle
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: { get_resource: wait_handle }
+      timeout: 600
+
   ######################################################################
   #
   # resource that exposes the IPs of either the kube master or the API
@@ -743,6 +751,7 @@ resources:
                   }
                 params:
                   $INSTANCE_NAME: { get_param: name }
+                  $WAIT_CURL: { get_attr: ["wait_handle", "curl_cli"] }
                   $HEAPSTER_ENABLED: { get_param: heapster_enabled }
                   $METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
                   $METRICS_SERVER_CHART_TAG:
@@ -927,11 +936,12 @@ resources:
                     }
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
+            - get_file: ../../common/templates/kubernetes/fragments/cfn-signal.sh
 
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: HEAT_SIGNAL
+      signal_transport: CFN_SIGNAL
       config: { get_resource: master_config }
       server: { get_resource: kube-master }
       actions: ["CREATE"]
