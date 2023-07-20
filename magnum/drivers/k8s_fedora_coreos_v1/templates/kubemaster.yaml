@@ -1207,6 +1207,7 @@ resources:
         - name: METRICS_SCRAPER_TAG
         - name: OSTREE_REMOTE
         - name: OSTREE_COMMIT
+        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
@@ -1215,7 +1216,8 @@ resources:
                   #!/bin/sh
                   echo 'stack_id'
                 params:
-                  stack_id: { get_param: "OS::stack_id" }
+                  stack_id:
+                    { get_attr: [upgrade_kubernetes_config, OS_STACK_ID] }
             - str_replace:
                 template:
                   {
@@ -1393,6 +1395,7 @@ resources:
         METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
         OSTREE_REMOTE: { get_param: ostree_remote }
         OSTREE_COMMIT: { get_param: ostree_commit }
+        OS_STACK_ID: { get_param: "OS::stack_id" }
 
 outputs:
   OS::stack_id:
