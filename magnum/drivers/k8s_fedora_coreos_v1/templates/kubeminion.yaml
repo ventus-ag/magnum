@@ -12,6 +12,7 @@ parameters:
 
   is_upgrade:
     type: boolean
+    default: false
 
   server_image:
     type: string
