@@ -10,8 +10,6 @@ else
     VERIFY_CA="-k"
 fi
 
-WAIT_CURL="$WAIT_CURL"
-
 function handle_error {
   local exit_code="$?"
   local line_number="$1"
@@ -24,7 +22,7 @@ function handle_error {
   echo ${escaped_error_message}
   
   data=$(echo '{"status": "'${STATUS}'", "reason": "'$REASON'",  "id": "'$UUID'"}')
-  ${WAIT_CURL} ${VERIFY_CA} --data-binary '${data}'
+  $WAIT_CURL ${VERIFY_CA} --data-binary '${data}'
   exit $exit_code
 }
 
