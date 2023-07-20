@@ -54,6 +54,17 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
           ${ssh_cmd} ${kubecontrol} label ${master} node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}= --overwrite
       done
     fi
+
+    if [[ ${INSTANCE_NAME} != *"master"* ]]; then
+      i=0
+      until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}
+      do
+          i=$((i+1))
+          [ $i -lt 30 ] || break;
+          echo "Trying to uncordon node..."
+          sleep 5s
+      done
+    fi
 fi
 # fi
 
