@@ -675,6 +675,10 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
+  create_masters:
+    equals:
+      - get_param: is_upgrade
+      - false
   upgrade_masters:
     equals:
       - get_param: is_upgrade
@@ -941,6 +945,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
 
   master_config_deployment:
+    condition: create_masters
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL

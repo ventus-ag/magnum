@@ -369,6 +369,10 @@ conditions:
       equals:
         - get_param: boot_volume_size
         - 0
+  create_minions:
+    equals:
+      - get_param: is_upgrade
+      - false
   upgrade_minions:
     equals:
       - get_param: is_upgrade
@@ -519,6 +523,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
 
   node_config_deployment:
+    condition: create_minions
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
