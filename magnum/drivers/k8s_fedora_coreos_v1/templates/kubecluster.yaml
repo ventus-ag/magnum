@@ -7,9 +7,13 @@ description: >
 
 conditions:
   create_cluster_resources:
-    equals:
-      - get_param: is_cluster_stack
-      - true
+    and:
+      equals:
+        - get_param: is_cluster_stack
+        - true
+      equals:
+        - get_param: is_upgrade
+        - false
 
   upgrade_cluster_resources:
     equals:
