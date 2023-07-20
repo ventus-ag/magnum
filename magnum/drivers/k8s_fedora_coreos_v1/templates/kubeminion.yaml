@@ -688,8 +688,7 @@ resources:
                   #!/bin/sh
                   echo 'stack_id'
                 params:
-                  stack_id:
-                    { get_attr: [upgrade_kubernetes_deployment, OS_STACK_ID] }
+                  stack_id: { get_param: "OS::stack_id" }
             - str_replace:
                 template:
                   {
