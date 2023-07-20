@@ -21,8 +21,7 @@ function handle_error {
   UUID=`uuidgen`
   echo ${escaped_error_message}
   
-  data=$(echo '{"status": "'${STATUS}'", "reason": "'$REASON'",  "id": "'$UUID'"}')
-  $WAIT_CURL ${VERIFY_CA} --data-binary '${data}'
+  $WAIT_CURL ${VERIFY_CA} --data-binary '{"status": "'${STATUS}'", "reason": "'$REASON'",  "id": "'$UUID'"}'
   exit $exit_code
 }
 
