@@ -810,3 +810,7 @@ outputs:
     value: { get_resource: kube-minion }
     description: >
       This is the Nova server id of the node.
+
+  is_upgrade:
+    condition: upgrade_minions
+    value: { get_param: is_upgrade }
