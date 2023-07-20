@@ -470,7 +470,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             # 'existing': True, 
             'parameters': heat_params,
-            'timeout_mins': 30,
+            'timeout_mins': 60,
         }
 
         # Fetch the current parameters of the stack
