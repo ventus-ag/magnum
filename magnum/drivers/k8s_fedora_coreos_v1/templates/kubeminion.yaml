@@ -679,7 +679,6 @@ resources:
         - name: CONTAINERD_TARBALL_SHA256
         - name: OSTREE_REMOTE
         - name: OSTREE_COMMIT
-        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
@@ -785,7 +784,6 @@ resources:
         CONTAINERD_TARBALL_SHA256: { get_param: containerd_tarball_sha256 }
         OSTREE_REMOTE: { get_param: ostree_remote }
         OSTREE_COMMIT: { get_param: ostree_commit }
-        OS_STACK_ID: { get_param: "OS::stack_id" }
 
 outputs:
   kube_minion_ip:

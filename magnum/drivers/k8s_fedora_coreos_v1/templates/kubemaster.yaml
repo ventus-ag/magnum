@@ -1207,7 +1207,6 @@ resources:
         - name: METRICS_SCRAPER_TAG
         - name: OSTREE_REMOTE
         - name: OSTREE_COMMIT
-        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
@@ -1394,7 +1393,6 @@ resources:
         METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
         OSTREE_REMOTE: { get_param: ostree_remote }
         OSTREE_COMMIT: { get_param: ostree_commit }
-        OS_STACK_ID: { get_param: "OS::stack_id" }
 
 outputs:
   OS::stack_id:
