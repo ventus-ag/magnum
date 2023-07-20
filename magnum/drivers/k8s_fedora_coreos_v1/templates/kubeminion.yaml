@@ -379,16 +379,16 @@ conditions:
       - true
 
 resources:
-  wait_handle_upgrade_minion:
-    condition: upgrade_minions
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_upgrade_minion:
-    condition: upgrade_minions
-    type: OS::Heat::WaitCondition
-    depends_on: upgrade_kubernetes_deployment
-    properties:
-      handle: { get_resource: wait_handle_upgrade_minion }
-      timeout: 900
+  # wait_handle_upgrade_minion:
+  #   condition: upgrade_minions
+  #   type: OS::Heat::WaitConditionHandle
+  # wait_condition_upgrade_minion:
+  #   condition: upgrade_minions
+  #   type: OS::Heat::WaitCondition
+  #   depends_on: upgrade_kubernetes_deployment
+  #   properties:
+  #     handle: { get_resource: wait_handle_upgrade_minion }
+  #     timeout: 900
 
   agent_config:
     type: OS::Heat::SoftwareConfig
@@ -681,27 +681,27 @@ resources:
                   echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL:
-                    { get_attr: ["wait_handle_upgrade_minion", "curl_cli"] }
+            # - str_replace:
+            #     template:
+            #       {
+            #         get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
+            #       }
+            #     params:
+            #       $WAIT_CURL:
+            #         { get_attr: ["wait_handle_upgrade_minion", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-minion.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
-                  }
-                params:
-                  $WAIT_CURL:
-                    { get_attr: ["wait_handle_upgrade_minion", "curl_cli"] }
+            # - str_replace:
+            #     template:
+            #       {
+            #         get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
+            #       }
+            #     params:
+            #       $WAIT_CURL:
+            #         { get_attr: ["wait_handle_upgrade_minion", "curl_cli"] }
 
   upgrade_kubernetes_deployment:
     condition: upgrade_minions
