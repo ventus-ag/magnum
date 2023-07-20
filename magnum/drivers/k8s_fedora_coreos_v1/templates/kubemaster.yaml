@@ -681,15 +681,6 @@ conditions:
       - true
 
 resources:
-  wait_handle_master:
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_master:
-    type: OS::Heat::WaitCondition
-    depends_on: master_config_deployment
-    properties:
-      handle: { get_resource: wait_handle_master }
-      timeout: 900
-
   wait_handle_upgrade_master:
     condition: upgrade_masters
     type: OS::Heat::WaitConditionHandle
@@ -922,13 +913,6 @@ resources:
                   $POST_INSTALL_MANIFEST_URL:
                     { get_param: post_install_manifest_url }
                   $METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_master", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
             - get_file: ../../common/templates/kubernetes/fragments/make-cert.sh
@@ -955,18 +939,11 @@ resources:
                     }
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_master", "curl_cli"] }
 
   master_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: master_config }
       server: { get_resource: kube-master }
       actions: ["CREATE"]

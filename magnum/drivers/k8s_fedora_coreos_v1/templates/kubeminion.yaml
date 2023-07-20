@@ -375,15 +375,6 @@ conditions:
       - true
 
 resources:
-  wait_handle_minion:
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_minion:
-    type: OS::Heat::WaitCondition
-    depends_on: node_config_deployment
-    properties:
-      handle: { get_resource: wait_handle_minion }
-      timeout: 900
-
   wait_handle_upgrade_minion:
     condition: upgrade_minions
     type: OS::Heat::WaitConditionHandle
@@ -507,13 +498,6 @@ resources:
                   $CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
                   $CONTAINERD_TARBALL_SHA256:
                     { get_param: containerd_tarball_sha256 }
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_minion", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
@@ -533,18 +517,11 @@ resources:
                       get_file: ../../common/templates/fragments/configure_docker_storage_driver_fedora_coreos.sh,
                     }
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_minion", "curl_cli"] }
 
   node_config_deployment:
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: node_config }
       server: { get_resource: kube-minion }
       actions: ["CREATE"]

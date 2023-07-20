@@ -963,17 +963,6 @@ parameters:
     default: []
 
 resources:
-  wait_handle_cluster:
-    condition: create_cluster_resources
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_cluster:
-    condition: create_cluster_resources
-    type: OS::Heat::WaitCondition
-    depends_on: kube_cluster_deploy
-    properties:
-      handle: { get_resource: wait_handle_cluster }
-      timeout: 900
-
   wait_handle_cluster_upgrade:
     condition: upgrade_cluster_resources
     type: OS::Heat::WaitConditionHandle
@@ -1383,19 +1372,10 @@ resources:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
-      inputs:
-        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
-          - - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_cluster", "curl_cli"] }
-            - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+          - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
@@ -1407,21 +1387,12 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_cluster", "curl_cli"] }
 
   kube_cluster_upgrade_config:
     condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
-      inputs:
-        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
@@ -1465,13 +1436,11 @@ resources:
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["CREATE"]
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config:
         get_resource: kube_cluster_config
       server:
         get_attr: [kube_masters, resource.0]
-      input_values:
-        OS_STACK_ID: { get_param: "OS::stack_id" }
 
   kube_cluster_upgrade:
     condition: upgrade_cluster_resources
