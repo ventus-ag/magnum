@@ -1393,6 +1393,8 @@ resources:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
+      inputs:
+        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
