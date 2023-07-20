@@ -10,9 +10,6 @@ else
     VERIFY_CA="-k"
 fi
 
-STATUS="SUCCESS"
-REASON="Setup complete"
-DATA="OK"
 UUID=`uuidgen`
 
-$WAIT_CURL ${VERIFY_CA} --data-binary '{"status": "'${STATUS}'", "reason": "'$REASON'", "data": "'${DATA}'", "id": "'$UUID'"}'
+$WAIT_CURL ${VERIFY_CA} --data-binary '{"status": "SUCCESS", "reason": "Setup complete", "data": "OK", "id": "'$UUID'"}'

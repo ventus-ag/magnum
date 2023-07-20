@@ -16,12 +16,10 @@ function handle_error {
   local error_message=$(echo "Exited with status $exit_code at line $line_number")
 
   escaped_error_message=\"${error_message//$'\n'/\\n}\"
-  STATUS="FAILURE"
-  REASON="Setup failed"
   UUID=`uuidgen`
   echo ${escaped_error_message}
   
-  $WAIT_CURL ${VERIFY_CA} --data-binary '{"status": "'${STATUS}'", "reason": "'$REASON'",  "id": "'$UUID'"}'
+  $WAIT_CURL ${VERIFY_CA} --data-binary '{"status": "FAILURE", "reason": "Setup failed",  "id": "'$UUID'"}'
   exit $exit_code
 }
 
