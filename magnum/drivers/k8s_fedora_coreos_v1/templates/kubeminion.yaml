@@ -721,7 +721,7 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         INSTANCE_NAME: { get_param: name }
-        IS_UPGRADE: { get_param: is_upgrade }
+        IS_UPGRADE: "true"
         PROMETHEUS_MONITORING: { get_param: prometheus_monitoring }
         KUBE_ALLOW_PRIV: { get_param: kube_allow_priv }
         KUBE_MASTER_IP: { get_param: kube_master_ip }

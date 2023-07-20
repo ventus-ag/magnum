@@ -1250,7 +1250,7 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         INSTANCE_NAME: { get_param: name }
-        IS_UPGRADE: { get_param: is_upgrade }
+        IS_UPGRADE: "true"
         HEAPSTER_ENABLED: { get_param: heapster_enabled }
         METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
         METRICS_SERVER_CHART_TAG: { get_param: metrics_server_chart_tag }
