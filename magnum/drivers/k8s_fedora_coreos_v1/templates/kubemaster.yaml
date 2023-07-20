@@ -760,13 +760,6 @@ resources:
           - - str_replace:
                 template:
                   {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_master", "curl_cli"] }
-            - str_replace:
-                template:
-                  {
                     get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh,
                   }
                 params:
@@ -929,6 +922,13 @@ resources:
                   $POST_INSTALL_MANIFEST_URL:
                     { get_param: post_install_manifest_url }
                   $METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
+            - str_replace:
+                template:
+                  {
+                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
+                  }
+                params:
+                  $WAIT_CURL: { get_attr: ["wait_handle_master", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
             - get_file: ../../common/templates/kubernetes/fragments/make-cert.sh
