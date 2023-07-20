@@ -19,4 +19,4 @@ UUID=`uuidgen`
 
 data=$(echo '{"status": "'${STATUS}'", "reason": "'$REASON'", "data": "'${DATA}'", "id": "'$UUID'"}')
 
-sh -c "${WAIT_CURL} ${VERIFY_CA} --data-binary '${data}'"
+${WAIT_CURL} ${VERIFY_CA} --data-binary '${data}'

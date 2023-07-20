@@ -24,7 +24,7 @@ function handle_error {
   echo ${escaped_error_message}
   
   data=$(echo '{"status": "'${STATUS}'", "reason": "'$REASON'",  "id": "'$UUID'"}')
-  sh -c "${WAIT_CURL} ${VERIFY_CA} --data-binary '${data}'"
+  ${WAIT_CURL} ${VERIFY_CA} --data-binary '${data}'
   exit $exit_code
 }
 
