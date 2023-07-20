@@ -34,6 +34,11 @@ users:
 EOF
 else
 
+KUBE_PROTOCOL="https"
+if [ "$TLS_DISABLED" = "True" ]; then
+    KUBE_PROTOCOL="http"
+fi
+
 KUBE_MASTER_URI="$KUBE_PROTOCOL://$KUBE_MASTER_IP:$KUBE_API_PORT"
 cat > ${ADMIN_KUBECONFIG} << EOF
 apiVersion: v1
