@@ -1389,12 +1389,6 @@ resources:
         list_join:
           - "\n"
           - - str_replace:
-                template: |
-                  #!/bin/sh
-                  echo 'stack_id'
-                params:
-                  stack_id: { get_attr: [kube_cluster_deploy, OS_STACK_ID] }
-            - str_replace:
                 template:
                   {
                     get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
