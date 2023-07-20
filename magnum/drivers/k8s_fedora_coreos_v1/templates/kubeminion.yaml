@@ -438,6 +438,13 @@ resources:
           - - str_replace:
                 template:
                   {
+                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
+                  }
+                params:
+                  $WAIT_CURL: { get_attr: ["wait_handle_minion", "curl_cli"] }
+            - str_replace:
+                template:
+                  {
                     get_file: ../../common/templates/kubernetes/fragments/write-heat-params.sh,
                   }
                 params:
@@ -507,13 +514,6 @@ resources:
                   $CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
                   $CONTAINERD_TARBALL_SHA256:
                     { get_param: containerd_tarball_sha256 }
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-                  }
-                params:
-                  $WAIT_CURL: { get_attr: ["wait_handle_minion", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
