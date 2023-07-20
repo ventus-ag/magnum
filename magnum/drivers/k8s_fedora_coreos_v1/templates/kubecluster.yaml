@@ -1426,6 +1426,12 @@ resources:
         list_join:
           - "\n"
           - - str_replace:
+                template: |
+                  #!/bin/sh
+                  echo 'stack_id'
+                params:
+                  stack_id: { get_param: "OS::stack_id" }
+            - str_replace:
                 template:
                   {
                     get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
