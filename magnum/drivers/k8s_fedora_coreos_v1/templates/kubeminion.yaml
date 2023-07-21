@@ -11,7 +11,8 @@ parameters:
     description: server name
 
   is_upgrade:
-    type: string
+    type: boolean
+    default: false
 
   timestamp_upgrade:
     type: string
@@ -374,26 +375,25 @@ conditions:
         - get_param: boot_volume_size
         - 0
   create_minions:
-    not:
-      or:
-        - equals: [get_param: is_upgrade, "yes"]
-        - equals: [get_param: is_upgrade, "true"]
+    equals:
+      - get_param: is_upgrade
+      - false
   upgrade_minions:
-    or:
-      - equals: [get_param: is_upgrade, "yes"]
-      - equals: [get_param: is_upgrade, "true"]
+    equals:
+      - get_param: is_upgrade
+      - true
 
 resources:
-  wait_handle_upgrade_minion:
-    condition: upgrade_minions
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_upgrade_minion:
-    condition: upgrade_minions
-    type: OS::Heat::WaitCondition
-    depends_on: upgrade_kubernetes_deployment
-    properties:
-      handle: { get_resource: wait_handle_upgrade_minion }
-      timeout: 900
+  # wait_handle_upgrade_minion:
+  #   condition: upgrade_minions
+  #   type: OS::Heat::WaitConditionHandle
+  # wait_condition_upgrade_minion:
+  #   condition: upgrade_minions
+  #   type: OS::Heat::WaitCondition
+  #   depends_on: upgrade_kubernetes_deployment
+  #   properties:
+  #     handle: { get_resource: wait_handle_upgrade_minion }
+  #     timeout: 900
 
   agent_config:
     type: OS::Heat::SoftwareConfig

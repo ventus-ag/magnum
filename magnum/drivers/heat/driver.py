@@ -222,7 +222,7 @@ class HeatDriver(driver.Driver):
             heat_timeout = cfg.CONF.cluster_heat.create_timeout
 
         heat_params['is_cluster_stack'] = nodegroup is None
-        heat_params['is_upgrade'] = "no"
+        heat_params['is_upgrade'] = False
 
         if nodegroup:
             # In case we are creating a new stack for a new nodegroup then
@@ -256,7 +256,7 @@ class HeatDriver(driver.Driver):
             scale_manager,
             nodes_to_remove=None)
         
-        scale_params['is_upgrade'] = "no"
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -280,7 +280,7 @@ class HeatDriver(driver.Driver):
             resize_manager,
             nodes_to_remove=nodes_to_remove)
         
-        scale_params['is_upgrade'] = "no"
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -393,7 +393,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             "update_max_batch_size": max_batch_size,
         }
 
-        heat_params['is_upgrade'] = "yes"
+        heat_params['is_upgrade'] = True
 
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
@@ -467,7 +467,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         # Convert datetime to string
         now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
-        heat_params['is_upgrade'] = "yes"
+        heat_params['is_upgrade'] = True
         heat_params['timestamp_upgrade'] = now_str
 
         fields = {
