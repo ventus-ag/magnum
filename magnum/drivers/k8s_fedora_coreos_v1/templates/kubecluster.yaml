@@ -61,6 +61,11 @@ parameters:
     type: boolean
     default: false
 
+  timestamp_upgrade:
+    type: string
+    description: A timestamp value that changes on every stack upgrade
+    default: ""
+
   master_role:
     type: string
     default: ""
@@ -1456,6 +1461,7 @@ resources:
         get_attr: [kube_masters, resource.0]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
+        timestamp: { get_param: timestamp }
 
   ######################################################################
   #
@@ -1628,3 +1634,9 @@ outputs:
     description: >
       This is a list of the "public" IP addresses of all the Kubernetes minions.
       Use these IP addresses to log in to the Kubernetes minions via ssh.
+
+  timestamp_upgrade:
+    condition: upgrade_cluster_resources
+    value: { get_param: timestamp_upgrade }
+    description: >
+      Time where the cluster upgrade started.
