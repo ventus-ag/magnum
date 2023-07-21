@@ -1455,7 +1455,7 @@ resources:
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["CREATE", "UPDATE"]
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config:
         get_resource: kube_cluster_upgrade_config
       server:
