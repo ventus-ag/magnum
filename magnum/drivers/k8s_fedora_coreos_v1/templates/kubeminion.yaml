@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  timestamp_upgrade:
+    type: string
+    description: A timestamp value that changes on every stack upgrade
+    default: ""
+
   server_image:
     type: string
     description: glance image used to boot the server
