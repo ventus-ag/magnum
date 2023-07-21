@@ -1461,7 +1461,7 @@ resources:
         get_attr: [kube_masters, resource.0]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
-        timestamp: { get_param: timestamp }
+        timestamp_upgrade: { get_param: timestamp_upgrade }
 
   ######################################################################
   #
