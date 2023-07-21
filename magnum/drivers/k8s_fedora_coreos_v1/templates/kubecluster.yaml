@@ -12,9 +12,9 @@ conditions:
       - true
 
   upgrade_cluster_resources:
-    equals:
-      - get_param: is_upgrade
-      - true
+    or:
+      - equals: [get_param: is_upgrade, "yes"]
+      - equals: [get_param: is_upgrade, "true"]
 
   is_master:
     and:
@@ -58,8 +58,8 @@ parameters:
     default: false
 
   is_upgrade:
-    type: boolean
-    default: false
+    type: string
+    default: "no"
 
   timestamp_upgrade:
     type: string
@@ -1455,7 +1455,7 @@ resources:
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ["CREATE", "UPDATE"]
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config:
         get_resource: kube_cluster_upgrade_config
       server:

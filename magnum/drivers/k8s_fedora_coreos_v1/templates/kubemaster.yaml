@@ -11,8 +11,7 @@ parameters:
     description: server name
 
   is_upgrade:
-    type: boolean
-    default: false
+    type: string
 
   timestamp_upgrade:
     type: string
@@ -681,20 +680,21 @@ conditions:
         - get_param: boot_volume_size
         - 0
   create_masters:
-    equals:
-      - get_param: is_upgrade
-      - false
+    not:
+      or:
+        - equals: [get_param: is_upgrade, "yes"]
+        - equals: [get_param: is_upgrade, "true"]
   upgrade_masters:
-    equals:
-      - get_param: is_upgrade
-      - true
+    or:
+      - equals: [get_param: is_upgrade, "yes"]
+      - equals: [get_param: is_upgrade, "true"]
 
 resources:
   wait_handle_upgrade_master:
-    # condition: upgrade_masters
+    condition: upgrade_masters
     type: OS::Heat::WaitConditionHandle
   wait_condition_upgrade_master:
-    # condition: upgrade_masters
+    condition: upgrade_masters
     type: OS::Heat::WaitCondition
     depends_on: upgrade_kubernetes_deployment
     properties:
