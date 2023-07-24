@@ -16,7 +16,6 @@ import os
 from pbr.version import SemanticVersion as SV
 import six
 import json
-import datetime
 
 from string import ascii_letters
 from string import digits
@@ -388,8 +387,6 @@ class FedoraKubernetesDriver(KubernetesDriver):
                         rollback=False):
         osc = clients.OpenStackClients(context)
 
-        raise NotImplementedError("Kubernetes upgrade is currently disabled.")
-
         # Use this just to check that we are not downgrading.
         heat_params = {
             "update_max_batch_size": max_batch_size,
@@ -464,13 +461,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                         env_files)
         tpl_files.update(env_map)
-        # Get current datetime
-        now = datetime.datetime.now()
 
-        # Convert datetime to string
-        now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
         heat_params['is_upgrade'] = True
-        heat_params['timestamp_upgrade'] = now_str
 
         fields = {
             'template': template,

@@ -19,7 +19,7 @@ if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
     fi
 
     $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
-    $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin
+    $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
     $ssh_cmd mkdir -p /etc/containerd
 cat << EOF > /etc/containerd/config.toml
 version = 2

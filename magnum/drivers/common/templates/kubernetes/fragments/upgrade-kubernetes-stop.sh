@@ -1,7 +1,4 @@
 #!/bin/bash
-
-. /etc/sysconfig/heat-params
-
 set -x
 . /etc/sysconfig/heat-params
 
