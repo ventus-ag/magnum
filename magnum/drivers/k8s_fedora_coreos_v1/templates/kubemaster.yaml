@@ -690,16 +690,16 @@ conditions:
       - true
 
 resources:
-  wait_handle_upgrade_master:
-    # condition: upgrade_masters
-    type: OS::Heat::WaitConditionHandle
-  wait_condition_upgrade_master:
-    # condition: upgrade_masters
-    type: OS::Heat::WaitCondition
-    depends_on: upgrade_kubernetes_deployment
-    properties:
-      handle: { get_resource: wait_handle_upgrade_master }
-      timeout: 900
+  # wait_handle_upgrade_master:
+  #   # condition: upgrade_masters
+  #   type: OS::Heat::WaitConditionHandle
+  # wait_condition_upgrade_master:
+  #   # condition: upgrade_masters
+  #   type: OS::Heat::WaitCondition
+  #   depends_on: upgrade_kubernetes_deployment
+  #   properties:
+  #     handle: { get_resource: wait_handle_upgrade_master }
+  #     timeout: 900
 
   ######################################################################
   #
