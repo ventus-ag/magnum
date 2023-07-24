@@ -388,7 +388,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
                         rollback=False):
         osc = clients.OpenStackClients(context)
 
-        raise NotImplementedError("Kubernete upgrade is curently disabled")
+        raise NotImplementedError("Kubernetes upgrade is currently disabled.")
 
         # Use this just to check that we are not downgrading.
         heat_params = {
