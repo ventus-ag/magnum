@@ -78,6 +78,8 @@ extraVolumeMounts:
   - name: k8s-certs
     mountPath: /etc/kubernetes
     readOnly: true
+controllerExtraArgs: |-
+  - --use-service-account-credentials=false
 EOF
 
 
