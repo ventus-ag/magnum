@@ -712,7 +712,7 @@ resources:
     condition: upgrade_minions
     type: OS::Heat::SoftwareDeployment
     properties:
-      signal_transport: NO_SIGNAL
+      signal_transport: HEAT_SIGNAL
       config: { get_resource: upgrade_kubernetes_config }
       server: { get_resource: kube-minion }
       actions: ["CREATE", "UPDATE"]
