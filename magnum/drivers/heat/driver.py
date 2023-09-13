@@ -388,6 +388,18 @@ class FedoraKubernetesDriver(KubernetesDriver):
                         rollback=False):
         osc = clients.OpenStackClients(context)
 
+
+        # List of unsupported Kubernetes versions
+        unsupported_versions = [
+            "v1.17.3", "v1.17.14", "v1.18.12", "v1.17.17", "v1.18.15",
+            "v1.19.7", "v1.20.2", "v1.18.19", "v1.19.11", "v1.20.7",
+            "v1.21.1", "v1.20.12"
+        ]
+
+        # Raise error if the current kube_tag is unsupported
+        if 'kube_tag' in nodegroup.labels and nodegroup.labels['kube_tag'] in unsupported_versions:
+            raise NotImplementedError("Kubernetes upgrade is not supported for current version.")
+
         # Use this just to check that we are not downgrading.
         heat_params = {
             "update_max_batch_size": max_batch_size,
