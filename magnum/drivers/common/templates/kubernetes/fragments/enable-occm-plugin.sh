@@ -80,8 +80,9 @@ extraVolumeMounts:
     readOnly: true
 controllerExtraArgs: |-
   - --use-service-account-credentials=false
+cluster:
+  name: ${CLUSTER_UUID}
 EOF
-
 
 $ssh_cmd helm repo add cpo https://kubernetes.github.io/cloud-provider-openstack
 
