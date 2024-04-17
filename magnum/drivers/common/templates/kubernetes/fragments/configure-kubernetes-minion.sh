@@ -270,8 +270,8 @@ autohealing_controller=$(echo ${AUTO_HEALING_CONTROLLER} | tr '[:upper:]' '[:low
 EXTRA_KUBELETCONFIG_PARAMETERS=""
 if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then
   EXTRA_KUBELETCONFIG_PARAMETERS='containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
-shutdownGracePeriod: 60s
-shutdownGracePeriodCriticalPods: 20s'
+featureGates:
+  GracefulNodeShutdown: false'
 fi
 
 

@@ -518,8 +518,8 @@ EXTRA_REGISTER_WITH_TAINTS=""
 EXTRA_KUBELETCONFIG_PARAMETERS=""
 if version_gt $(echo ${KUBE_TAG} | cut -c 2-) 1.21; then
   EXTRA_KUBELETCONFIG_PARAMETERS='containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
-shutdownGracePeriod: 60s
-shutdownGracePeriodCriticalPods: 20s'
+featureGates:
+  GracefulNodeShutdown: false'
 fi
 
 if version_lt $(echo ${KUBE_TAG} | cut -c 2-) 1.23; then
