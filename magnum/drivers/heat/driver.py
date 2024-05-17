@@ -545,6 +545,224 @@ class FedoraKubernetesDriver(KubernetesDriver):
         return extra_params
 
 
+class UbuntuKubernetesDriver(KubernetesDriver):
+    """Base driver for Kubernetes clusters."""
+
+    def get_heat_params(self, cluster_template):
+        heat_params = {}
+        try:
+            kube_tag = cluster_template.labels["kube_tag"]
+            kube_tag_params = {
+                "kube_tag": kube_tag,
+                "kube_version": kube_tag,
+                "master_kube_tag": kube_tag,
+                "minion_kube_tag": kube_tag,
+            }
+            heat_params.update(kube_tag_params)
+        except KeyError:
+            LOG.debug(("Cluster template %s does not contain a "
+                       "valid kube_tag"), cluster_template.name)
+
+        # If both keys are present, only ostree_commit is chosen.
+        for ostree_tag in ["ostree_commit", "ostree_remote"]:
+            if ostree_tag not in cluster_template.labels:
+                continue
+            try:
+                ostree_param = {
+                    ostree_tag: cluster_template.labels[ostree_tag]
+                }
+                heat_params.update(ostree_param)
+                break
+            except KeyError:
+                LOG.debug("Cluster template %s does not define %s",
+                          cluster_template.name, ostree_tag)
+
+        upgrade_labels = ['kube_tag', 'ostree_remote', 'ostree_commit']
+        if not any([u in heat_params.keys() for u in upgrade_labels]):
+            reason = ("Cluster template %s does not contain any supported "
+                      "upgrade labels: [%s]") % (cluster_template.name,
+                                                 ', '.join(upgrade_labels))
+            raise exception.InvalidClusterTemplateForUpgrade(reason=reason)
+
+        return heat_params
+
+    @staticmethod
+    def get_new_labels(nodegroup, cluster_template):
+        new_labels = nodegroup.labels.copy()
+        if 'kube_tag' in cluster_template.labels:
+            new_kube_tag = cluster_template.labels['kube_tag']
+
+            kube_tag_params = {
+                "kube_tag": new_kube_tag,
+                "kube_version": new_kube_tag,
+                "master_kube_tag": new_kube_tag,
+                "minion_kube_tag": new_kube_tag,
+            }
+
+            new_labels.update(kube_tag_params)
+        return new_labels
+
+    def upgrade_cluster(self, context, cluster, cluster_template,  # noqa: C901
+                        max_batch_size, nodegroup, scale_manager=None,
+                        rollback=False):
+        osc = clients.OpenStackClients(context)
+
+
+        # List of unsupported Kubernetes versions
+        unsupported_versions = [
+            "v1.17.3", "v1.17.14", "v1.18.12", "v1.17.17", "v1.18.15",
+            "v1.19.7", "v1.20.2", "v1.18.19", "v1.19.11", "v1.20.7",
+            "v1.21.1", "v1.20.12"
+        ]
+
+        # Raise error if the current kube_tag is unsupported
+        if 'kube_tag' in nodegroup.labels and nodegroup.labels['kube_tag'] in unsupported_versions:
+            raise NotImplementedError("Kubernetes upgrade is not supported for current version.")
+
+        # Use this just to check that we are not downgrading.
+        heat_params = {
+            "update_max_batch_size": max_batch_size,
+        }
+
+        heat_params['is_upgrade'] = True
+
+        if 'kube_tag' in nodegroup.labels:
+            heat_params['kube_tag'] = nodegroup.labels['kube_tag']
+            heat_params['kube_version'] = nodegroup.labels['kube_tag']
+            heat_params['master_kube_tag'] = nodegroup.labels['kube_tag']
+            heat_params['minion_kube_tag'] = nodegroup.labels['kube_tag']
+        current_addons = {}
+        new_addons = {}
+        for label in cluster_template.labels:
+            # This is upgrade API, so we don't introduce new stuff by this API,
+            # but just focus on the version change.
+            new_addons[label] = cluster_template.labels[label]
+            if ((label.endswith('_tag') or
+                label.endswith('_version')) and label in heat_params):
+                current_addons[label] = heat_params[label]
+                try:
+                    if (SV.from_pip_string(new_addons[label]) <
+                            SV.from_pip_string(current_addons[label])):
+                        raise exception.InvalidVersion(tag=label)
+                except exception.InvalidVersion:
+                    raise
+                except Exception as e:
+                    # NOTE(flwang): Different cloud providers may use different
+                    # tag/version format which maybe not able to parse by
+                    # SemanticVersion. For this case, let's just skip it.
+                    LOG.debug("Failed to parse tag/version %s", str(e))
+
+        # Since the above check passed just
+        # hardcode what we want to send to heat.
+        # Rules: 1. No downgrade 2. Explicitly override 3. Merging based on set
+        # Update heat_params based on the data generated above
+        heat_params.update(self.get_heat_params(cluster_template))
+
+        stack_id = nodegroup.stack_id
+        if nodegroup is not None and not nodegroup.is_default:
+            heat_params['is_cluster_stack'] = False
+            # For now set the worker_role explicitly in order to
+            # make sure that the is_master condition fails.
+            heat_params['worker_role'] = nodegroup.role
+
+        # we need to set the whole dict to the object
+        # and not just update the existing labels. This
+        # is how obj_what_changed works.
+        nodegroup.labels = new_labels = self.get_new_labels(nodegroup,
+                                                            cluster_template)
+
+        if nodegroup.is_default:
+            cluster.cluster_template_id = cluster_template.uuid
+            cluster.labels = new_labels
+            if nodegroup.role == 'master':
+                other_default_ng = cluster.default_ng_worker
+            else:
+                other_default_ng = cluster.default_ng_master
+            other_default_ng.labels = new_labels
+            other_default_ng.save()
+
+        # New code for applying heat template
+        nodegroups = [nodegroup] if nodegroup else None
+        template_path, heat_params, env_files = (
+            self._extract_template_definition(context, cluster,
+                                              nodegroups=nodegroups))
+
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+
+        environment_files, env_map = self._get_env_files(template_path,
+                                                        env_files)
+        tpl_files.update(env_map)
+        # Get current datetime
+        now = datetime.datetime.now()
+
+        # Convert datetime to string
+        now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
+        heat_params['is_upgrade'] = True
+        heat_params['timestamp_upgrade'] = now_str
+
+        fields = {
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
+            # 'existing': True, 
+            'parameters': heat_params,
+            'timeout_mins': 60,
+        }
+
+        # Fetch the current parameters of the stack
+        current_parameters = osc.heat().stacks.get(stack_id).parameters
+        # Remove the parameters to be ignored
+        parameters_to_ignore = [
+            'OS::stack_id',
+            'OS::project_id',
+            'OS::stack_name',
+            'container_runtime',
+            'containerd_version'
+            ]
+        for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
+
+        # Remove parameters ending with '_tag' or '_sha256'
+        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
+        for k in keys_to_remove:
+            current_parameters.pop(k, None)
+
+        # Merge current parameters with new parameters. 
+        # Note that this will overwrite any old parameters with new ones if they have the same name.
+        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        current_parameters.update(fields['parameters'])
+
+        # Replace the old parameters in fields with the merged parameters
+        fields['parameters'] = current_parameters
+
+        # Update the Heat stack
+        osc.heat().stacks.update(stack_id, **fields)
+
+        # save the nodegroup and cluster
+        nodegroup.save()
+        cluster.save()
+
+        # The update of a nodegroup will trigger a cluster upgrade.
+        LOG.info("Triggered upgrade of cluster %s", cluster.uuid)
+        return cluster.uuid
+
+    def get_nodegroup_extra_params(self, cluster, osc):
+        network = osc.heat().resources.get(cluster.stack_id, 'network')
+        secgroup = osc.heat().resources.get(cluster.stack_id,
+                                            'secgroup_kube_minion')
+        for output in osc.heat().stacks.get(cluster.stack_id).outputs:
+            if output['output_key'] == 'api_address':
+                api_address = output['output_value']
+                break
+        extra_params = {
+            'existing_master_private_ip': api_address,
+            'existing_security_group': secgroup.attributes['id'],
+            'fixed_network': network.attributes['fixed_network'],
+            'fixed_subnet': network.attributes['fixed_subnet'],
+        }
+        return extra_params
+
 class HeatPoller(object):
 
     def __init__(self, openstack_client, context, cluster, cluster_driver):
