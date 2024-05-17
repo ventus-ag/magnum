@@ -385,31 +385,61 @@ conditions:
 
 resources:
   agent_config:
-    type: OS::Heat::SoftwareConfig
+    type: OS::Heat::CloudConfig
     properties:
-      group: ungrouped
-      config:
-        list_join:
-          - "\n"
-          - - str_replace:
-                template: { get_file: user_data.yaml }
-                params:
-                  __HOSTNAME__: { get_param: name }
-                  __SSH_KEY_VALUE__: { get_param: ssh_public_key }
-                  __OPENSTACK_CA__: { get_param: openstack_ca }
-                  __CONTAINER_INFRA_PREFIX__:
-                    if:
-                      - equals:
-                          - get_param: container_infra_prefix
-                          - ""
-                      - "docker.io/openstackmagnum/"
-                      - get_param: container_infra_prefix
-                  __HEAT_CONTAINER_AGENT_TAG__:
-                    { get_param: heat_container_agent_tag }
-                  __HTTP_PROXY__: { get_param: http_proxy }
-                  __HTTPS_PROXY__: { get_param: https_proxy }
-                  __NO_PROXY__: { get_param: no_proxy }
-                  __SELINUX_MODE__: { get_param: selinux_mode }
+      cloud_config:
+        write_files:
+          - path: /root/.ssh/authorized_keys
+            append: true
+            permissions: '0600'
+            content: { get_param: ssh_public_key }
+          - path: /etc/sysctl.d/max-user-watches.conf
+            permissions: '0644'
+            content: |
+              fs.inotify.max_user_watches=16184
+          - path: /etc/sysctl.d/k8s_custom.conf
+            permissions: '0644'
+            content: |
+              net.ipv4.conf.default.rp_filter=2
+              net.ipv4.conf.*.rp_filter=2
+              net.ipv4.conf.all.promote_secondaries = 1
+              net.ipv4.conf.*.accept_source_route = 1
+          - path: /etc/hostname
+            permissions: '0644'
+            content: { get_param: name }
+          - path: /etc/ssl/certs/openstack-ca.pem
+            permissions: '0644'
+            content: { get_param: openstack_ca }
+
+        packages:
+          - containerd
+          - podman
+
+        runcmd:
+          - mkdir -p /var/lib/cloud/data
+          - chmod 0755 /var/lib/cloud/data
+          - mkdir -p /var/lib/heat-cfntools
+          - chmod 0755 /var/lib/heat-cfntools
+          - sysctl -p /etc/sysctl.d/max-user-watches.conf
+          - sysctl -p /etc/sysctl.d/k8s_custom.conf
+          # - bash /root/configure-agent-env.sh
+          - systemctl enable --now containerd
+          - |
+            podman run \
+              --name heat-container-agent \
+              --privileged \
+              --net=host \
+              --volume /run/systemd:/run/systemd \
+              --volume /etc/:/etc/ \
+              --volume /var/lib:/var/lib \
+              --volume /var/run:/var/run \
+              --volume /var/log:/var/log \
+              --volume /tmp:/tmp \
+              --volume /dev:/dev \
+              --env REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+              docker.io/openstackmagnum/heat-container-agent:ussuri-stable-1 \
+              /usr/bin/start-heat-container-agent
+
 
   ######################################################################
   #
