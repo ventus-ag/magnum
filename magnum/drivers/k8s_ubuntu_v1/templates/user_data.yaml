@@ -2,12 +2,12 @@
 #
 # cloud-config
 
-users:
-  - name: ubuntu
-    ssh_authorized_keys:
-      - "__SSH_KEY_VALUE__"
-
 write_files:
+  - path: /root/.ssh/authorized_keys
+    append: true
+    permissions: '0600'
+    content: |
+      __SSH_KEY_VALUE__
   - path: /etc/sysctl.d/max-user-watches.conf
     permissions: '0644'
     content: |
@@ -22,74 +22,74 @@ write_files:
   - path: /etc/hostname
     permissions: '0644'
     content: |
-      __HOSTNAME__
+      testhost
   - path: /etc/ssl/certs/openstack-ca.pem
     permissions: '0644'
     content: |
       __OPENSTACK_CA__
-  - path: /root/configure-agent-env.sh
-    permissions: '0755'
-    content: |
-      #!/bin/bash
+  # - path: /root/configure-agent-env.sh
+  #   permissions: '0755'
+  #   content: |
+  #     #!/bin/bash
 
-      set -x
-      set -e
-      set +u
+  #     set -x
+  #     set -e
+  #     set +u
 
-      until [ -f /etc/ssl/certs/openstack-ca.pem ]
-      do
-          echo "waiting for /etc/ssl/certs/openstack-ca.pem"
-          sleep 3s
-      done
+  #     until [ -f /etc/ssl/certs/openstack-ca.pem ]
+  #     do
+  #         echo "waiting for /etc/ssl/certs/openstack-ca.pem"
+  #         sleep 3s
+  #     done
 
-      update-ca-certificates
+  #     update-ca-certificates
 
-      HTTP_PROXY="__HTTP_PROXY__"
-      HTTPS_PROXY="__HTTPS_PROXY__"
-      NO_PROXY="__NO_PROXY__"
+  #     HTTP_PROXY="__HTTP_PROXY__"
+  #     HTTPS_PROXY="__HTTPS_PROXY__"
+  #     NO_PROXY="__NO_PROXY__"
 
-      if [ -n "${HTTP_PROXY}" ]; then
-          export HTTP_PROXY
-          echo "http_proxy=${HTTP_PROXY}" >> /etc/environment
-      fi
+  #     if [ -n "${HTTP_PROXY}" ]; then
+  #         export HTTP_PROXY
+  #         echo "http_proxy=${HTTP_PROXY}" >> /etc/environment
+  #     fi
 
-      if [ -n "${HTTPS_PROXY}" ]; then
-          export HTTPS_PROXY
-          echo "https_proxy=${HTTPS_PROXY}" >> /etc/environment
-      fi
+  #     if [ -n "${HTTPS_PROXY}" ]; then
+  #         export HTTPS_PROXY
+  #         echo "https_proxy=${HTTPS_PROXY}" >> /etc/environment
+  #     fi
 
-      if [ -n "${NO_PROXY}" ]; then
-          export NO_PROXY
-          echo "no_proxy=${NO_PROXY}" >> /etc/environment
-      fi
+  #     if [ -n "${NO_PROXY}" ]; then
+  #         export NO_PROXY
+  #         echo "no_proxy=${NO_PROXY}" >> /etc/environment
+  #     fi
 
-      id
-      mkdir -p /srv/magnum/.ssh
-      chmod 0700 /srv/magnum/.ssh
-      ssh-keygen -q -t rsa -N '' -f /tmp/heat_agent_rsa
-      mv /tmp/heat_agent_rsa /srv/magnum/.ssh/heat_agent_rsa
-      mv /tmp/heat_agent_rsa.pub /srv/magnum/.ssh/heat_agent_rsa.pub
-      chmod 0400 /srv/magnum/.ssh/heat_agent_rsa
-      chmod 0400 /srv/magnum/.ssh/heat_agent_rsa.pub
-      mkdir -p /root/.ssh
-      chmod 0700 /root/.ssh
-      cat /srv/magnum/.ssh/heat_agent_rsa.pub > /root/.ssh/authorized_keys
-      ssh-keyscan 127.0.0.1 > /srv/magnum/.ssh/known_hosts
-      cat > /srv/magnum/.ssh/config <<EOF
-      Host localhost
-           HostName 127.0.0.1
-           User root
-           IdentityFile /srv/magnum/.ssh/heat_agent_rsa
-           UserKnownHostsFile /srv/magnum/.ssh/known_hosts
-      EOF
+  #     id
+  #     mkdir -p /srv/magnum/.ssh
+  #     chmod 0700 /srv/magnum/.ssh
+  #     ssh-keygen -q -t rsa -N '' -f /tmp/heat_agent_rsa
+  #     mv /tmp/heat_agent_rsa /srv/magnum/.ssh/heat_agent_rsa
+  #     mv /tmp/heat_agent_rsa.pub /srv/magnum/.ssh/heat_agent_rsa.pub
+  #     chmod 0400 /srv/magnum/.ssh/heat_agent_rsa
+  #     chmod 0400 /srv/magnum/.ssh/heat_agent_rsa.pub
+  #     mkdir -p /root/.ssh
+  #     chmod 0700 /root/.ssh
+  #     cat /srv/magnum/.ssh/heat_agent_rsa.pub > /root/.ssh/authorized_keys
+  #     ssh-keyscan 127.0.0.1 > /srv/magnum/.ssh/known_hosts
+  #     cat > /srv/magnum/.ssh/config <<EOF
+  #     Host localhost
+  #          HostName 127.0.0.1
+  #          User root
+  #          IdentityFile /srv/magnum/.ssh/heat_agent_rsa
+  #          UserKnownHostsFile /srv/magnum/.ssh/known_hosts
+  #     EOF
 
-      sed -i '/^PermitRootLogin/ s/ .*/ without-password/' /etc/ssh/sshd_config
-      sed -i '/^PasswordAuthentication yes/ s/ yes/ no/' /etc/ssh/sshd_config
+  #     sed -i '/^PermitRootLogin/ s/ .*/ without-password/' /etc/ssh/sshd_config
+  #     sed -i '/^PasswordAuthentication yes/ s/ yes/ no/' /etc/ssh/sshd_config
 
-      systemctl restart sshd
+  #     systemctl restart sshd
 
 packages:
-  - docker.io
+  - containerd
 
 runcmd:
   - mkdir -p /var/lib/cloud/data
@@ -99,22 +99,25 @@ runcmd:
   - sysctl -p /etc/sysctl.d/max-user-watches.conf
   - sysctl -p /etc/sysctl.d/k8s_custom.conf
   - bash /root/configure-agent-env.sh
-  - systemctl enable --now docker
-  - docker pull __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__
+  - systemctl enable --now containerd
+  - ctr images pull __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__
   - |
-    docker run \
-      --name heat-container-agent \
-      --privileged \
-      --net=host \
-      --volume /srv/magnum:/srv/magnum \
-      --volume /opt/stack/os-config-refresh:/opt/stack/os-config-refresh \
-      --volume /run/systemd:/run/systemd \
-      --volume /etc/:/etc/ \
-      --volume /var/lib:/var/lib \
-      --volume /var/run:/var/run \
-      --volume /var/log:/var/log \
-      --volume /tmp:/tmp \
-      --volume /dev:/dev \
+    ctr run \
+      --net-host \
+      --mount type=bind,src=/srv/magnum,dst=/srv/magnum,options=rbind:rw \
+      --mount type=bind,src=/opt/stack/os-config-refresh,dst=/opt/stack/os-config-refresh,options=rbind:rw \
+      --mount type=bind,src=/run/systemd,dst=/run/systemd,options=rbind:rw \
+      --mount type=bind,src=/etc,dst=/etc,options=rbind:rw \
+      --mount type=bind,src=/var/lib,dst=/var/lib,options=rbind:rw \
+      --mount type=bind,src=/var/run,dst=/var/run,options=rbind:rw \
+      --mount type=bind,src=/var/log,dst=/var/log,options=rbind:rw \
+      --mount type=bind,src=/tmp,dst=/tmp,options=rbind:rw \
+      --mount type=bind,src=/dev,dst=/dev,options=rbind:rw \
       --env REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
       __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \
+      heat-container-agent \
       /usr/bin/start-heat-container-agent
+  - echo "========== Cloud-init output log =========="
+  - cat /var/log/cloud-init-output.log
+  - echo "========== Cloud-init log =========="
+  - cat /var/log/cloud-init.log
