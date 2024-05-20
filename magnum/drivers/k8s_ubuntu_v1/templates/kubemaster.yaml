@@ -1114,7 +1114,7 @@ resources:
       image: { get_param: server_image }
       flavor: { get_param: master_flavor }
       user_data_format: SOFTWARE_CONFIG
-      key_name: "my"
+      key_name: { get_param: ssh_key_name }
       software_config_transport: POLL_SERVER_HEAT
       user_data: { get_resource: agent_config }
       networks:

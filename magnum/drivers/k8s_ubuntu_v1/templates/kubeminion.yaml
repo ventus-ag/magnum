@@ -692,7 +692,7 @@ resources:
       name: { get_param: name }
       flavor: { get_param: minion_flavor }
       image: { get_param: server_image }
-      key_name: "my"
+      key_name: { get_param: ssh_key_name }
       user_data: { get_resource: agent_config }
       user_data_format: SOFTWARE_CONFIG
       software_config_transport: POLL_SERVER_HEAT
