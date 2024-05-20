@@ -4,6 +4,8 @@ set +x
 . /etc/sysconfig/heat-params
 set -x
 
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
+
 CERT_DIR=/etc/kubernetes/certs
 
 # root kubeconfig
@@ -64,6 +66,8 @@ users:
 EOF
 fi
 
-echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> /etc/bashrc
+echo "export KUBECONFIG=${ADMIN_KUBECONFIG}" >> ~/.bashrc
 chown root:root ${ADMIN_KUBECONFIG}
 export KUBECONFIG=${ADMIN_KUBECONFIG}
+$ssh_cmd mkdir -p $HOME/.kube
+$ssh_cmd cp -i ${ADMIN_KUBECONFIG} $HOME/.kube/config

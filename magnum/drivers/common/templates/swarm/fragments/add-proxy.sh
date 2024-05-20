@@ -10,7 +10,7 @@ DOCKER_NO_PROXY_CONF=/etc/systemd/system/docker.service.d/no_proxy.conf
 
 DOCKER_RESTART=0
 
-BASH_RC=/etc/bashrc
+BASH_RC=~/.bashrc
 
 mkdir -p /etc/systemd/system/docker.service.d
 

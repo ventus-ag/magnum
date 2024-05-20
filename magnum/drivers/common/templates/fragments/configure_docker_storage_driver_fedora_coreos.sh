@@ -12,7 +12,7 @@ clear_docker_storage () {
     # stop docker
     $ssh_cmd systemctl stop ${runtime}
     # clear storage graph
-    $ssh_cmd rm -rf ${storage_dir}
+    $ssh_cmd rm -rf ${storage_dir}/*
     $ssh_cmd mkdir -p ${storage_dir}
 }
 
