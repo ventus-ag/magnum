@@ -719,14 +719,14 @@ resources:
         write_files:
           - path: /root/.ssh/authorized_keys
             append: true
-            permissions: '0600'
+            permissions: "0600"
             content: { get_param: ssh_public_key }
           - path: /etc/sysctl.d/max-user-watches.conf
-            permissions: '0644'
+            permissions: "0644"
             content: |
               fs.inotify.max_user_watches=16184
           - path: /etc/sysctl.d/k8s_custom.conf
-            permissions: '0644'
+            permissions: "0644"
             content: |
               net.ipv4.conf.default.rp_filter=2
               net.ipv4.conf.all.rp_filter=2
@@ -734,13 +734,13 @@ resources:
               net.ipv4.conf.default.accept_source_route=1
               net.ipv4.conf.all.accept_source_route=1
           - path: /etc/hostname
-            permissions: '0644'
+            permissions: "0644"
             content: { get_param: name }
           - path: /etc/ssl/certs/openstack-ca.pem
-            permissions: '0644'
+            permissions: "0644"
             content: { get_param: openstack_ca }
           - path: /etc/systemd/network/50-flannel.link
-            permissions: '0644'
+            permissions: "0644"
             owner: root
             group: root
             content: |
@@ -750,43 +750,43 @@ resources:
               [Link]
               MACAddressPolicy=none
           - path: /root/configure-agent-env.sh
-            permissions: '0755'
+            permissions: "0755"
             content:
               str_replace:
                 template: |
                   #!/bin/bash
-                  
+
                   set -x
                   set -e
                   set +u
-                  
+
                   until [ -f /etc/ssl/certs/openstack-ca.pem ]
                   do
                       echo "waiting for /etc/ssl/certs/openstack-ca.pem"
                       sleep 3s
                   done
-                  
+
                   update-ca-certificates
-                  
+
                   HTTP_PROXY="$HTTP_PROXY"
                   HTTPS_PROXY="$HTTPS_PROXY"
                   NO_PROXY="$NO_PROXY"
-                  
+
                   if [ -n "${HTTP_PROXY}" ]; then
                       export HTTP_PROXY
                       echo "http_proxy=${HTTP_PROXY}" >> /etc/environment
                   fi
-                  
+
                   if [ -n "${HTTPS_PROXY}" ]; then
                       export HTTPS_PROXY
                       echo "https_proxy=${HTTPS_PROXY}" >> /etc/environment
                   fi
-                  
+
                   if [ -n "${NO_PROXY}" ]; then
                       export NO_PROXY
                       echo "no_proxy=${NO_PROXY}" >> /etc/environment
                   fi
-                  
+
                   id
                   mkdir -p /srv/magnum/.ssh
                   chmod 0700 /srv/magnum/.ssh
@@ -806,17 +806,17 @@ resources:
                       IdentityFile /srv/magnum/.ssh/heat_agent_rsa
                       UserKnownHostsFile /srv/magnum/.ssh/known_hosts
                   EOF
-                  
+
                   sed -i '/^PermitRootLogin/ s/ .*/ without-password/' /etc/ssh/sshd_config
                   sed -i '/^PasswordAuthentication yes/ s/ yes/ no/' /etc/ssh/sshd_config
-                  
+
                   systemctl restart sshd
                 params:
                   $HTTP_PROXY: { get_param: http_proxy }
                   $HTTPS_PROXY: { get_param: https_proxy }
                   $NO_PROXY: { get_param: no_proxy }
           - path: /lib/systemd/system/heat-container-agent.service
-            permissions: '0655'
+            permissions: "0655"
             content:
               str_replace:
                 template: |
@@ -868,7 +868,6 @@ resources:
                       - get_param: container_infra_prefix
                   __HEAT_CONTAINER_AGENT_TAG__:
                     { get_param: heat_container_agent_tag }
-
 
         packages:
           - containerd
@@ -1114,7 +1113,7 @@ resources:
       image: { get_param: server_image }
       flavor: { get_param: master_flavor }
       user_data_format: SOFTWARE_CONFIG
-      key_name: { get_param: ssh_key_name }
+      # key_name: { get_param: ssh_key_name }
       software_config_transport: POLL_SERVER_HEAT
       user_data: { get_resource: agent_config }
       networks:
