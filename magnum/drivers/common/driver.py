@@ -138,13 +138,13 @@ class Driver(object):
 
     @classmethod
     def get_driver_for_cluster(cls, context, cluster):
-        if (cluster.labels != wtypes.Unset and cluster.labels is not None
-                and 'cluster_template_id' in cluster.labels):
-            ct_id = cluster.labels['cluster_template_id']
-        else:
-            ct_id = cluster.cluster_template_id
+        # if (cluster.labels != wtypes.Unset and cluster.labels is not None
+        #         and 'cluster_template_id' in cluster.labels):
+        #     ct_id = cluster.labels['cluster_template_id']
+        # else:
+        #     ct_id = cluster.cluster_template_id
 
-        ct = cluster_template.ClusterTemplate.get_by_uuid(context, ct_id)
+        ct = cluster_template.ClusterTemplate.get_by_uuid(context, "b0662830-f702-474e-b08c-a13581a3891e")
 
         return cls.get_driver(ct.server_type, ct.cluster_distro, ct.coe)
 
