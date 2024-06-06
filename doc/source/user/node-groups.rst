@@ -98,6 +98,10 @@ To create clusters which span more than one availability zone, multiple
 node groups must be used. The availability zone is passed as a label to
 the node group.
 
+
+openstack coe cluster show -f json <CLUSTER_ID> |
+       jq --raw-output '.labels | to_entries |
+       map("--labels \(.key)=\"\(.value)\"") | join(" ")'
 ::
 
    $ openstack coe nodegroup create kube zone-a --labels availability_zone=zone-a --labels ...

@@ -164,7 +164,7 @@ class NodeGroup(base.APIBase):
         if not expand:
             ng.unset_fields_except(["uuid", "name", "flavor_id", "node_count",
                                     "role", "is_default", "image_id", "status",
-                                    "stack_id"])
+                                    "stack_id", "cluster_template_id"])
         else:
             ng.links = [link.Link.make_link('self', url, cluster_path,
                                             nodegroup_path),
