@@ -170,10 +170,6 @@ cleanup_etcd() {
     # Remove all etcd data
     $ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
     
-    # Optional: remove old configuration files
-    # $ssh_cmd rm -f /etc/etcd/etcd.conf.yaml
-    # $ssh_cmd rm -f /etc/etcd/etcd.conf
-    
     # Wait for cleanup to complete
     sleep 5
     
@@ -236,7 +232,6 @@ listen-peer-urls: "$protocol://$myip:2380"
 advertise-client-urls: "$protocol://$myip:2379"
 initial-advertise-peer-urls: "$protocol://$myip:2380"
 discovery: "$ETCD_DISCOVERY_URL"
-initial-cluster-state: "new"
 heartbeat-interval: 1000
 election-timeout: 15000
 EOF
@@ -264,7 +259,7 @@ ETCD_NAME="$INSTANCE_NAME"
 ETCD_DATA_DIR="/var/lib/etcd/default.etcd"
 ETCD_LISTEN_CLIENT_URLS="$protocol://$myip:2379,http://127.0.0.1:2379"
 ETCD_LISTEN_PEER_URLS="$protocol://$myip:2380"
-ETCD_ADVERTISE_CLIENT_URLS="$protocol://$myip:2379"
+ETCD_ADVERTISE_CLIENT_URLS="$protocol://$myip:2379,http://127.0.0.1:2379"
 ETCD_INITIAL_ADVERTISE_PEER_URLS="$protocol://$myip:2380"
 EOF
 
@@ -277,7 +272,6 @@ EOF
 else
     cat >> /etc/etcd/etcd.conf <<EOF
 ETCD_DISCOVERY="$ETCD_DISCOVERY_URL"
-ETCD_INITIAL_CLUSTER_STATE="new"
 EOF
 fi
 
