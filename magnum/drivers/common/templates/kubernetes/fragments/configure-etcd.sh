@@ -14,20 +14,95 @@ if [ ! -z "$HTTPS_PROXY" ]; then
     export HTTPS_PROXY
 fi
 
+if [ ! -z "$NO_PROXY" ]; then
+    export NO_PROXY
+fi
+
 # Set protocol and cert directory
-if [ "$TLS_DISABLED" = "False" ]; then
-    protocol="https"
-    cert_dir="/etc/etcd/certs"
-else
+cert_dir="/etc/etcd/certs"
+protocol="https"
+
+if [ "$TLS_DISABLED" = "True" ]; then
     protocol="http"
-    cert_dir=""
 fi
 
 # Get local IP
-myip="$KUBE_NODE_IP"
-if [ -z "$myip" ]; then
-    echo "ERROR: Unable to determine node IP address." >&2
-    exit 1
+if [ -z "$KUBE_NODE_IP" ]; then
+    # FIXME(yuanying): Set KUBE_NODE_IP correctly
+    KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+fi
+
+myip="${KUBE_NODE_IP}"
+
+# Add volume preparation section
+if [ -n "$ETCD_VOLUME_SIZE" ] && [ "$ETCD_VOLUME_SIZE" -gt 0 ]; then
+    attempts=60
+    while [ ${attempts} -gt 0 ]; do
+        device_name=$($ssh_cmd ls /dev/disk/by-id | grep ${ETCD_VOLUME:0:20}$)
+        if [ -n "${device_name}" ]; then
+            break
+        fi
+        echo "waiting for disk device"
+        sleep 0.5
+        $ssh_cmd udevadm trigger
+        let attempts--
+    done
+
+    if [ -z "${device_name}" ]; then
+        echo "ERROR: disk device does not exist" >&2
+        exit 1
+    fi
+
+    device_path=/dev/disk/by-id/${device_name}
+    fstype=$($ssh_cmd blkid -s TYPE -o value ${device_path} || echo "")
+    if [ "${fstype}" != "xfs" ]; then
+        $ssh_cmd mkfs.xfs -f ${device_path}
+    fi
+    $ssh_cmd mkdir -p /var/lib/etcd
+    echo "${device_path} /var/lib/etcd xfs defaults 0 0" >> /etc/fstab
+    $ssh_cmd mount -a
+    $ssh_cmd chown -R etcd.etcd /var/lib/etcd
+    $ssh_cmd chmod 755 /var/lib/etcd
+fi
+
+# Add service creation section
+if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
+    cat > /etc/systemd/system/etcd.service <<EOF
+[Unit]
+Description=Etcd server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/sysconfig/heat-params
+ExecStartPre=mkdir -p /var/lib/etcd
+ExecStartPre=-/bin/podman rm etcd
+ExecStart=/bin/podman run \\
+    --name etcd \\
+    --volume /etc/pki/ca-trust/extracted/pem:/etc/ssl/certs:ro,z \\
+    --volume /etc/etcd:/etc/etcd:ro,z \\
+    --volume /var/lib/etcd:/var/lib/etcd:rshared,z \\
+    --net=host \\
+    ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
+    /usr/local/bin/etcd \\
+    --config-file /etc/etcd/etcd.conf.yaml
+ExecStop=/bin/podman stop etcd
+TimeoutStartSec=10min
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+else
+    _prefix=${CONTAINER_INFRA_PREFIX:-"docker.io/openstackmagnum/"}
+    $ssh_cmd atomic install \
+    --system-package no \
+    --system \
+    --storage ostree \
+    --name=etcd ${_prefix}etcd:${ETCD_TAG}
 fi
 
 # Function to run etcdctl inside a container
@@ -297,6 +372,18 @@ ETCD_PEER_CERT_FILE=$cert_dir/server.crt
 ETCD_PEER_KEY_FILE=$cert_dir/server.key
 ETCD_PEER_CLIENT_CERT_AUTH=true
 EOF
+fi
+
+if [ -n "$HTTP_PROXY" ]; then
+    cat >> /etc/etcd/etcd.conf.yaml <<EOF
+# HTTP proxy to use for traffic to discovery service.
+discovery-proxy: $HTTP_PROXY
+
+EOF
+fi
+
+if [ -n "$HTTP_PROXY" ]; then
+    echo "ETCD_DISCOVERY_PROXY=$HTTP_PROXY" >> /etc/etcd/etcd.conf
 fi
 
 $ssh_cmd systemctl daemon-reload
