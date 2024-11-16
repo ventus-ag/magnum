@@ -6,6 +6,14 @@ set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
+if [ ! -z "$HTTP_PROXY" ]; then
+    export HTTP_PROXY
+fi
+
+if [ ! -z "$HTTPS_PROXY" ]; then
+    export HTTPS_PROXY
+fi
+
 # Set protocol and cert directory
 if [ "$TLS_DISABLED" = "False" ]; then
     protocol="https"
