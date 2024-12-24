@@ -98,10 +98,10 @@ WantedBy=multi-user.target
 EOF
 else
     _prefix=${CONTAINER_INFRA_PREFIX:-"docker.io/openstackmagnum/"}
-    $ssh_cmd atomic install \
-    --system-package no \
-    --system \
-    --storage ostree \
+    $ssh_cmd atomic install \\
+    --system-package no \\
+    --system \\
+    --storage ostree \\
     --name=etcd ${_prefix}etcd:${ETCD_TAG}
 fi
 
@@ -110,17 +110,17 @@ run_etcdctl() {
     local endpoints="$1"
     shift
     if [ "$TLS_DISABLED" = "False" ]; then
-        podman run --rm --network host \
-            --volume /etc/etcd:/etc/etcd:ro,z \
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
-            etcdctl --endpoints="$endpoints" \
-            --cacert="$cert_dir/ca.crt" \
-            --cert="$cert_dir/server.crt" \
-            --key="$cert_dir/server.key" \
+        podman run --rm --network host \\
+            --volume /etc/etcd:/etc/etcd:ro,z \\
+            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
+            etcdctl --endpoints="$endpoints" \\
+            --cacert="$cert_dir/ca.crt" \\
+            --cert="$cert_dir/server.crt" \\
+            --key="$cert_dir/server.key" \\
             "$@"
     else
-        podman run --rm --network host \
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
+        podman run --rm --network host \\
+            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
             etcdctl --endpoints="$endpoints" "$@"
     fi
 }
@@ -271,8 +271,19 @@ if [ -n "$endpoint" ]; then
     member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1)
     if [ -n "$member_id" ]; then
         echo "Removing stale member with ID $member_id"
-        run_etcdctl "$endpoint" member remove "$member_id" || true
-        sleep 2
+        for i in {1..3}; do
+            if run_etcdctl "$endpoint" member remove "$member_id"; then
+                # Wait for removal to propagate
+                sleep 5
+                if ! run_etcdctl "$endpoint" member list | grep -q "$member_id"; then
+                    break
+                fi
+            fi
+            if [ $i -eq 3 ]; then
+                echo "Failed to remove stale member after 3 attempts"
+                exit 1
+            fi
+        done
     fi
     
     # Add the new member
@@ -285,9 +296,13 @@ if [ -n "$endpoint" ]; then
     
     # Extract initial cluster from add output
     initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-    if [ -n "$initial_cluster" ]; then
-        # Create configuration for joining existing cluster
-        cat > /etc/etcd/etcd.conf.yaml <<EOF
+    if [ -z "$initial_cluster" ]; then
+        echo "Failed to get initial cluster configuration"
+        exit 1
+    fi
+
+    # Create configuration for joining existing cluster
+    cat > /etc/etcd/etcd.conf.yaml <<EOF
 name: "$INSTANCE_NAME"
 data-dir: "/var/lib/etcd/default.etcd"
 listen-metrics-urls: "http://$myip:2378"
@@ -300,12 +315,19 @@ initial-cluster-state: "existing"
 heartbeat-interval: 1000
 election-timeout: 15000
 EOF
-    else
-        echo "Failed to get initial cluster configuration"
+else
+    echo "No existing cluster found, creating new cluster using discovery URL"
+    if [ -z "$ETCD_DISCOVERY_URL" ]; then
+        echo "Error: ETCD_DISCOVERY_URL is not set"
         exit 1
     fi
-else
-    echo "No existing cluster found, using discovery URL for new cluster"
+
+    # Verify discovery URL is accessible
+    if ! curl -sf "$ETCD_DISCOVERY_URL" >/dev/null; then
+        echo "Error: Cannot access discovery URL: $ETCD_DISCOVERY_URL"
+        exit 1
+    fi
+
     cat > /etc/etcd/etcd.conf.yaml <<EOF
 name: "$INSTANCE_NAME"
 data-dir: "/var/lib/etcd/default.etcd"
