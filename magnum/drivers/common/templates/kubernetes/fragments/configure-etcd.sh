@@ -98,10 +98,10 @@ WantedBy=multi-user.target
 EOF
 else
     _prefix=${CONTAINER_INFRA_PREFIX:-"docker.io/openstackmagnum/"}
-    $ssh_cmd atomic install \\
-    --system-package no \\
-    --system \\
-    --storage ostree \\
+    $ssh_cmd atomic install \
+    --system-package no \
+    --system \
+    --storage ostree \
     --name=etcd ${_prefix}etcd:${ETCD_TAG}
 fi
 
@@ -110,17 +110,17 @@ run_etcdctl() {
     local endpoints="$1"
     shift
     if [ "$TLS_DISABLED" = "False" ]; then
-        podman run --rm --network host \\
-            --volume /etc/etcd:/etc/etcd:ro,z \\
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
-            etcdctl --endpoints="$endpoints" \\
-            --cacert="$cert_dir/ca.crt" \\
-            --cert="$cert_dir/server.crt" \\
-            --key="$cert_dir/server.key" \\
+        podman run --rm --network host \
+            --volume /etc/etcd:/etc/etcd:ro,z \
+            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
+            etcdctl --endpoints="$endpoints" \
+            --cacert="$cert_dir/ca.crt" \
+            --cert="$cert_dir/server.crt" \
+            --key="$cert_dir/server.key" \
             "$@"
     else
-        podman run --rm --network host \\
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
+        podman run --rm --network host \
+            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
             etcdctl --endpoints="$endpoints" "$@"
     fi
 }
