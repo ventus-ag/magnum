@@ -175,7 +175,10 @@ check_cluster() {
             fi
         fi
     done
-    return 1
+    
+    # If no healthy endpoint found, return empty but don't fail
+    echo ""
+    return 0
 }
 
 # Function to get properly formatted member list
@@ -260,7 +263,7 @@ cleanup_etcd() {
 }
 
 # Main logic
-endpoint=$(check_cluster)
+endpoint=$(check_cluster) || true
 if [ -n "$endpoint" ]; then
     echo "Found existing cluster at $endpoint"
     
@@ -268,7 +271,7 @@ if [ -n "$endpoint" ]; then
     cleanup_etcd
     
     # Remove any stale member entries
-    member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1)
+    member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
     if [ -n "$member_id" ]; then
         echo "Removing stale member with ID $member_id"
         for i in {1..3}; do
@@ -280,42 +283,34 @@ if [ -n "$endpoint" ]; then
                 fi
             fi
             if [ $i -eq 3 ]; then
-                echo "Failed to remove stale member after 3 attempts"
-                exit 1
+                echo "Warning: Failed to remove stale member after 3 attempts, proceeding with new cluster setup"
+                endpoint=""
+                break
             fi
         done
     fi
     
-    # Add the new member
-    echo "Adding node $INSTANCE_NAME to the etcd cluster"
-    peer_url="$protocol://$myip:2380"
-    add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url") || {
-        echo "Failed to add member to cluster"
-        exit 1
-    }
-    
-    # Extract initial cluster from add output
-    initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-    if [ -z "$initial_cluster" ]; then
-        echo "Failed to get initial cluster configuration"
-        exit 1
+    if [ -n "$endpoint" ]; then
+        # Add the new member
+        echo "Adding node $INSTANCE_NAME to the etcd cluster"
+        peer_url="$protocol://$myip:2380"
+        add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url") || {
+            echo "Warning: Failed to add member to cluster, proceeding with new cluster setup"
+            endpoint=""
+        }
+        
+        if [ -n "$endpoint" ]; then
+            # Extract initial cluster from add output
+            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+            if [ -z "$initial_cluster" ]; then
+                echo "Warning: Failed to get initial cluster configuration, proceeding with new cluster setup"
+                endpoint=""
+            fi
+        fi
     fi
+fi
 
-    # Create configuration for joining existing cluster
-    cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-initial-cluster: "$initial_cluster"
-initial-cluster-state: "existing"
-heartbeat-interval: 1000
-election-timeout: 15000
-EOF
-else
+if [ -z "$endpoint" ]; then
     echo "No existing cluster found, creating new cluster using discovery URL"
     if [ -z "$ETCD_DISCOVERY_URL" ]; then
         echo "Error: ETCD_DISCOVERY_URL is not set"
@@ -337,6 +332,21 @@ listen-peer-urls: "$protocol://$myip:2380"
 advertise-client-urls: "$protocol://$myip:2379"
 initial-advertise-peer-urls: "$protocol://$myip:2380"
 discovery: "$ETCD_DISCOVERY_URL"
+heartbeat-interval: 1000
+election-timeout: 15000
+EOF
+else
+    # Create configuration for joining existing cluster
+    cat > /etc/etcd/etcd.conf.yaml <<EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+initial-cluster: "$initial_cluster"
+initial-cluster-state: "existing"
 heartbeat-interval: 1000
 election-timeout: 15000
 EOF
