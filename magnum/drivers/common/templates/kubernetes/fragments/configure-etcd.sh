@@ -105,24 +105,57 @@ else
     --name=etcd ${_prefix}etcd:${ETCD_TAG}
 fi
 
-# Function to run etcdctl inside a container
+# Function to run etcdctl with retries
 run_etcdctl() {
     local endpoints="$1"
     shift
+    local max_attempts=5
+    local attempt=1
+    local timeout=10
+    local wait=3
+    local common_opts=(
+        --rm
+        --network host
+        --volume /etc/etcd:/etc/etcd:ro,z
+    )
+    local etcdctl_opts=(
+        --endpoints="$endpoints"
+        --command-timeout="${timeout}s"
+        --dial-timeout=10s
+        --keepalive-time=5s
+        --keepalive-timeout=10s
+    )
+
     if [ "$TLS_DISABLED" = "False" ]; then
-        podman run --rm --network host \
-            --volume /etc/etcd:/etc/etcd:ro,z \
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
-            etcdctl --endpoints="$endpoints" \
-            --cacert="$cert_dir/ca.crt" \
-            --cert="$cert_dir/server.crt" \
-            --key="$cert_dir/server.key" \
-            "$@"
-    else
-        podman run --rm --network host \
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
-            etcdctl --endpoints="$endpoints" "$@"
+        etcdctl_opts+=(
+            --cacert="$cert_dir/ca.crt"
+            --cert="$cert_dir/server.crt"
+            --key="$cert_dir/server.key"
+        )
     fi
+
+    while [ $attempt -le $max_attempts ]; do
+        echo "Attempt $attempt/$max_attempts: etcdctl $*" >&2
+        if output=$(podman run "${common_opts[@]}" \
+            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
+            etcdctl "${etcdctl_opts[@]}" "$@" 2>&1); then
+            echo "$output"
+            return 0
+        else
+            echo "Attempt $attempt failed: $output" >&2
+            if [ $attempt -lt $max_attempts ]; then
+                echo "Waiting ${wait} seconds before retry..." >&2
+                sleep $wait
+                # Increase wait time for next attempt (exponential backoff)
+                wait=$((wait * 2))
+            fi
+            attempt=$((attempt + 1))
+        fi
+    done
+    
+    echo "Failed after $max_attempts attempts" >&2
+    echo ""
+    return 0
 }
 
 # Function to check if a node is part of the cluster
@@ -142,20 +175,22 @@ get_known_endpoints() {
     local lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
     
     # Try to get member list from load balancer
-    local member_list=$(run_etcdctl "$lb_endpoint" member list 2>/dev/null) || return
+    local member_list=$(run_etcdctl "$lb_endpoint" member list)
     
-    # Extract endpoints from member list
-    while IFS=',' read -r id state name peerurl rest; do
-        # Skip empty lines
-        [ -z "$id" ] && continue
-        
-        # Convert peer URL to client URL (2380 to 2379)
-        client_url=$(echo "$peerurl" | tr -d ' ' | cut -d'=' -f2 | sed 's/:2380/:2379/')
-        
-        if [ -n "$client_url" ]; then
-            endpoints+=("$client_url")
-        fi
-    done <<< "$member_list"
+    # Extract endpoints from member list if not empty
+    if [ -n "$member_list" ]; then
+        while IFS=',' read -r id state name peerurl rest; do
+            # Skip empty lines
+            [ -z "$id" ] && continue
+            
+            # Convert peer URL to client URL (2380 to 2379)
+            client_url=$(echo "$peerurl" | tr -d ' ' | cut -d'=' -f2 | sed 's/:2380/:2379/')
+            
+            if [ -n "$client_url" ]; then
+                endpoints+=("$client_url")
+            fi
+        done <<< "$member_list"
+    fi
     
     echo "${endpoints[@]}"
 }
@@ -169,14 +204,14 @@ check_cluster() {
     
     for endpoint in "${known_endpoints[@]}"; do
         if [ "$endpoint" != "$protocol://$myip:2379" ]; then  # Skip our own IP
-            if run_etcdctl "$endpoint" endpoint health >/dev/null 2>&1; then
+            local health_check=$(run_etcdctl "$endpoint" endpoint health)
+            if [ -n "$health_check" ]; then
                 echo "$endpoint"
                 return 0
             fi
         fi
     done
     
-    # If no healthy endpoint found, return empty but don't fail
     echo ""
     return 0
 }
@@ -334,6 +369,8 @@ initial-advertise-peer-urls: "$protocol://$myip:2380"
 discovery: "$ETCD_DISCOVERY_URL"
 heartbeat-interval: 1000
 election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
 EOF
 else
     # Create configuration for joining existing cluster
@@ -349,6 +386,8 @@ initial-cluster: "$initial_cluster"
 initial-cluster-state: "existing"
 heartbeat-interval: 1000
 election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
 EOF
 fi
 
