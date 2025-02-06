@@ -14,11 +14,6 @@ parameters:
     type: boolean
     default: false
 
-  timestamp_upgrade:
-    type: string
-    description: A timestamp value that changes on every stack upgrade
-    default: ""
-
   server_image:
     type: string
     description: glance image used to boot the server
@@ -1243,7 +1238,6 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
-        timestamp_upgrade: { get_param: timestamp_upgrade }
 
 outputs:
   OS::stack_id:
