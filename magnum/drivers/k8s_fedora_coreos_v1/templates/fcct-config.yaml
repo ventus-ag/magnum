@@ -302,7 +302,6 @@ systemd:
                 --volume /opt/stack/os-config-refresh:/opt/stack/os-config-refresh \
                 --volume /run/systemd:/run/systemd \
                 --volume /etc/:/etc/ \
-                --volume /usr/bin/jq:/usr/bin/jq:ro \
                 --volume /var/lib:/var/lib \
                 --volume /var/run:/var/run \
                 --volume /var/log:/var/log \
