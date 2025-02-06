@@ -109,7 +109,7 @@ fi
 run_etcdctl() {
     local endpoints="$1"
     shift
-    local max_attempts=5
+    local max_attempts=3
     local attempt=1
     local timeout=10
     local wait=3
