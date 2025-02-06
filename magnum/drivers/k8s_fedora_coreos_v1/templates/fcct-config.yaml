@@ -14,8 +14,8 @@
 
 # docker run --rm \
 # --volume "${PWD}/magnum/drivers/k8s_fedora_coreos_v1/templates":/pwd --workdir /pwd \
-# quay.io/coreos/fcct:release \
-# --pretty --strict /pwd/fcct-config.yaml > ./magnum/drivers/k8s_fedora_coreos_v1/templates/user_data.json
+# quay.io/coreos/butane:release \
+# --pretty --strict /pwd/fcct-config.yaml > ./user_data.json
 
 variant: fcos
 version: 1.1.0
