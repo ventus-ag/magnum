@@ -136,7 +136,7 @@ run_etcdctl() {
 
     while [ $attempt -le $max_attempts ]; do
         echo "Attempt $attempt/$max_attempts: etcdctl $*" >&2
-        if output=$(podman run "${common_opts[@]}" \
+        if output=$($ssh_cmd podman run "${common_opts[@]}" \
             ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
             etcdctl "${etcdctl_opts[@]}" "$@" 2>&1); then
             echo "$output"
