@@ -1,16 +1,6 @@
 {
   "ignition": {
-    "config": {
-      "replace": {
-        "source": null,
-        "verification": {}
-      }
-    },
-    "security": {
-      "tls": {}
-    },
-    "timeouts": {},
-    "version": "3.0.0"
+    "version": "3.1.0"
   },
   "passwd": {
     "users": [
@@ -56,6 +46,7 @@
           "name": "root"
         },
         "contents": {
+          "compression": "",
           "source": "data:,fs.inotify.max_user_watches%3D16184%0A"
         },
         "mode": 420
@@ -70,7 +61,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,net.ipv4.conf.default.rp_filter%3D2%0Anet.ipv4.conf.*.rp_filter%3D2%0Anet.ipv4.conf.all.promote_secondaries%20%3D%201%0Anet.ipv4.conf.*.accept_source_route%20%3D%201%0A"
+          "compression": "gzip",
+          "source": "data:;base64,H4sIAAAAAAAC/3zMsQpCMQxG4d2nuLNDQHG9zxJC+hcKsQlp6vMLbiI4n48zUTTi9SD12amhy7aiDO7DCnneL9/i+qeJGUX60wu8oD6b5MA6zuP2cxFVRPHynQpO34WPewcAAP//b0MkhJAAAAA="
         },
         "mode": 420
       },
@@ -78,11 +70,13 @@
         "group": {
           "name": "root"
         },
+        "overwrite": true,
         "path": "/etc/systemd/network/50-flannel.link",
         "user": {
           "name": "root"
         },
         "contents": {
+          "compression": "",
           "source": "data:,%5BMatch%5D%0AOriginalName%3Dflannel*%0A%5BLink%5D%0AMACAddressPolicy%3Dnone%0A"
         },
         "mode": 420
@@ -97,8 +91,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,%23%20This%20file%20controls%20the%20state%20of%20SELinux%20on%20the%20system.%0A%23%20SELINUX%3D%20can%20take%20one%20of%20these%20three%20values%3A%0A%23%20%20%20%20%20enforcing%20-%20SELinux%20security%20policy%20is%20enforced.%0A%23%20%20%20%20%20permissive%20-%20SELinux%20prints%20warnings%20instead%20of%20enforcing.%0A%23%20%20%20%20%20disabled%20-%20No%20SELinux%20policy%20is%20loaded.%0ASELINUX%3D__SELINUX_MODE__%0A%23%20SELINUXTYPE%3D%20can%20take%20one%20of%20these%20three%20values%3A%0A%23%20%20%20%20%20targeted%20-%20Targeted%20processes%20are%20protected%2C%0A%23%20%20%20%20%20minimum%20-%20Modification%20of%20targeted%20policy.%20Only%20selected%20processes%20are%20protected.%0A%23%20%20%20%20%20mls%20-%20Multi%20Level%20Security%20protection.%0ASELINUXTYPE%3Dtargeted%0A",
-          "verification": {}
+          "compression": "gzip",
+          "source": "data:;base64,H4sIAAAAAAAC/5SQv27zMAzE9zzFAVm/5AE+oFszFMifAkmBdjJUiY6JypQh0m799oUd2+nSoZooiXc/Hte4VKwoORJ8EsspKqwiqDkjpBLn3Z6l/UKS23uvRvV2tR4+no4vrw/wTmDug5BkVFhFSrAqE6FzsSX9v1pjOCRlyp7lis3iq+TbzNajSZF9D9apjcJ2kjWUa1bljn7omsxiik+XheWqYFEjF4YBFsxsEFjde6SADY7p7rAAY3JhwM2RimKqisPpcVcU97SXt+fdXxKby1eykXyZyyYnT6qkcJmGm5E3Cv8mSc3CdVtjg0MKXLJ3xklGzOIwTr7FSWIPpTjqf/Odl1BHHTzbaIw9dRRxXlZ/6+Ukyw7GoDNw9R0AAP//roYU6CcCAAA="
         },
         "mode": 420
       },
@@ -111,8 +105,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:;base64,IyBNYXhpbXVtIHNpemUgb2YgbG9nIGZpbGVzIChpbiBieXRlcykKIyAtMSBpcyB1bmxpbWl0ZWQKIyA1MG0KW2NvbnRhaW5lcnNdCmxvZ19zaXplX21heCA9IDUyNDI4ODAwCg==",
-          "verification": {}
+          "compression": "",
+          "source": "data:;base64,IyBNYXhpbXVtIHNpemUgb2YgbG9nIGZpbGVzIChpbiBieXRlcykKIyAtMSBpcyB1bmxpbWl0ZWQKIyA1MG0KW2NvbnRhaW5lcnNdCmxvZ19zaXplX21heCA9IDUyNDI4ODAwCg=="
         },
         "mode": 420
       },
@@ -126,8 +120,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,__HOSTNAME__%0A",
-          "verification": {}
+          "compression": "",
+          "source": "data:,__HOSTNAME__%0A"
         },
         "mode": 420
       },
@@ -140,8 +134,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,__OPENSTACK_CA__%0A",
-          "verification": {}
+          "compression": "",
+          "source": "data:,__OPENSTACK_CA__%0A"
         },
         "mode": 420
       },
@@ -154,8 +148,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,%23!%2Fbin%2Fbash%0A%0Aset%20-x%0Aset%20-e%0Aset%20%2Bu%0A%0Auntil%20%5B%20-f%20%2Fetc%2Fpki%2Fca-trust%2Fsource%2Fanchors%2Fopenstack-ca.pem%20%5D%0Ado%0A%20%20%20%20echo%20%22waiting%20for%20%2Fetc%2Fpki%2Fca-trust%2Fsource%2Fanchors%2Fopenstack-ca.pem%22%0A%20%20%20%20sleep%203s%0Adone%0A%0A%2Fusr%2Fbin%2Fupdate-ca-trust%0A%0AHTTP_PROXY%3D%22__HTTP_PROXY__%22%0AHTTPS_PROXY%3D%22__HTTPS_PROXY__%22%0ANO_PROXY%3D%22__NO_PROXY__%22%0A%0Aif%20%5B%20-n%20%22%24%7BHTTP_PROXY%7D%22%20%5D%3B%20then%0A%20%20%20%20export%20HTTP_PROXY%0A%20%20%20%20echo%20%22http_proxy%3D%24%7BHTTP_PROXY%7D%22%20%3E%3E%20%2Fetc%2Fenvironment%0Afi%0A%0Aif%20%5B%20-n%20%22%24%7BHTTPS_PROXY%7D%22%20%5D%3B%20then%0A%20%20%20%20export%20HTTPS_PROXY%0A%20%20%20%20echo%20%22https_proxy%3D%24%7BHTTPS_PROXY%7D%22%20%3E%3E%20%2Fetc%2Fenvironment%0Afi%0A%0Aif%20%5B%20-n%20%22%24%7BNO_PROXY%7D%22%20%5D%3B%20then%0A%20%20%20%20export%20NO_PROXY%0A%20%20%20%20echo%20%22no_proxy%3D%24%7BNO_PROXY%7D%22%20%3E%3E%20%2Fetc%2Fenvironment%0Afi%0A%0Ased%20-i%20'%2F%5EPermitRootLogin%2F%20s%2F%20.*%2F%20without-password%2F'%20%2Fetc%2Fssh%2Fsshd_config%0A%23%20Security%20enhancement%3A%20Disable%20password%20authentication%0Ased%20-i%20'%2F%5EPasswordAuthentication%20yes%2F%20s%2F%20yes%2F%20no%2F'%20%2Fetc%2Fssh%2Fsshd_config%0A%0Asystemctl%20restart%20sshd%0A",
-          "verification": {}
+          "compression": "gzip",
+          "source": "data:;base64,H4sIAAAAAAAC/5RUbW/bNhD+zl9xswcE2CbR3QYU2NoAxbagxYYkqDtgw9AJNHW2CEs8jndMog377wXpuHYcF24+UbqX54V30vQLvXBeLwx3SjEKVHebA8vxdVIqeXE9/AXVEjSK1WHttDWVxMSimVK0qI23HUXWFNCzGLuurKkDDvBetaQAANB2BJNb48T5FSwpPh1sUoC4RwzwHauWPCqlE8diIYXWCFZbMKVev3t33Vy/vfrjz5eTptm9Nc2k5OYPk/Nd9vJql9o+57hyy3wPHiZf/rfD+38C738E6dBvjN4FigK7/J79TiQ0IdLd+PIA4fx8cx/ob1wkP6AXtXSPGOenKOdHOfkB6fwprFv/xym32T0+Tx/J9no/xTSFnyIaQTCwxjEYF8tuSIfQoZHKkhfjPMbKrNALCKkpGGuRuRR5ahHoBiMwdzW8EXAMiXGZehACChiNoJqC89ARCwyUvIA3A3IwFsH4FkwI/QiW/NKtUjTiyNfKtWpYty5CFUBzvNGDWfk06Jq5U7YbqIXZ89nscW4qlGz3KK6zn6a4aCIbxdxVaxxX6KH6ByqByAaqSzg7K1+aDOGwY7g5Fj5JdLytDmlxqjXXbK1+f8TqIdPnlxbkKbxq2zLFkBa9s3lgZfB5TiZJR9H9i22zxpFh6Xqs9yYSieTxLPaiRj5HBJzvNekD0nuFPVnTZ01CsPZ022SBvB0gW+Ph2bfP61k9q59lvEPW3OPvm6Z5T+9Xbbtrxds3GX2BwAGtWzps4dZJV6qri+LmCPIGB168+OXqQr3OEovWTFW+SMixSzPgTuAm/jtjhOx78/qmRS9OxgvX48kpfwT4NfvKDHy8b993FqgYW6gcnOm/rzEOTt4SyW+0cl4Da6i/0sUzJamCYb6l2OqzzW8jwzF3bbNxrKYwR5uikxHQd8ZbzH+UH+Bnx2bRI2z7yxplb7bc9L6C+4pXDwpgRC5iyunpU/yKRxYcrPQQkcVEyZNq1YcAAAD//4k3yPxPBwAA"
         },
         "mode": 448
       },
@@ -168,8 +162,8 @@
           "name": "root"
         },
         "contents": {
-          "source": "data:,%5Bupdates%5D%0Aenabled%20%3D%20false%0A",
-          "verification": {}
+          "compression": "",
+          "source": "data:,%5Bupdates%5D%0Aenabled%20%3D%20false%0A"
         },
         "mode": 420
       },
@@ -177,6 +171,7 @@
         "overwrite": true,
         "path": "/etc/crypto-policies/state/current",
         "contents": {
+          "compression": "",
           "source": "data:,LEGACY"
         },
         "mode": 420
@@ -248,7 +243,7 @@
         "name": "configure-agent-env.service"
       },
       {
-        "contents": "[Unit]\nDescription=Run heat-container-agent\nAfter=network-online.target configure-agent-env.service\nWants=network-online.target\n\n[Service]\nEnvironmentFile=-/etc/environment\nExecStartPre=mkdir -p /var/lib/heat-container-agent\nExecStartPre=mkdir -p /var/run/heat-config\nExecStartPre=mkdir -p /var/run/os-collect-config\nExecStartPre=mkdir -p /opt/stack/os-config-refresh\nExecStartPre=-mv /var/lib/os-collect-config/local-data /var/lib/cloud/data/cfn-init-data\nExecStartPre=mkdir -p /srv/magnum\nExecStartPre=-/bin/podman kill heat-container-agent\nExecStartPre=-/bin/podman rm heat-container-agent\nExecStartPre=-/bin/podman pull __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__\nExecStart=/bin/podman run \\\n        --name heat-container-agent \\\n        --privileged \\\n        --net=host \\\n        --volume /srv/magnum:/srv/magnum \\\n        --volume /opt/stack/os-config-refresh:/opt/stack/os-config-refresh \\\n        --volume /run/systemd:/run/systemd \\\n        --volume /etc/:/etc/ \\\n        --volume /var/lib:/var/lib \\\n        --volume /var/run:/var/run \\\n        --volume /var/log:/var/log \\\n        --volume /tmp:/tmp \\\n        --volume /dev:/dev \\\n        --volume /usr/bin/jq:/usr/bin/jq:ro \\\n        --env REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt \\\n        __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \\\n        /usr/bin/start-heat-container-agent\nTimeoutStartSec=10min\n\nExecStop=/bin/podman stop heat-container-agent\n\n[Install]\nWantedBy=multi-user.target\n",
+        "contents": "[Unit]\nDescription=Run heat-container-agent\nAfter=network-online.target configure-agent-env.service\nWants=network-online.target\n\n[Service]\nEnvironmentFile=-/etc/environment\nExecStartPre=mkdir -p /var/lib/heat-container-agent\nExecStartPre=mkdir -p /var/run/heat-config\nExecStartPre=mkdir -p /var/run/os-collect-config\nExecStartPre=mkdir -p /opt/stack/os-config-refresh\nExecStartPre=-mv /var/lib/os-collect-config/local-data /var/lib/cloud/data/cfn-init-data\nExecStartPre=mkdir -p /srv/magnum\nExecStartPre=-/bin/podman kill heat-container-agent\nExecStartPre=-/bin/podman rm heat-container-agent\nExecStartPre=-/bin/podman pull __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__\nExecStart=/bin/podman run \\\n        --name heat-container-agent \\\n        --privileged \\\n        --net=host \\\n        --volume /srv/magnum:/srv/magnum \\\n        --volume /opt/stack/os-config-refresh:/opt/stack/os-config-refresh \\\n        --volume /run/systemd:/run/systemd \\\n        --volume /etc/:/etc/ \\\n        --volume /usr/bin/jq:/usr/bin/jq:ro \\\n        --volume /var/lib:/var/lib \\\n        --volume /var/run:/var/run \\\n        --volume /var/log:/var/log \\\n        --volume /tmp:/tmp \\\n        --volume /dev:/dev \\\n        --env REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt \\\n        __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \\\n        /usr/bin/start-heat-container-agent\nTimeoutStartSec=10min\n\nExecStop=/bin/podman stop heat-container-agent\n\n[Install]\nWantedBy=multi-user.target\n",
         "enabled": true,
         "name": "heat-container-agent.service"
       }

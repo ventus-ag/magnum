@@ -13,9 +13,9 @@
 # [1] https://github.com/coreos/fedora-coreos-docs/blob/master/modules/ROOT/pages/producing-ign.adoc
 
 # docker run --rm \
-# -v /home/ubuntu:/opt \
+# --volume "${PWD}/magnum/drivers/k8s_fedora_coreos_v1/templates":/pwd --workdir /pwd \
 # quay.io/coreos/fcct:release \
-# --pretty --strict /opt/fcct-config.yaml > ./user_data.json
+# --pretty --strict /pwd/fcct-config.yaml > ./magnum/drivers/k8s_fedora_coreos_v1/templates/user_data.json
 
 variant: fcos
 version: 1.1.0
@@ -302,6 +302,7 @@ systemd:
                 --volume /opt/stack/os-config-refresh:/opt/stack/os-config-refresh \
                 --volume /run/systemd:/run/systemd \
                 --volume /etc/:/etc/ \
+                --volume /usr/bin/jq:/usr/bin/jq:ro \
                 --volume /var/lib:/var/lib \
                 --volume /var/run:/var/run \
                 --volume /var/log:/var/log \
