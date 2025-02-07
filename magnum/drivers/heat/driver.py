@@ -482,8 +482,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             'existing': True, 
             'parameters': heat_params,
-            'timeout_mins': 60,
-            'clear_parameter': 'timestamp_upgrade',
+            'timeout_mins': 60
         }
 
         # Fetch the current parameters of the stack
@@ -497,6 +496,24 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'containerd_version'
             ]
         for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
+
+
+        # old parameters what was removed from template
+        parameters_to_clear = [
+            'timestamp_upgrade'
+            ]
+
+        params_to_clear = []
+        for param in parameters_to_clear:
+            if param in current_parameters:
+                params_to_clear.append(param)
+
+        if params_to_clear:
+            fields['clear_parameter'] = params_to_clear
+
+        # Remove the cleared parameters from current_parameters
+        for param in params_to_clear:
             current_parameters.pop(param, None)
 
         # Remove parameters ending with '_tag' or '_sha256'
