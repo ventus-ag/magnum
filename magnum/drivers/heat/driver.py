@@ -480,9 +480,10 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
-            # 'existing': True, 
+            'existing': True, 
             'parameters': heat_params,
             'timeout_mins': 60,
+            'clear_parameter': 'timestamp_upgrade',
         }
 
         # Fetch the current parameters of the stack
