@@ -15,6 +15,13 @@ mkdir -p /srv/magnum/k8s/
 echo "PATH=/srv/magnum/bin:\$PATH" >> /etc/bashrc
 echo "export HISTCONTROL=ignoredups" >> /etc/bashrc
 
+$ssh_cmd 'if systemctl list-unit-files | grep -q "^kubelet\.service"; then
+    echo "kubelet service exists. Stopping it..."
+    systemctl stop kubelet
+else
+    echo "kubelet service not found. Skipping stop."
+fi'
+
 $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/${KUBE_TAG}/bin/linux/${ARCH}/kubelet
 $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${KUBE_TAG}/bin/linux/${ARCH}/kubectl
 
