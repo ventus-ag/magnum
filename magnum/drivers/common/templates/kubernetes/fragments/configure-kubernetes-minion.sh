@@ -75,6 +75,7 @@ net.ipv4.ping_group_range = 0 2147483647
 EOF
 
 mkdir -p /srv/magnum/kubernetes/
+mkdir -p /etc/kubernetes
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOG_LEVEL="--v=3"
 EOF
