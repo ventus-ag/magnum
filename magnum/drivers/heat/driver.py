@@ -257,7 +257,7 @@ class HeatDriver(driver.Driver):
             nodes_to_remove=None)
         
         scale_params['is_upgrade'] = False
-        scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        #scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'parameters': scale_params,
@@ -282,7 +282,7 @@ class HeatDriver(driver.Driver):
             nodes_to_remove=nodes_to_remove)
         
         scale_params['is_upgrade'] = False
-        scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        #scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'parameters': scale_params,
