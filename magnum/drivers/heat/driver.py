@@ -257,6 +257,7 @@ class HeatDriver(driver.Driver):
             nodes_to_remove=None)
         
         scale_params['is_upgrade'] = False
+        scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'parameters': scale_params,
@@ -281,6 +282,7 @@ class HeatDriver(driver.Driver):
             nodes_to_remove=nodes_to_remove)
         
         scale_params['is_upgrade'] = False
+        scale_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'parameters': scale_params,
@@ -474,13 +476,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                         env_files)
         tpl_files.update(env_map)
-        # Get current datetime
-        now = datetime.datetime.now()
 
-        # Convert datetime to string
-        now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
         heat_params['is_upgrade'] = True
-        heat_params['timestamp_upgrade'] = now_str
+        heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'template': template,
