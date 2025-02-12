@@ -289,7 +289,7 @@ cleanup_etcd() {
     $ssh_cmd podman rm -f etcd || true
     
     # Remove all etcd data
-    $ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
+    #$ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
     
     # Wait for cleanup to complete
     sleep 5
