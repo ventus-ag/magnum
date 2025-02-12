@@ -152,7 +152,7 @@ run_etcdctl() {
             attempt=$((attempt + 1))
         fi
     done
-    
+
     echo "Failed after $max_attempts attempts" >&2
     echo ""
     return 0
@@ -163,106 +163,117 @@ is_member() {
     local endpoints="$1"
     local node_name="$2"
     local node_ip="$3"
-    
+
     member_list=$(run_etcdctl "$endpoints" member list) || return 1
     echo "$member_list" | grep -q -E "$node_name|$node_ip" || return 1
     return 0
 }
 
-# Function to get endpoints from load balancer VIP
+# Function to get endpoints from the load balancer VIP
 get_known_endpoints() {
     local endpoints=()
     local lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
-    
+
     # Try to get member list from load balancer
     local member_list=$(run_etcdctl "$lb_endpoint" member list)
-    
+
     # Extract endpoints from member list if not empty
     if [ -n "$member_list" ]; then
         while IFS=',' read -r id state name peerurl rest; do
             # Skip empty lines
             [ -z "$id" ] && continue
-            
+
             # Convert peer URL to client URL (2380 to 2379)
             client_url=$(echo "$peerurl" | tr -d ' ' | cut -d'=' -f2 | sed 's/:2380/:2379/')
-            
             if [ -n "$client_url" ]; then
                 endpoints+=("$client_url")
             fi
         done <<< "$member_list"
     fi
-    
+
     echo "${endpoints[@]}"
 }
 
-# Function to check if cluster exists and get endpoints
+# Function to check if the cluster is alive by verifying load balancer endpoints.
+# It uses the endpoints from get_known_endpoints (which are derived from ETCD_LB_VIP)
+# and returns the first healthy endpoint.
 check_cluster() {
-    # Get endpoints from discovery URL
     local known_endpoints=($(get_known_endpoints))
-    
-    echo "Found endpoints from discovery: ${known_endpoints[@]}" >&2
-    
+    echo "Found endpoints from load balancer: ${known_endpoints[@]}" >&2
+
+    if [ ${#known_endpoints[@]} -eq 0 ]; then
+         echo "No load balancer endpoints found; cluster is not alive" >&2
+         echo ""
+         return 0
+    fi
+
     for endpoint in "${known_endpoints[@]}"; do
-        if [ "$endpoint" != "$protocol://$myip:2379" ]; then  # Skip our own IP
-            local health_check=$(run_etcdctl "$endpoint" endpoint health)
-            if [ -n "$health_check" ]; then
-                echo "$endpoint"
-                return 0
-            fi
-        fi
+         # Skip our own endpoint
+         if [ "$endpoint" != "$protocol://$myip:2379" ]; then
+              echo "Checking health of $endpoint" >&2
+              local health_check=$(run_etcdctl "$endpoint" endpoint health)
+              if [ -n "$health_check" ]; then
+                  echo "Endpoint $endpoint is healthy" >&2
+                  echo "$endpoint"
+                  return 0
+              else
+                  echo "Endpoint $endpoint is not healthy" >&2
+              fi
+         fi
     done
-    
+
+    echo "No live endpoints found via load balancer" >&2
     echo ""
     return 0
 }
 
-# Function to get properly formatted member list
+# Function to get properly formatted member list (unused in current flow)
 get_member_list() {
     local endpoints="$1"
     local my_name="$2"
     local my_ip="$3"
     local member_list=$(run_etcdctl "$endpoints" member list)
     local formatted_list=""
-    
+
     echo "Current member list:" >&2
     echo "$member_list" >&2
-    
+
     while IFS=',' read -r id state name peerurl rest; do
         # Skip empty lines
         [ -z "$id" ] && continue
-        
+
         # Clean up the values
         name=$(echo "$name" | tr -d ' ')
         peerurl=$(echo "$peerurl" | tr -d ' ' | cut -d'=' -f2)
-        
+
         # Skip entries with empty names or URLs
         [ -z "$name" ] || [ -z "$peerurl" ] && continue
-        
+
         # For our IP, use our name
         if echo "$peerurl" | grep -q "$my_ip"; then
             name="$my_name"
         fi
-        
+
         if [ -z "$formatted_list" ]; then
             formatted_list="$name=$peerurl"
         else
             formatted_list="$formatted_list,$name=$peerurl"
         fi
     done <<< "$member_list"
-    
+
     echo "Formatted member list: $formatted_list" >&2
     echo "$formatted_list"
 }
 
-# Function to get cluster members from discovery URL
+# Function to get cluster members from discovery URL (unused in current flow)
 get_discovery_members() {
     local discovery_response=$(curl -s "$ETCD_DISCOVERY_URL")
     echo "Discovery URL response: $discovery_response" >&2
-    
+
     # Extract existing nodes from discovery
     local nodes=$(echo "$discovery_response" | grep -o '"nodes":\[[^]]*\]' | grep -o 'value":"[^"]*' | cut -d'"' -f3)
     echo "Extracted nodes: $nodes" >&2
-    
+
     local formatted_list=""
     for node in $nodes; do
         local name=$(echo "$node" | cut -d'=' -f1)
@@ -281,84 +292,125 @@ get_discovery_members() {
 # Function to clean up etcd data and stop service
 cleanup_etcd() {
     echo "Cleaning up etcd data..."
-    
+
     # Stop etcd service
     $ssh_cmd systemctl stop etcd
-    
+
     # Remove existing container if any
     $ssh_cmd podman rm -f etcd || true
-    
-    # Remove all etcd data
-    #$ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
-    
+
+    # Remove all etcd data (if desired)
+    # $ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
+
     # Wait for cleanup to complete
     sleep 5
-    
+
     echo "Etcd cleanup completed"
 }
 
-# Main logic
-endpoint=$(check_cluster) || true
-if [ -n "$endpoint" ]; then
-    echo "Found existing cluster at $endpoint"
-    
-    # Clean up before joining
-    cleanup_etcd
-    
-    # Remove any stale member entries
-    member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
-    if [ -n "$member_id" ]; then
-        echo "Removing stale member with ID $member_id"
-        for i in {1..3}; do
-            if run_etcdctl "$endpoint" member remove "$member_id"; then
-                # Wait for removal to propagate
-                sleep 5
-                if ! run_etcdctl "$endpoint" member list | grep -q "$member_id"; then
+# -----------------------------------------------------------------
+# Added Health Check: If the etcd member is healthy and already
+# part of the cluster then we simply update the service (which may
+# have a new ETCD_TAG) and restart etcd.
+#
+# NOTE: Membership operations (such as retrieving the member list)
+#       are performed using the load balancer endpoint.
+# -----------------------------------------------------------------
+
+rejoin_needed=1
+local_endpoint="$protocol://$myip:2379"
+lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
+
+# Check that local etcd is healthy (for assurance)
+if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
+    echo "Local etcd endpoint $local_endpoint is healthy."
+else
+    echo "Local etcd endpoint $local_endpoint is not healthy."
+fi
+
+# Use LB endpoint for membership check and cluster status
+if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+    echo "LB etcd endpoint $lb_endpoint is healthy."
+    if is_member "$lb_endpoint" "$INSTANCE_NAME" "$myip"; then
+         echo "LB membership check indicates node is already in the cluster. Updating etcd.service and restarting etcd."
+         $ssh_cmd systemctl daemon-reload
+         $ssh_cmd systemctl restart etcd
+         rejoin_needed=0
+    else
+         echo "LB membership check indicates node is not registered as a cluster member. Proceeding with rejoin process."
+         rejoin_needed=1
+    fi
+else
+    echo "LB etcd endpoint $lb_endpoint is not healthy. Proceeding with rejoin process."
+    rejoin_needed=1
+fi
+
+# -----------------------------------------------------------------
+# Main logic for joining or creating a cluster
+# -----------------------------------------------------------------
+
+if [ "$rejoin_needed" -eq 1 ]; then
+    endpoint=$(check_cluster) || true
+    if [ -n "$endpoint" ]; then
+        echo "Found existing cluster at $endpoint"
+
+        # Clean up before joining
+        cleanup_etcd
+
+        # Remove any stale member entries
+        member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
+        if [ -n "$member_id" ]; then
+            echo "Removing stale member with ID $member_id"
+            for i in {1..3}; do
+                if run_etcdctl "$endpoint" member remove "$member_id"; then
+                    # Wait for removal to propagate
+                    sleep 5
+                    if ! run_etcdctl "$endpoint" member list | grep -q "$member_id"; then
+                        break
+                    fi
+                fi
+                if [ $i -eq 3 ]; then
+                    echo "Warning: Failed to remove stale member after 3 attempts, proceeding with new cluster setup"
+                    endpoint=""
                     break
                 fi
-            fi
-            if [ $i -eq 3 ]; then
-                echo "Warning: Failed to remove stale member after 3 attempts, proceeding with new cluster setup"
-                endpoint=""
-                break
-            fi
-        done
-    fi
-    
-    if [ -n "$endpoint" ]; then
-        # Add the new member
-        echo "Adding node $INSTANCE_NAME to the etcd cluster"
-        peer_url="$protocol://$myip:2380"
-        add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url") || {
-            echo "Warning: Failed to add member to cluster, proceeding with new cluster setup"
-            endpoint=""
-        }
-        
+            done
+        fi
+
         if [ -n "$endpoint" ]; then
-            # Extract initial cluster from add output
-            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-            if [ -z "$initial_cluster" ]; then
-                echo "Warning: Failed to get initial cluster configuration, proceeding with new cluster setup"
+            # Add the new member
+            echo "Adding node $INSTANCE_NAME to the etcd cluster"
+            peer_url="$protocol://$myip:2380"
+            add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url") || {
+                echo "Warning: Failed to add member to cluster, proceeding with new cluster setup"
                 endpoint=""
+            }
+
+            if [ -n "$endpoint" ]; then
+                # Extract initial cluster from add output
+                initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+                if [ -z "$initial_cluster" ]; then
+                    echo "Warning: Failed to get initial cluster configuration, proceeding with new cluster setup"
+                    endpoint=""
+                fi
             fi
         fi
     fi
-fi
 
-if [ -z "$endpoint" ]; then
-    echo "No existing cluster found, creating new cluster using discovery URL"
-    if [ -z "$ETCD_DISCOVERY_URL" ]; then
-        echo "Error: ETCD_DISCOVERY_URL is not set"
-        exit 1
-    fi
+    if [ -z "$endpoint" ]; then
+        echo "No existing cluster found, creating new cluster using discovery URL"
+        if [ -z "$ETCD_DISCOVERY_URL" ]; then
+            echo "Error: ETCD_DISCOVERY_URL is not set"
+            exit 1
+        fi
 
-    # Verify discovery URL is accessible
-    if ! curl -sf "$ETCD_DISCOVERY_URL" >/dev/null; then
-        echo "Error: Cannot access discovery URL: $ETCD_DISCOVERY_URL"
-        exit 1
-    fi
+        # Verify discovery URL is accessible
+        if ! curl -sf "$ETCD_DISCOVERY_URL" >/dev/null; then
+            echo "Error: Cannot access discovery URL: $ETCD_DISCOVERY_URL"
+            exit 1
+        fi
 
-    cat > /etc/etcd/etcd.conf.yaml <<EOF
+        cat > /etc/etcd/etcd.conf.yaml <<EOF
 name: "$INSTANCE_NAME"
 data-dir: "/var/lib/etcd/default.etcd"
 listen-metrics-urls: "http://$myip:2378"
@@ -372,9 +424,9 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
-else
-    # Create configuration for joining existing cluster
-    cat > /etc/etcd/etcd.conf.yaml <<EOF
+    else
+        # Create configuration for joining existing cluster
+        cat > /etc/etcd/etcd.conf.yaml <<EOF
 name: "$INSTANCE_NAME"
 data-dir: "/var/lib/etcd/default.etcd"
 listen-metrics-urls: "http://$myip:2378"
@@ -389,9 +441,12 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+    fi
+else
+    echo "Skipping cluster join/creation logic as node is healthy and updated."
 fi
 
-# Add TLS configuration
+# Add TLS configuration to the YAML file if TLS is enabled
 if [ "$TLS_DISABLED" = "False" ]; then
     cat >> /etc/etcd/etcd.conf.yaml <<EOF
 client-transport-security:
@@ -407,54 +462,12 @@ peer-transport-security:
 EOF
 fi
 
-# Create backwards compatible conf file
-cat > /etc/etcd/etcd.conf <<EOF
-ETCD_NAME="$INSTANCE_NAME"
-ETCD_DATA_DIR="/var/lib/etcd/default.etcd"
-ETCD_LISTEN_CLIENT_URLS="$protocol://$myip:2379,http://127.0.0.1:2379"
-ETCD_LISTEN_PEER_URLS="$protocol://$myip:2380"
-ETCD_ADVERTISE_CLIENT_URLS="$protocol://$myip:2379,http://127.0.0.1:2379"
-ETCD_INITIAL_ADVERTISE_PEER_URLS="$protocol://$myip:2380"
-EOF
-
-# Add discovery or initial cluster based on state
-if [ -n "$endpoint" ]; then
-    cat >> /etc/etcd/etcd.conf <<EOF
-ETCD_INITIAL_CLUSTER="$initial_cluster"
-ETCD_INITIAL_CLUSTER_STATE="existing"
-EOF
-else
-    cat >> /etc/etcd/etcd.conf <<EOF
-ETCD_DISCOVERY="$ETCD_DISCOVERY_URL"
-EOF
-fi
-
-# Add TLS configuration if enabled
-if [ "$TLS_DISABLED" = "False" ]; then
-    cat >> /etc/etcd/etcd.conf <<EOF
-ETCD_CA_FILE=$cert_dir/ca.crt
-ETCD_TRUSTED_CA_FILE=$cert_dir/ca.crt
-ETCD_CERT_FILE=$cert_dir/server.crt
-ETCD_KEY_FILE=$cert_dir/server.key
-ETCD_CLIENT_CERT_AUTH=true
-ETCD_PEER_CA_FILE=$cert_dir/ca.crt
-ETCD_PEER_TRUSTED_CA_FILE=$cert_dir/ca.crt
-ETCD_PEER_CERT_FILE=$cert_dir/server.crt
-ETCD_PEER_KEY_FILE=$cert_dir/server.key
-ETCD_PEER_CLIENT_CERT_AUTH=true
-EOF
-fi
-
+# Append HTTP proxy configuration for discovery service if set
 if [ -n "$HTTP_PROXY" ]; then
     cat >> /etc/etcd/etcd.conf.yaml <<EOF
 # HTTP proxy to use for traffic to discovery service.
 discovery-proxy: $HTTP_PROXY
-
 EOF
-fi
-
-if [ -n "$HTTP_PROXY" ]; then
-    echo "ETCD_DISCOVERY_PROXY=$HTTP_PROXY" >> /etc/etcd/etcd.conf
 fi
 
 $ssh_cmd systemctl daemon-reload
