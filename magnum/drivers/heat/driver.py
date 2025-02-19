@@ -263,10 +263,10 @@ class HeatDriver(driver.Driver):
             existing_params = stack.parameters
             if 'timestamp_upgrade' in existing_params:
                 scale_params['timestamp_upgrade'] = existing_params['timestamp_upgrade']
+            if 'is_upgrade' in existing_params:
+                scale_params['is_upgrade'] = existing_params['is_upgrade']
         except Exception:
             pass
-
-        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -296,10 +296,10 @@ class HeatDriver(driver.Driver):
             stack = osc.heat().stacks.get(nodegroup.stack_id)
             if 'timestamp_upgrade' in stack.parameters:
                 scale_params['timestamp_upgrade'] = stack.parameters['timestamp_upgrade']
+            if 'is_upgrade' in existing_params:
+                scale_params['is_upgrade'] = existing_params['is_upgrade']
         except Exception:
             pass
-
-        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
