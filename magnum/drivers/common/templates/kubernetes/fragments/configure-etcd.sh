@@ -111,7 +111,7 @@ run_etcdctl() {
     shift
     local max_attempts=3
     local attempt=1
-    local timeout=10
+    local timeout=2
     local wait=3
     local common_opts=(
         --rm
@@ -298,9 +298,6 @@ cleanup_etcd() {
 
     # Remove existing container if any
     $ssh_cmd podman rm -f etcd || true
-
-    # Remove all etcd data (if desired)
-    # $ssh_cmd rm -rf /var/lib/etcd/default.etcd/*
 
     # Wait for cleanup to complete
     sleep 5
