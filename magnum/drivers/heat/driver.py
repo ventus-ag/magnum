@@ -256,8 +256,17 @@ class HeatDriver(driver.Driver):
             scale_manager,
             nodes_to_remove=None)
         
+        # Get existing stack parameters if available
+        try:
+            osc = clients.OpenStackClients(context)
+            stack = osc.heat().stacks.get(nodegroup.stack_id)
+            existing_params = stack.parameters
+            if 'timestamp_upgrade' in existing_params:
+                scale_params['timestamp_upgrade'] = existing_params['timestamp_upgrade']
+        except Exception:
+            pass
+
         scale_params['is_upgrade'] = False
-        scale_params['timestamp_upgrade'] = "2000-01-01T23:00:00"
 
         fields = {
             'parameters': scale_params,
@@ -281,8 +290,16 @@ class HeatDriver(driver.Driver):
             resize_manager,
             nodes_to_remove=nodes_to_remove)
         
+        # Get existing stack parameters if available
+        try:
+            osc = clients.OpenStackClients(context)
+            stack = osc.heat().stacks.get(nodegroup.stack_id)
+            if 'timestamp_upgrade' in stack.parameters:
+                scale_params['timestamp_upgrade'] = stack.parameters['timestamp_upgrade']
+        except Exception:
+            pass
+
         scale_params['is_upgrade'] = False
-        scale_params['timestamp_upgrade'] = "2000-01-01T23:00:00"
 
         fields = {
             'parameters': scale_params,
@@ -478,6 +495,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         heat_params['is_upgrade'] = True
+        if 'timestamp_upgrade' in osc.heat().stacks.get(stack_id).parameters:
+            heat_params['timestamp_upgrade'] = osc.heat().stacks.get(stack_id).parameters['timestamp_upgrade']
         heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
