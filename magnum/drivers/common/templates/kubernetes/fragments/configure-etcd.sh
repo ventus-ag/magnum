@@ -36,38 +36,45 @@ myip="${KUBE_NODE_IP}"
 
 # Add volume preparation section
 if [ -n "$ETCD_VOLUME_SIZE" ] && [ "$ETCD_VOLUME_SIZE" -gt 0 ]; then
-    attempts=60
-    while [ ${attempts} -gt 0 ]; do
-        device_name=$($ssh_cmd ls /dev/disk/by-id | grep ${ETCD_VOLUME:0:20}$)
-        if [ -n "${device_name}" ]; then
-            break
+    # Skip if already mounted
+    if ! $ssh_cmd mountpoint -q /var/lib/etcd; then
+        attempts=60
+        while [ ${attempts} -gt 0 ]; do
+            device_name=$($ssh_cmd ls /dev/disk/by-id | grep ${ETCD_VOLUME:0:20}$)
+            if [ -n "${device_name}" ]; then
+                break
+            fi
+            echo "waiting for disk device"
+            sleep 0.5
+            $ssh_cmd udevadm trigger
+            let attempts--
+        done
+
+        if [ -z "${device_name}" ]; then
+            echo "ERROR: disk device does not exist" >&2
+            exit 1
         fi
-        echo "waiting for disk device"
-        sleep 0.5
-        $ssh_cmd udevadm trigger
-        let attempts--
-    done
 
-    if [ -z "${device_name}" ]; then
-        echo "ERROR: disk device does not exist" >&2
-        exit 1
+        device_path=/dev/disk/by-id/${device_name}
+        fstype=$($ssh_cmd blkid -s TYPE -o value ${device_path} || echo "")
+        if [ "${fstype}" != "xfs" ]; then
+            $ssh_cmd mkfs.xfs -f ${device_path}
+        fi
+        $ssh_cmd mkdir -p /var/lib/etcd
+        if ! grep -q "${device_path} /var/lib/etcd" /etc/fstab; then
+            echo "${device_path} /var/lib/etcd xfs defaults 0 0" >> /etc/fstab
+        fi
+        $ssh_cmd mount -a
+        $ssh_cmd chown -R etcd.etcd /var/lib/etcd
+        $ssh_cmd chmod 755 /var/lib/etcd
     fi
-
-    device_path=/dev/disk/by-id/${device_name}
-    fstype=$($ssh_cmd blkid -s TYPE -o value ${device_path} || echo "")
-    if [ "${fstype}" != "xfs" ]; then
-        $ssh_cmd mkfs.xfs -f ${device_path}
-    fi
-    $ssh_cmd mkdir -p /var/lib/etcd
-    echo "${device_path} /var/lib/etcd xfs defaults 0 0" >> /etc/fstab
-    $ssh_cmd mount -a
-    $ssh_cmd chown -R etcd.etcd /var/lib/etcd
-    $ssh_cmd chmod 755 /var/lib/etcd
 fi
 
 # Add service creation section
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-    cat > /etc/systemd/system/etcd.service <<EOF
+    # Only create service file if it doesn't exist or has changed
+    service_file="/etc/systemd/system/etcd.service"
+    service_content=$(cat << EOF
 [Unit]
 Description=Etcd server
 After=network-online.target
@@ -96,13 +103,21 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
+)
+
+    if [ ! -f "$service_file" ] || [ "$(cat $service_file)" != "$service_content" ]; then
+        echo "$service_content" > "$service_file"
+        $ssh_cmd systemctl daemon-reload
+    fi
 else
     _prefix=${CONTAINER_INFRA_PREFIX:-"docker.io/openstackmagnum/"}
-    $ssh_cmd atomic install \
-    --system-package no \
-    --system \
-    --storage ostree \
-    --name=etcd ${_prefix}etcd:${ETCD_TAG}
+    if ! $ssh_cmd atomic images list | grep -q "^${_prefix}etcd:${ETCD_TAG}"; then
+        $ssh_cmd atomic install \
+        --system-package no \
+        --system \
+        --storage ostree \
+        --name=etcd ${_prefix}etcd:${ETCD_TAG}
+    fi
 fi
 
 # Function to run etcdctl with retries

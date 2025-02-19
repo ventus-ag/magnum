@@ -85,6 +85,12 @@ function generate_certificates {
     _KEY=$cert_dir/${1}.key
     _CONF=$2
 
+    # Skip if certificate already exists
+    if [ -f "${_CERT}" ] && [ -f "${_KEY}" ]; then
+        echo "Certificate ${1} already exists, skipping generation"
+        return 0
+    fi
+
     #Get a token by user credentials and trust
     auth_json=$(cat << EOF
 {
@@ -115,11 +121,13 @@ EOF
     USER_TOKEN=`curl $VERIFY_CA -s -i -X POST -H "$content_type" -d "$auth_json" $url \
         | grep -i X-Subject-Token | awk '{print $2}' | tr -d '[[:space:]]'`
 
-    # Get CA certificate for this cluster
-    curl $VERIFY_CA -X GET \
-        -H "X-Auth-Token: $USER_TOKEN" \
-        -H "OpenStack-API-Version: container-infra latest" \
-        $MAGNUM_URL/certificates/$CLUSTER_UUID | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > ${CA_CERT}
+    # Get CA certificate for this cluster if it doesn't exist
+    if [ ! -f "${CA_CERT}" ]; then
+        curl $VERIFY_CA -X GET \
+            -H "X-Auth-Token: $USER_TOKEN" \
+            -H "OpenStack-API-Version: container-infra latest" \
+            $MAGNUM_URL/certificates/$CLUSTER_UUID | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > ${CA_CERT}
+    fi
 
     # Generate server's private key and csr
     $ssh_cmd openssl genrsa -out "${_KEY}" 4096
@@ -138,6 +146,8 @@ EOF
         -H "Content-Type: application/json" \
         -d "$csr_req" \
         $MAGNUM_URL/certificates | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > ${_CERT}
+
+    rm -f ${_CSR}
 }
 
 # Create config for server's csr
@@ -251,9 +261,14 @@ generate_certificates proxy ${cert_dir}/proxy.conf
 generate_certificates controller ${cert_dir}/controller.conf
 generate_certificates scheduler ${cert_dir}/scheduler.conf
 
-# Generate service account key and private key
-echo -e "${KUBE_SERVICE_ACCOUNT_KEY}" > ${cert_dir}/service_account.key
-echo -e "${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY}" > ${cert_dir}/service_account_private.key
+# Generate service account keys if they don't exist
+if [ ! -f "${cert_dir}/service_account.key" ]; then
+    echo -e "${KUBE_SERVICE_ACCOUNT_KEY}" > ${cert_dir}/service_account.key
+fi
+
+if [ ! -f "${cert_dir}/service_account_private.key" ]; then
+    echo -e "${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY}" > ${cert_dir}/service_account_private.key
+fi
 
 # Common certs and key are created for both etcd and kubernetes services.
 # Both etcd and kube user should have permission to access the certs and key.
