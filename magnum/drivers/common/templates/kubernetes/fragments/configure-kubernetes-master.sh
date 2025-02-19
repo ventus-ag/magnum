@@ -130,10 +130,38 @@ EOF
 done
 
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
+    # Function to safely write a file via ssh
+    write_file_via_ssh() {
+        local target_file="$1"
+        local content="$2"
+        local tmp_file="${target_file}.tmp"
+        
+        # Create parent directory
+        $ssh_cmd mkdir -p "$(dirname ${target_file})"
+        
+        # Write content to temp file
+        printf '%s' "$content" | $ssh_cmd "cat > ${tmp_file}"
+        
+        # Compare with existing file if it exists
+        if $ssh_cmd test -f "${target_file}"; then
+            if ! $ssh_cmd cmp -s "${tmp_file}" "${target_file}"; then
+                $ssh_cmd mv "${tmp_file}" "${target_file}"
+                return 0  # File was updated
+            else
+                $ssh_cmd rm -f "${tmp_file}"
+                return 1  # No update needed
+            fi
+        else
+            $ssh_cmd mv "${tmp_file}" "${target_file}"
+            return 0  # New file created
+        fi
+    }
+
+    # Define services and their configurations
     declare -A services=(
-        ["kube-apiserver"]="
-[Unit]
+        ["kube-apiserver"]="[Unit]
 Description=kube-apiserver
+After=network.target
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -152,15 +180,16 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-apiserver \\
     \$KUBE_LOG_LEVEL \$KUBE_ETCD_SERVERS \$KUBE_API_ADDRESS \$KUBE_SERVICE_ADDRESSES \$KUBE_API_ARGS'
 ExecStop=-/usr/bin/podman stop kube-apiserver
 Delegate=yes
+KillMode=process
 Restart=always
 RestartSec=10
 TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target"
 
-        ["kube-controller-manager"]="
-[Unit]
+        ["kube-controller-manager"]="[Unit]
 Description=kube-controller-manager
+After=network.target kube-apiserver.service
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -180,15 +209,16 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-controller-manager \\
     \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_CONTROLLER_MANAGER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-controller-manager
 Delegate=yes
+KillMode=process
 Restart=always
 RestartSec=10
 TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target"
 
-        ["kube-scheduler"]="
-[Unit]
+        ["kube-scheduler"]="[Unit]
 Description=kube-scheduler
+After=network.target kube-apiserver.service
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -207,18 +237,17 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-scheduler \\
     \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_SCHEDULER_ARGS'
 ExecStop=-/usr/bin/podman stop kube-scheduler
 Delegate=yes
+KillMode=process
 Restart=always
 RestartSec=10
 TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target"
 
-        ["kubelet"]="
-[Unit]
+        ["kubelet"]="[Unit]
 Description=Kubelet
-After=containerd.service
+After=network.target containerd.service
 Wants=containerd.service
-
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -233,15 +262,16 @@ ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
     \$KUBE_LOG_LEVEL \$KUBE_LOGTOSTDERR \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
 Delegate=yes
+KillMode=process
 Restart=always
 RestartSec=10
 TimeoutStartSec=10min
 [Install]
 WantedBy=multi-user.target"
 
-        ["kube-proxy"]="
-[Unit]
+        ["kube-proxy"]="[Unit]
 Description=kube-proxy
+After=network.target
 [Service]
 EnvironmentFile=/etc/sysconfig/heat-params
 EnvironmentFile=/etc/kubernetes/config
@@ -263,6 +293,7 @@ ExecStart=/bin/bash -c '/usr/bin/podman run --name kube-proxy \\
     \$KUBE_LOG_LEVEL \$KUBE_MASTER \$KUBE_PROXY_ARGS'
 ExecStop=-/usr/bin/podman stop kube-proxy
 Delegate=yes
+KillMode=process
 Restart=always
 RestartSec=10
 TimeoutStartSec=10min
@@ -270,17 +301,19 @@ TimeoutStartSec=10min
 WantedBy=multi-user.target"
     )
 
-    # Write service files if they don't exist or content differs
+    # Write service files and track if any were updated
+    updated=0
     for service in "${!services[@]}"; do
         service_file="/etc/systemd/system/${service}.service"
-        service_content="${services[$service]}"
-        
-        if [ ! -f "${service_file}" ] || [ "$(cat ${service_file})" != "${service_content}" ]; then
-            echo "${service_content}" > "${service_file}.tmp"
-            mv "${service_file}.tmp" "${service_file}"
-            systemctl daemon-reload
+        if write_file_via_ssh "${service_file}" "${services[$service]}"; then
+            updated=1
         fi
     done
+
+    # Only reload systemd if any files were updated
+    if [ "$updated" -eq 1 ]; then
+        $ssh_cmd "if [ -d /run/systemd/system ]; then systemctl daemon-reload || true; fi"
+    fi
 else
     _prefix=${CONTAINER_INFRA_PREFIX:-docker.io/openstackmagnum/}
     _addtl_mounts=',{"type":"bind","source":"/opt/cni","destination":"/opt/cni","options":["bind","rw","slave","mode=777"]},{"type":"bind","source":"/var/lib/docker","destination":"/var/lib/docker","options":["bind","rw","slave","mode=755"]}'
