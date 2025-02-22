@@ -6,12 +6,6 @@ set -x
 
 CERT_DIR=/etc/kubernetes/certs
 
-# Check if required certificates exist
-if [ ! -f "${CERT_DIR}/ca.crt" ] || [ ! -f "${CERT_DIR}/admin.crt" ] || [ ! -f "${CERT_DIR}/admin.key" ]; then
-    echo "Required certificates not found in ${CERT_DIR}"
-    exit 1
-fi
-
 # root kubeconfig
 ADMIN_KUBECONFIG=/etc/kubernetes/admin.conf
 
