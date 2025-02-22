@@ -358,49 +358,89 @@ check_discovery_url() {
     return 1
 }
 
-# Initialize control flag
+# Function to write etcd config and start service
+write_and_start_etcd() {
+    local config_content="$1"
+    local write_success=0
+    
+    # Ensure config directory exists
+    $ssh_cmd mkdir -p /etc/etcd
+    
+    # Write config
+    echo "$config_content" > /etc/etcd/etcd.conf.yaml
+    
+    # Verify config was written
+    if [ ! -f /etc/etcd/etcd.conf.yaml ]; then
+        echo "Failed to write etcd config file"
+        write_success=1
+    else
+        echo "Starting etcd service..."
+        $ssh_cmd systemctl daemon-reload
+        $ssh_cmd systemctl restart etcd
+        write_success=0
+    fi
+    
+    # Set global variable to indicate result
+    ETCD_WRITE_RESULT=$write_success
+}
+
+# Initialize control flags
 etcd_configured=0
 rejoin_needed=0
+config_error=0
 
 # First check if discovery URL is valid and has cluster data
-if [ "$etcd_configured" -eq 0 ] && check_discovery_url "$ETCD_DISCOVERY_URL"; then
+if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ] && check_discovery_url "$ETCD_DISCOVERY_URL"; then
     echo "Using discovery URL to join or create cluster"
     cleanup_etcd
-    cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-discovery: "$ETCD_DISCOVERY_URL"
+    
+    config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+discovery: \"$ETCD_DISCOVERY_URL\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-    echo "Starting etcd service..."
-    $ssh_cmd systemctl daemon-reload
-    $ssh_cmd systemctl restart etcd
-    echo "Etcd started with discovery URL configuration"
-    etcd_configured=1
+auto-compaction-retention: \"24h\""
+
+    write_and_start_etcd "$config"
+    if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+        echo "Etcd started with discovery URL configuration"
+        etcd_configured=1
+    else
+        echo "Failed to configure etcd with discovery URL"
+        config_error=1
+    fi
 fi
 
-# Only proceed with other checks if etcd is not yet configured
-if [ "$etcd_configured" -eq 0 ]; then
+# Only proceed with other checks if etcd is not yet configured and no errors
+if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
     echo "Discovery URL not valid or not used, checking local and LB endpoints"
     
     # Check local endpoint
-    rejoin_needed=1
     if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
         echo "Local etcd endpoint $local_endpoint is healthy."
-        rejoin_needed=0
-        etcd_configured=1
+        
+        # Even if endpoint is healthy, ensure config exists
+        if [ ! -f /etc/etcd/etcd.conf.yaml ]; then
+            echo "Local endpoint is healthy but config is missing, will recreate it"
+            cleanup_etcd
+            rejoin_needed=1
+        else
+            rejoin_needed=0
+            etcd_configured=1
+        fi
     else
         echo "Local etcd endpoint $local_endpoint is not healthy."
         cleanup_etcd
-        
+        rejoin_needed=1
+    fi
+
+    if [ "$rejoin_needed" -eq 1 ] && [ "$config_error" -eq 0 ]; then
         # Try LB endpoint with increased timeout
         if timeout 10 run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
             echo "LB etcd endpoint $lb_endpoint is healthy."
@@ -421,63 +461,69 @@ if [ "$etcd_configured" -eq 0 ]; then
                 fi
             fi
             
-            if [ "$etcd_configured" -eq 0 ] && [ "$rejoin_needed" -eq 1 ]; then
+            if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
                 echo "Attempting to join existing cluster"
                 peer_url="$protocol://$myip:2380"
                 if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
                     initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
                     if [ -n "$initial_cluster" ]; then
                         echo "Successfully added to cluster. Creating configuration..."
-                        cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-initial-cluster: "$initial_cluster"
-initial-cluster-state: "existing"
+                        config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+initial-cluster: \"$initial_cluster\"
+initial-cluster-state: \"existing\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-                        echo "Starting etcd service..."
-                        $ssh_cmd systemctl daemon-reload
-                        $ssh_cmd systemctl restart etcd
-                        etcd_configured=1
+auto-compaction-retention: \"24h\""
+
+                        write_and_start_etcd "$config"
+                        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+                            echo "Successfully joined existing cluster"
+                            etcd_configured=1
+                        else
+                            echo "Failed to write config and start etcd"
+                            config_error=1
+                        fi
                     fi
                 fi
             fi
         fi
         
-        # If still not configured, try discovery URL one last time
-        if [ "$etcd_configured" -eq 0 ]; then
+        # If still not configured and no errors, try discovery URL one last time
+        if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
             echo "No healthy cluster members found, checking discovery URL again"
             if check_discovery_url "$ETCD_DISCOVERY_URL"; then
                 echo "Using discovery URL to create new cluster"
-                cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-discovery: "$ETCD_DISCOVERY_URL"
+                config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+discovery: \"$ETCD_DISCOVERY_URL\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-                echo "Starting etcd service..."
-                $ssh_cmd systemctl daemon-reload
-                $ssh_cmd systemctl restart etcd
-                etcd_configured=1
+auto-compaction-retention: \"24h\""
+
+                write_and_start_etcd "$config"
+                if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+                    echo "Successfully created new cluster using discovery URL"
+                    etcd_configured=1
+                else
+                    echo "Failed to write config and start etcd"
+                    config_error=1
+                fi
             else
                 echo "Error: Neither existing cluster nor valid discovery URL available"
-                exit 1
+                config_error=1
             fi
         fi
     fi
@@ -513,24 +559,27 @@ if [ "$rejoin_needed" -eq 1 ]; then
             initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
             if [ -n "$initial_cluster" ]; then
                 echo "Successfully added to cluster. Creating configuration..."
-                cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-initial-cluster: "$initial_cluster"
-initial-cluster-state: "existing"
+                config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+initial-cluster: \"$initial_cluster\"
+initial-cluster-state: \"existing\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-                echo "Starting etcd service..."
-                $ssh_cmd systemctl daemon-reload
-                $ssh_cmd systemctl restart etcd
+auto-compaction-retention: \"24h\""
+
+                write_and_start_etcd "$config"
+                if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+                    echo "Successfully joined existing cluster"
+                    etcd_configured=1
+                else
+                    echo "Failed to write config and start etcd"
+                fi
             else
                 echo "Failed to get initial cluster configuration from add output"
                 endpoint=""
@@ -555,43 +604,51 @@ EOF
             exit 1
         fi
 
-        cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-discovery: "$ETCD_DISCOVERY_URL"
+        config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+discovery: \"$ETCD_DISCOVERY_URL\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-        echo "Starting etcd service..."
-        $ssh_cmd systemctl daemon-reload
-        $ssh_cmd systemctl restart etcd
+auto-compaction-retention: \"24h\""
+
+        write_and_start_etcd "$config"
+        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+            echo "Successfully created new cluster using discovery URL"
+            etcd_configured=1
+        else
+            echo "Failed to write config and start etcd"
+            exit 1
+        fi
     else
         # Create configuration for joining existing cluster
-        cat > /etc/etcd/etcd.conf.yaml <<EOF
-name: "$INSTANCE_NAME"
-data-dir: "/var/lib/etcd/default.etcd"
-listen-metrics-urls: "http://$myip:2378"
-listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
-listen-peer-urls: "$protocol://$myip:2380"
-advertise-client-urls: "$protocol://$myip:2379"
-initial-advertise-peer-urls: "$protocol://$myip:2380"
-initial-cluster: "$initial_cluster"
-initial-cluster-state: "existing"
+        config="name: \"$INSTANCE_NAME\"
+data-dir: \"/var/lib/etcd/default.etcd\"
+listen-metrics-urls: \"http://$myip:2378\"
+listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
+listen-peer-urls: \"$protocol://$myip:2380\"
+advertise-client-urls: \"$protocol://$myip:2379\"
+initial-advertise-peer-urls: \"$protocol://$myip:2380\"
+initial-cluster: \"$initial_cluster\"
+initial-cluster-state: \"existing\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
-auto-compaction-retention: "24h"
-EOF
-        echo "Starting etcd service..."
-        $ssh_cmd systemctl daemon-reload
-        $ssh_cmd systemctl restart etcd
+auto-compaction-retention: \"24h\""
+
+        write_and_start_etcd "$config"
+        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
+            echo "Successfully joined existing cluster"
+            etcd_configured=1
+        else
+            echo "Failed to write config and start etcd"
+            exit 1
+        fi
     fi
 else
     echo "Skipping cluster join/creation logic as node is healthy and updated."
