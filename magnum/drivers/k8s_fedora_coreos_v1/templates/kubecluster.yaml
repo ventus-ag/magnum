@@ -1428,7 +1428,7 @@ resources:
     condition: upgrade_cluster_resources
     type: OS::Heat::SoftwareDeployment
     properties:
-      actions: ["CREATE", "UPDATE"]
+      actions: ["UPDATE"]
       signal_transport: HEAT_SIGNAL
       config:
         get_resource: kube_cluster_upgrade_config

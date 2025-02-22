@@ -688,7 +688,7 @@ resources:
       signal_transport: HEAT_SIGNAL
       config: { get_resource: upgrade_kubernetes_config }
       server: { get_resource: kube-minion }
-      actions: ["CREATE", "UPDATE"]
+      actions: ["UPDATE"]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
 
