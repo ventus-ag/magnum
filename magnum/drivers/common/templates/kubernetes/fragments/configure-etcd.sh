@@ -335,45 +335,38 @@ cleanup_etcd() {
     echo "Etcd cleanup completed"
 }
 
-# Function to check if discovery URL is valid
+# Function to check if discovery URL is valid and has cluster data
 check_discovery_url() {
     local url="$1"
     if [ -n "$url" ]; then
         local data=$(curl -sf "$url") || true
         if [ -n "$data" ] && ! echo "$data" | grep -q "unable to GET token"; then
-            echo "Discovery URL contains valid cluster data"
-            return 0
+            # Check if the response contains actual node data
+            if echo "$data" | grep -q '"nodes":\['; then
+                echo "Discovery URL contains existing cluster data"
+                return 0
+            elif echo "$data" | jq -e '.node.nodes' >/dev/null 2>&1; then
+                echo "Discovery URL contains existing cluster data"
+                return 0
+            elif echo "$data" | grep -q '"dir":true'; then
+                echo "Discovery URL is valid but empty, can be used for new cluster"
+                return 0
+            fi
         fi
     fi
     echo "Discovery URL is not valid or contains no cluster data"
     return 1
 }
 
-# -----------------------------------------------------------------
-# Added Health Check: If the etcd member is healthy and already
-# part of the cluster then we simply update the service (which may
-# have a new ETCD_TAG) and restart etcd.
-#
-# NOTE: Membership operations (such as retrieving the member list)
-#       are performed using the load balancer endpoint.
-# -----------------------------------------------------------------
+# Initialize control flag
+etcd_configured=0
+rejoin_needed=0
 
-rejoin_needed=1
-local_endpoint="$protocol://$myip:2379"
-lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
-
-# Check local endpoint first
-if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
-    echo "Local etcd endpoint $local_endpoint is healthy."
-    rejoin_needed=0
-else
-    echo "Local etcd endpoint $local_endpoint is not healthy."
+# First check if discovery URL is valid and has cluster data
+if [ "$etcd_configured" -eq 0 ] && check_discovery_url "$ETCD_DISCOVERY_URL"; then
+    echo "Using discovery URL to join or create cluster"
     cleanup_etcd
-    
-    # Try discovery URL first
-    if check_discovery_url "$ETCD_DISCOVERY_URL"; then
-        echo "Using discovery URL to join or create cluster"
-        cat > /etc/etcd/etcd.conf.yaml <<EOF
+    cat > /etc/etcd/etcd.conf.yaml <<EOF
 name: "$INSTANCE_NAME"
 data-dir: "/var/lib/etcd/default.etcd"
 listen-metrics-urls: "http://$myip:2378"
@@ -387,11 +380,29 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+    echo "Starting etcd service..."
+    $ssh_cmd systemctl daemon-reload
+    $ssh_cmd systemctl restart etcd
+    echo "Etcd started with discovery URL configuration"
+    etcd_configured=1
+fi
+
+# Only proceed with other checks if etcd is not yet configured
+if [ "$etcd_configured" -eq 0 ]; then
+    echo "Discovery URL not valid or not used, checking local and LB endpoints"
+    
+    # Check local endpoint
+    rejoin_needed=1
+    if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
+        echo "Local etcd endpoint $local_endpoint is healthy."
+        rejoin_needed=0
+        etcd_configured=1
     else
-        echo "Discovery URL not valid, trying direct cluster join"
+        echo "Local etcd endpoint $local_endpoint is not healthy."
+        cleanup_etcd
         
-        # Try LB endpoint
-        if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+        # Try LB endpoint with increased timeout
+        if timeout 10 run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
             echo "LB etcd endpoint $lb_endpoint is healthy."
             
             # Check if we're a member and our peer URL is correct
@@ -403,18 +414,17 @@ EOF
                     echo "Node is already in the cluster with correct peer URL. Updating etcd.service and restarting etcd."
                     $ssh_cmd systemctl daemon-reload
                     $ssh_cmd systemctl restart etcd
-                    rejoin_needed=0
+                    etcd_configured=1
                 else
                     echo "Node is in cluster but peer URL is incorrect ($current_url != $peer_url). Will remove and rejoin."
                     run_etcdctl "$lb_endpoint" member remove "$member_id" || true
                 fi
             fi
             
-            if [ "$rejoin_needed" -eq 1 ]; then
+            if [ "$etcd_configured" -eq 0 ] && [ "$rejoin_needed" -eq 1 ]; then
                 echo "Attempting to join existing cluster"
                 peer_url="$protocol://$myip:2380"
                 if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
-                    # Extract initial cluster from add output
                     initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
                     if [ -n "$initial_cluster" ]; then
                         echo "Successfully added to cluster. Creating configuration..."
@@ -433,16 +443,17 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
-                    else
-                        echo "Failed to get initial cluster configuration"
-                        rejoin_needed=1
+                        echo "Starting etcd service..."
+                        $ssh_cmd systemctl daemon-reload
+                        $ssh_cmd systemctl restart etcd
+                        etcd_configured=1
                     fi
-                else
-                    echo "Failed to add member to cluster"
-                    rejoin_needed=1
                 fi
             fi
-        else
+        fi
+        
+        # If still not configured, try discovery URL one last time
+        if [ "$etcd_configured" -eq 0 ]; then
             echo "No healthy cluster members found, checking discovery URL again"
             if check_discovery_url "$ETCD_DISCOVERY_URL"; then
                 echo "Using discovery URL to create new cluster"
@@ -460,6 +471,10 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+                echo "Starting etcd service..."
+                $ssh_cmd systemctl daemon-reload
+                $ssh_cmd systemctl restart etcd
+                etcd_configured=1
             else
                 echo "Error: Neither existing cluster nor valid discovery URL available"
                 exit 1
@@ -467,6 +482,8 @@ EOF
         fi
     fi
 fi
+
+# Continue with rest of the script...
 
 # -----------------------------------------------------------------
 # Main logic for joining or creating a cluster
@@ -511,6 +528,9 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+                echo "Starting etcd service..."
+                $ssh_cmd systemctl daemon-reload
+                $ssh_cmd systemctl restart etcd
             else
                 echo "Failed to get initial cluster configuration from add output"
                 endpoint=""
@@ -549,6 +569,9 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+        echo "Starting etcd service..."
+        $ssh_cmd systemctl daemon-reload
+        $ssh_cmd systemctl restart etcd
     else
         # Create configuration for joining existing cluster
         cat > /etc/etcd/etcd.conf.yaml <<EOF
@@ -566,6 +589,9 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+        echo "Starting etcd service..."
+        $ssh_cmd systemctl daemon-reload
+        $ssh_cmd systemctl restart etcd
     fi
 else
     echo "Skipping cluster join/creation logic as node is healthy and updated."
