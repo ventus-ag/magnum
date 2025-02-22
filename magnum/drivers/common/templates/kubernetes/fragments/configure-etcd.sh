@@ -120,28 +120,47 @@ else
     fi
 fi
 
+# Install etcdctl if not present or if version differs
+etcdctl_dir="/usr/local/bin"
+etcd_download_path="/srv/magnum/etcd"
+$ssh_cmd mkdir -p ${etcd_download_path}
+
+# Strip any 'v' prefix from ETCD_TAG if present
+ETCD_VERSION=${ETCD_TAG#v}
+
+# Download and install etcdctl if not present or if version differs
+etcd_tgz="${etcd_download_path}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz"
+if [ ! -f "${etcd_tgz}" ] || ! $ssh_cmd etcdctl version 2>/dev/null | grep -q "etcdctl version: ${ETCD_VERSION}"; then
+    $ssh_cmd curl --retry 5 --retry-delay 10 -L \
+        https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz \
+        -o "${etcd_tgz}.tmp"
+    $ssh_cmd mv "${etcd_tgz}.tmp" "${etcd_tgz}"
+    
+    # Extract only etcdctl
+    $ssh_cmd mkdir -p ${etcd_download_path}/tmp
+    $ssh_cmd tar -C ${etcd_download_path}/tmp -xzf ${etcd_tgz}
+    $ssh_cmd cp ${etcd_download_path}/tmp/etcd-v${ETCD_VERSION}-linux-amd64/etcdctl ${etcdctl_dir}/
+    $ssh_cmd chmod +x ${etcdctl_dir}/etcdctl
+    $ssh_cmd rm -rf ${etcd_download_path}/tmp
+fi
+
 # Function to run etcdctl with retries
 run_etcdctl() {
     local endpoints="$1"
     shift
     local max_attempts=3
     local attempt=1
-    local timeout=2
-    local wait=3
-    local common_opts=(
-        --rm
-        --network host
-        --volume /etc/etcd:/etc/etcd:ro,z
-    )
+    local delay=3
+    local timeout=5
+
+    # Base options for etcdctl
     local etcdctl_opts=(
-        --endpoints="$endpoints"
-        --command-timeout="${timeout}s"
-        --dial-timeout=10s
-        --keepalive-time=5s
-        --keepalive-timeout=10s
+        "--endpoints=$endpoints"
+        "--command-timeout=${timeout}s"
     )
 
-    if [ "$TLS_DISABLED" = "False" ]; then
+    # Add TLS options if TLS is enabled
+    if [ "$TLS_DISABLED" != "True" ]; then
         etcdctl_opts+=(
             --cacert="$cert_dir/ca.crt"
             --cert="$cert_dir/server.crt"
@@ -149,28 +168,17 @@ run_etcdctl() {
         )
     fi
 
-    while [ $attempt -le $max_attempts ]; do
+    while [ ${attempt} -le ${max_attempts} ]; do
         echo "Attempt $attempt/$max_attempts: etcdctl $*" >&2
-        if output=$($ssh_cmd podman run "${common_opts[@]}" \
-            ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \
-            etcdctl "${etcdctl_opts[@]}" "$@" 2>&1); then
+        if output=$($ssh_cmd ETCDCTL_API=3 ${etcdctl_dir}/etcdctl "${etcdctl_opts[@]}" "$@" 2>&1); then
             echo "$output"
             return 0
-        else
-            echo "Attempt $attempt failed: $output" >&2
-            if [ $attempt -lt $max_attempts ]; then
-                echo "Waiting ${wait} seconds before retry..." >&2
-                sleep $wait
-                # Increase wait time for next attempt (exponential backoff)
-                wait=$((wait * 2))
-            fi
-            attempt=$((attempt + 1))
         fi
+        echo "$output" >&2
+        sleep $delay
+        let attempt++
     done
-
-    echo "Failed after $max_attempts attempts" >&2
-    echo ""
-    return 0
+    return 1
 }
 
 # Function to check if a node is part of the cluster
