@@ -335,6 +335,20 @@ cleanup_etcd() {
     echo "Etcd cleanup completed"
 }
 
+# Function to check if discovery URL is valid
+check_discovery_url() {
+    local url="$1"
+    if [ -n "$url" ]; then
+        local data=$(curl -sf "$url") || true
+        if [ -n "$data" ] && ! echo "$data" | grep -q "unable to GET token"; then
+            echo "Discovery URL contains valid cluster data"
+            return 0
+        fi
+    fi
+    echo "Discovery URL is not valid or contains no cluster data"
+    return 1
+}
+
 # -----------------------------------------------------------------
 # Added Health Check: If the etcd member is healthy and already
 # part of the cluster then we simply update the service (which may
@@ -354,34 +368,103 @@ if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
     rejoin_needed=0
 else
     echo "Local etcd endpoint $local_endpoint is not healthy."
+    cleanup_etcd
     
-    # Try LB endpoint as fallback
-    if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
-        echo "LB etcd endpoint $lb_endpoint is healthy."
+    # Try discovery URL first
+    if check_discovery_url "$ETCD_DISCOVERY_URL"; then
+        echo "Using discovery URL to join or create cluster"
+        cat > /etc/etcd/etcd.conf.yaml <<EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+discovery: "$ETCD_DISCOVERY_URL"
+heartbeat-interval: 1000
+election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
+EOF
+    else
+        echo "Discovery URL not valid, trying direct cluster join"
         
-        # Check if we're a member and our peer URL is correct
-        member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
-        if [ -n "$member_id" ]; then
-            peer_url="$protocol://$myip:2380"
-            current_url=$(run_etcdctl "$lb_endpoint" member list | grep "$member_id" | grep -o "peerURLs=.*" | cut -d'=' -f2)
-            if [ "$current_url" = "$peer_url" ]; then
-                echo "Node is already in the cluster with correct peer URL. Updating etcd.service and restarting etcd."
-                $ssh_cmd systemctl daemon-reload
-                $ssh_cmd systemctl restart etcd
-                rejoin_needed=0
-            else
-                echo "Node is in cluster but peer URL is incorrect ($current_url != $peer_url). Will remove and rejoin."
-                if run_etcdctl "$lb_endpoint" member remove "$member_id"; then
-                    echo "Successfully removed old member entry."
+        # Try LB endpoint
+        if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+            echo "LB etcd endpoint $lb_endpoint is healthy."
+            
+            # Check if we're a member and our peer URL is correct
+            member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
+            if [ -n "$member_id" ]; then
+                peer_url="$protocol://$myip:2380"
+                current_url=$(run_etcdctl "$lb_endpoint" member list | grep "$member_id" | grep -o "peerURLs=.*" | cut -d'=' -f2)
+                if [ "$current_url" = "$peer_url" ]; then
+                    echo "Node is already in the cluster with correct peer URL. Updating etcd.service and restarting etcd."
+                    $ssh_cmd systemctl daemon-reload
+                    $ssh_cmd systemctl restart etcd
+                    rejoin_needed=0
                 else
-                    echo "Failed to remove old member entry, but will try to proceed with rejoin."
+                    echo "Node is in cluster but peer URL is incorrect ($current_url != $peer_url). Will remove and rejoin."
+                    run_etcdctl "$lb_endpoint" member remove "$member_id" || true
+                fi
+            fi
+            
+            if [ "$rejoin_needed" -eq 1 ]; then
+                echo "Attempting to join existing cluster"
+                peer_url="$protocol://$myip:2380"
+                if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
+                    # Extract initial cluster from add output
+                    initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+                    if [ -n "$initial_cluster" ]; then
+                        echo "Successfully added to cluster. Creating configuration..."
+                        cat > /etc/etcd/etcd.conf.yaml <<EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+initial-cluster: "$initial_cluster"
+initial-cluster-state: "existing"
+heartbeat-interval: 1000
+election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
+EOF
+                    else
+                        echo "Failed to get initial cluster configuration"
+                        rejoin_needed=1
+                    fi
+                else
+                    echo "Failed to add member to cluster"
+                    rejoin_needed=1
                 fi
             fi
         else
-            echo "Node is not a member of the cluster. Will attempt to join."
+            echo "No healthy cluster members found, checking discovery URL again"
+            if check_discovery_url "$ETCD_DISCOVERY_URL"; then
+                echo "Using discovery URL to create new cluster"
+                cat > /etc/etcd/etcd.conf.yaml <<EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+discovery: "$ETCD_DISCOVERY_URL"
+heartbeat-interval: 1000
+election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
+EOF
+            else
+                echo "Error: Neither existing cluster nor valid discovery URL available"
+                exit 1
+            fi
         fi
-    else
-        echo "LB etcd endpoint $lb_endpoint is not healthy. Will attempt to rejoin cluster."
     fi
 fi
 
@@ -445,7 +528,7 @@ EOF
             echo "Error: ETCD_DISCOVERY_URL is not set"
             exit 1
         fi
-
+        
         # Verify discovery URL is accessible
         if ! curl -sf "$ETCD_DISCOVERY_URL" >/dev/null; then
             echo "Error: Cannot access discovery URL: $ETCD_DISCOVERY_URL"
