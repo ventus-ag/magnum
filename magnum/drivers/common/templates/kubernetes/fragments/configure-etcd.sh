@@ -74,6 +74,13 @@ fi
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     # Only create service file if it doesn't exist or has changed
     service_file="/etc/systemd/system/etcd.service"
+    
+    # Ensure container image reference is properly formatted
+    container_image="${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd"
+    if [[ "$container_image" != *"/"* ]]; then
+        container_image="docker.io/library/$container_image"
+    fi
+    
     service_content=$(cat << EOF
 [Unit]
 Description=Etcd server
@@ -84,14 +91,14 @@ Wants=network-online.target
 EnvironmentFile=/etc/sysconfig/heat-params
 ExecStartPre=mkdir -p /var/lib/etcd
 ExecStartPre=-/bin/podman rm etcd
-ExecStart=/bin/podman run \\
-    --name etcd \\
-    --volume /etc/pki/ca-trust/extracted/pem:/etc/ssl/certs:ro,z \\
-    --volume /etc/etcd:/etc/etcd:ro,z \\
-    --volume /var/lib/etcd:/var/lib/etcd:rshared,z \\
-    --net=host \\
-    ${CONTAINER_INFRA_PREFIX:-"quay.io/coreos/"}etcd:${ETCD_TAG} \\
-    /usr/local/bin/etcd \\
+ExecStart=/bin/podman run \
+    --name etcd \
+    --volume /etc/pki/ca-trust/extracted/pem:/etc/ssl/certs:ro,z \
+    --volume /etc/etcd:/etc/etcd:ro,z \
+    --volume /var/lib/etcd:/var/lib/etcd:rshared,z \
+    --net=host \
+    ${container_image}:${ETCD_TAG} \
+    /usr/local/bin/etcd \
     --config-file /etc/etcd/etcd.conf.yaml
 ExecStop=/bin/podman stop etcd
 TimeoutStartSec=10min
@@ -341,28 +348,41 @@ rejoin_needed=1
 local_endpoint="$protocol://$myip:2379"
 lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
 
-# Check that local etcd is healthy (for assurance)
+# Check local endpoint first
 if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
     echo "Local etcd endpoint $local_endpoint is healthy."
+    rejoin_needed=0
 else
     echo "Local etcd endpoint $local_endpoint is not healthy."
-fi
-
-# Use LB endpoint for membership check and cluster status
-if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
-    echo "LB etcd endpoint $lb_endpoint is healthy."
-    if is_member "$lb_endpoint" "$INSTANCE_NAME" "$myip"; then
-         echo "LB membership check indicates node is already in the cluster. Updating etcd.service and restarting etcd."
-         $ssh_cmd systemctl daemon-reload
-         $ssh_cmd systemctl restart etcd
-         rejoin_needed=0
+    
+    # Try LB endpoint as fallback
+    if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+        echo "LB etcd endpoint $lb_endpoint is healthy."
+        
+        # Check if we're a member and our peer URL is correct
+        member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
+        if [ -n "$member_id" ]; then
+            peer_url="$protocol://$myip:2380"
+            current_url=$(run_etcdctl "$lb_endpoint" member list | grep "$member_id" | grep -o "peerURLs=.*" | cut -d'=' -f2)
+            if [ "$current_url" = "$peer_url" ]; then
+                echo "Node is already in the cluster with correct peer URL. Updating etcd.service and restarting etcd."
+                $ssh_cmd systemctl daemon-reload
+                $ssh_cmd systemctl restart etcd
+                rejoin_needed=0
+            else
+                echo "Node is in cluster but peer URL is incorrect ($current_url != $peer_url). Will remove and rejoin."
+                if run_etcdctl "$lb_endpoint" member remove "$member_id"; then
+                    echo "Successfully removed old member entry."
+                else
+                    echo "Failed to remove old member entry, but will try to proceed with rejoin."
+                fi
+            fi
+        else
+            echo "Node is not a member of the cluster. Will attempt to join."
+        fi
     else
-         echo "LB membership check indicates node is not registered as a cluster member. Proceeding with rejoin process."
-         rejoin_needed=1
+        echo "LB etcd endpoint $lb_endpoint is not healthy. Will attempt to rejoin cluster."
     fi
-else
-    echo "LB etcd endpoint $lb_endpoint is not healthy. Proceeding with rejoin process."
-    rejoin_needed=1
 fi
 
 # -----------------------------------------------------------------
@@ -370,53 +390,55 @@ fi
 # -----------------------------------------------------------------
 
 if [ "$rejoin_needed" -eq 1 ]; then
-    endpoint=$(check_cluster) || true
-    if [ -n "$endpoint" ]; then
-        echo "Found existing cluster at $endpoint"
-
-        # Clean up before joining
-        cleanup_etcd
-
-        # Remove any stale member entries
-        member_id=$(run_etcdctl "$endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
-        if [ -n "$member_id" ]; then
-            echo "Removing stale member with ID $member_id"
-            for i in {1..3}; do
-                if run_etcdctl "$endpoint" member remove "$member_id"; then
-                    # Wait for removal to propagate
-                    sleep 5
-                    if ! run_etcdctl "$endpoint" member list | grep -q "$member_id"; then
-                        break
-                    fi
-                fi
-                if [ $i -eq 3 ]; then
-                    echo "Warning: Failed to remove stale member after 3 attempts, proceeding with new cluster setup"
-                    endpoint=""
-                    break
-                fi
-            done
+    # Clean up before attempting to join or create cluster
+    cleanup_etcd
+    
+    # Try to find any healthy cluster member
+    endpoint=""
+    for ep in $(get_known_endpoints); do
+        if run_etcdctl "$ep" endpoint health >/dev/null 2>&1; then
+            endpoint="$ep"
+            echo "Found healthy cluster member at $endpoint"
+            break
         fi
+    done
 
-        if [ -n "$endpoint" ]; then
-            # Add the new member
-            echo "Adding node $INSTANCE_NAME to the etcd cluster"
-            peer_url="$protocol://$myip:2380"
-            add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url") || {
-                echo "Warning: Failed to add member to cluster, proceeding with new cluster setup"
+    if [ -n "$endpoint" ]; then
+        echo "Attempting to join existing cluster at $endpoint"
+        
+        # Try to add the new member
+        peer_url="$protocol://$myip:2380"
+        if add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
+            # Extract initial cluster from add output
+            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+            if [ -n "$initial_cluster" ]; then
+                echo "Successfully added to cluster. Creating configuration..."
+                cat > /etc/etcd/etcd.conf.yaml <<EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+initial-cluster: "$initial_cluster"
+initial-cluster-state: "existing"
+heartbeat-interval: 1000
+election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
+EOF
+            else
+                echo "Failed to get initial cluster configuration from add output"
                 endpoint=""
-            }
-
-            if [ -n "$endpoint" ]; then
-                # Extract initial cluster from add output
-                initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-                if [ -z "$initial_cluster" ]; then
-                    echo "Warning: Failed to get initial cluster configuration, proceeding with new cluster setup"
-                    endpoint=""
-                fi
             fi
+        else
+            echo "Failed to add member to cluster"
+            endpoint=""
         fi
     fi
 
+    # If joining failed or no cluster found, create new one
     if [ -z "$endpoint" ]; then
         echo "No existing cluster found, creating new cluster using discovery URL"
         if [ -z "$ETCD_DISCOVERY_URL" ]; then
