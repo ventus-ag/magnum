@@ -10,7 +10,7 @@ runtime=${CONTAINER_RUNTIME}
 need_configure=1
 
 # Check if containerd is already running
-if $ssh_cmd systemctl is-active --quiet containerd; then
+if [ "$($ssh_cmd systemctl is-active containerd)" = "active" ]; then
     echo "Containerd is already running, skipping storage driver configuration"
     need_configure=0
 fi
