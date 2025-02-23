@@ -321,7 +321,7 @@ get_discovery_members() {
 
 # Function to clean up etcd data and stop service
 cleanup_etcd() {
-    echo "Cleaning up etcd data..."
+    echo "Cleaning up etcd data..." >&2
 
     # Stop etcd service
     $ssh_cmd systemctl stop etcd
@@ -332,7 +332,7 @@ cleanup_etcd() {
     # Wait for cleanup to complete
     sleep 5
 
-    echo "Etcd cleanup completed"
+    echo "Etcd cleanup completed" >&2
 }
 
 # Function to check if discovery URL is valid and has cluster data
@@ -343,18 +343,18 @@ check_discovery_url() {
         if [ -n "$data" ] && ! echo "$data" | grep -q "unable to GET token"; then
             # Check if the response contains actual node data
             if echo "$data" | grep -q '"nodes":\['; then
-                echo "Discovery URL contains existing cluster data"
+                echo "Discovery URL contains existing cluster data" >&2
                 return 0
             elif echo "$data" | jq -e '.node.nodes' >/dev/null 2>&1; then
-                echo "Discovery URL contains existing cluster data"
+                echo "Discovery URL contains existing cluster data" >&2
                 return 0
             elif echo "$data" | grep -q '"dir":true'; then
-                echo "Discovery URL is valid but empty, can be used for new cluster"
+                echo "Discovery URL is valid but empty, can be used for new cluster" >&2
                 return 0
             fi
         fi
     fi
-    echo "Discovery URL is not valid or contains no cluster data"
+    echo "Discovery URL is not valid or contains no cluster data" >&2
     return 1
 }
 
@@ -371,10 +371,10 @@ write_and_start_etcd() {
     
     # Verify config was written
     if [ ! -f /etc/etcd/etcd.conf.yaml ]; then
-        echo "Failed to write etcd config file"
+        echo "Failed to write etcd config file" >&2
         write_success=1
     else
-        echo "Starting etcd service..."
+        echo "Starting etcd service..." >&2
         $ssh_cmd systemctl daemon-reload
         $ssh_cmd systemctl restart etcd
         write_success=0
@@ -384,16 +384,43 @@ write_and_start_etcd() {
     ETCD_WRITE_RESULT=$write_success
 }
 
-# Initialize control flags
-etcd_configured=0
-rejoin_needed=0
-config_error=0
+# -----------------------------------------------------
+# Revised Cluster Join/Creation Control Flow
+# -----------------------------------------------------
 
-# First check if discovery URL is valid and has cluster data
-if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ] && check_discovery_url "$ETCD_DISCOVERY_URL"; then
-    echo "Using discovery URL to join or create cluster"
+# Define our key endpoints
+local_endpoint="$protocol://$myip:2379"
+lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
+
+# Initialize flags
+discovery_ok=0
+lb_ok=0
+local_ok=0
+
+# Check if discovery URL is valid
+if check_discovery_url "$ETCD_DISCOVERY_URL"; then
+    discovery_ok=1
+fi
+
+# Check LB VIP response
+if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+    lb_ok=1
+fi
+
+# Check local endpoint health
+if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
+    local_ok=1
+fi
+
+echo "Discovery OK: $discovery_ok, LB OK: $lb_ok, Local OK: $local_ok" >&2
+
+# Cluster join/creation logic based on conditions
+
+# Condition 1:
+# If discovery URL is valid but LB is not responding, create a new cluster using discovery URL.
+if [ $discovery_ok -eq 1 ] && [ $lb_ok -eq 0 ]; then
+    echo "Discovery URL valid and LB not responding. Creating new cluster using discovery URL." >&2
     cleanup_etcd
-    
     config="name: \"$INSTANCE_NAME\"
 data-dir: \"/var/lib/etcd/default.etcd\"
 listen-metrics-urls: \"http://$myip:2378\"
@@ -406,69 +433,21 @@ heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: \"24h\""
-
     write_and_start_etcd "$config"
-    if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-        echo "Etcd started with discovery URL configuration"
-        etcd_configured=1
-    else
-        echo "Failed to configure etcd with discovery URL"
-        config_error=1
-    fi
-fi
+    etcd_configured=1
 
-# Only proceed with other checks if etcd is not yet configured and no errors
-if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
-    echo "Discovery URL not valid or not used, checking local and LB endpoints"
-    
-    # Check local endpoint
-    if run_etcdctl "$local_endpoint" endpoint health >/dev/null 2>&1; then
-        echo "Local etcd endpoint $local_endpoint is healthy."
-        
-        # Even if endpoint is healthy, ensure config exists
-        if [ ! -f /etc/etcd/etcd.conf.yaml ]; then
-            echo "Local endpoint is healthy but config is missing, will recreate it"
-            cleanup_etcd
-            rejoin_needed=1
-        else
-            rejoin_needed=0
-            etcd_configured=1
+# Condition 2:
+# Discovery is OK and LB responds. Then check the local endpoint.
+elif [ $discovery_ok -eq 1 ] && [ $lb_ok -eq 1 ]; then
+    if [ $local_ok -eq 0 ]; then
+        echo "Discovery and LB OK but local endpoint unhealthy. Removing self and rejoining." >&2
+        member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1)
+        if [ -n "$member_id" ]; then
+            run_etcdctl "$lb_endpoint" member remove "$member_id" || true
         fi
-    else
-        echo "Local etcd endpoint $local_endpoint is not healthy."
-        cleanup_etcd
-        rejoin_needed=1
-    fi
-
-    if [ "$rejoin_needed" -eq 1 ] && [ "$config_error" -eq 0 ]; then
-        # Try LB endpoint with increased timeout
-        if timeout 10 run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
-            echo "LB etcd endpoint $lb_endpoint is healthy."
-            
-            # Check if we're a member and our peer URL is correct
-            member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1) || true
-            if [ -n "$member_id" ]; then
-                peer_url="$protocol://$myip:2380"
-                current_url=$(run_etcdctl "$lb_endpoint" member list | grep "$member_id" | grep -o "peerURLs=.*" | cut -d'=' -f2)
-                if [ "$current_url" = "$peer_url" ]; then
-                    echo "Node is already in the cluster with correct peer URL. Updating etcd.service and restarting etcd."
-                    $ssh_cmd systemctl daemon-reload
-                    $ssh_cmd systemctl restart etcd
-                    etcd_configured=1
-                else
-                    echo "Node is in cluster but peer URL is incorrect ($current_url != $peer_url). Will remove and rejoin."
-                    run_etcdctl "$lb_endpoint" member remove "$member_id" || true
-                fi
-            fi
-            
-            if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
-                echo "Attempting to join existing cluster"
-                peer_url="$protocol://$myip:2380"
-                if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
-                    initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-                    if [ -n "$initial_cluster" ]; then
-                        echo "Successfully added to cluster. Creating configuration..."
-                        config="name: \"$INSTANCE_NAME\"
+        if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$protocol://$myip:2380"); then
+            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+            config="name: \"$INSTANCE_NAME\"
 data-dir: \"/var/lib/etcd/default.etcd\"
 listen-metrics-urls: \"http://$myip:2378\"
 listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
@@ -481,179 +460,58 @@ heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: \"24h\""
-
-                        write_and_start_etcd "$config"
-                        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-                            echo "Successfully joined existing cluster"
-                            etcd_configured=1
-                        else
-                            echo "Failed to write config and start etcd"
-                            config_error=1
-                        fi
-                    fi
-                fi
-            fi
+            write_and_start_etcd "$config"
+            etcd_configured=1
+        else
+            echo "Failed to rejoin via LB after removal" >&2
+            exit 1
         fi
-        
-        # If still not configured and no errors, try discovery URL one last time
-        if [ "$etcd_configured" -eq 0 ] && [ "$config_error" -eq 0 ]; then
-            echo "No healthy cluster members found, checking discovery URL again"
-            if check_discovery_url "$ETCD_DISCOVERY_URL"; then
-                echo "Using discovery URL to create new cluster"
-                config="name: \"$INSTANCE_NAME\"
+    else
+        echo "Discovery, LB, and local endpoint are healthy. Skipping join/creation logic." >&2
+        etcd_configured=1
+    fi
+
+# Condition 3:
+# Discovery URL is invalid but LB responds.
+elif [ $discovery_ok -eq 0 ] && [ $lb_ok -eq 1 ]; then
+    if [ $local_ok -eq 1 ]; then
+        echo "Discovery URL invalid but LB and local endpoint are healthy. Skipping join/creation." >&2
+        etcd_configured=1
+    else
+        echo "Discovery URL invalid, LB OK but local endpoint unhealthy. Removing self and rejoining." >&2
+        member_id=$(run_etcdctl "$lb_endpoint" member list | grep -E "$INSTANCE_NAME|$myip" | cut -d',' -f1)
+        if [ -n "$member_id" ]; then
+            run_etcdctl "$lb_endpoint" member remove "$member_id" || true
+        fi
+        if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$protocol://$myip:2380"); then
+            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+            config="name: \"$INSTANCE_NAME\"
 data-dir: \"/var/lib/etcd/default.etcd\"
 listen-metrics-urls: \"http://$myip:2378\"
 listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
 listen-peer-urls: \"$protocol://$myip:2380\"
 advertise-client-urls: \"$protocol://$myip:2379\"
 initial-advertise-peer-urls: \"$protocol://$myip:2380\"
-discovery: \"$ETCD_DISCOVERY_URL\"
+initial-cluster: \"$initial_cluster\"
+initial-cluster-state: \"existing\"
 heartbeat-interval: 1000
 election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: \"24h\""
-
-                write_and_start_etcd "$config"
-                if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-                    echo "Successfully created new cluster using discovery URL"
-                    etcd_configured=1
-                else
-                    echo "Failed to write config and start etcd"
-                    config_error=1
-                fi
-            else
-                echo "Error: Neither existing cluster nor valid discovery URL available"
-                config_error=1
-            fi
+            write_and_start_etcd "$config"
+            etcd_configured=1
+        else
+            echo "Failed to rejoin via LB in condition 3" >&2
+            exit 1
         fi
     fi
+
+else
+    echo "Error: Neither a valid discovery URL nor a healthy LB endpoint is available." >&2
+    exit 1
 fi
 
 # Continue with rest of the script...
-
-# -----------------------------------------------------------------
-# Main logic for joining or creating a cluster
-# -----------------------------------------------------------------
-
-if [ "$rejoin_needed" -eq 1 ]; then
-    # Clean up before attempting to join or create cluster
-    cleanup_etcd
-    
-    # Try to find any healthy cluster member
-    endpoint=""
-    for ep in $(get_known_endpoints); do
-        if run_etcdctl "$ep" endpoint health >/dev/null 2>&1; then
-            endpoint="$ep"
-            echo "Found healthy cluster member at $endpoint"
-            break
-        fi
-    done
-
-    if [ -n "$endpoint" ]; then
-        echo "Attempting to join existing cluster at $endpoint"
-        
-        # Try to add the new member
-        peer_url="$protocol://$myip:2380"
-        if add_output=$(run_etcdctl "$endpoint" member add "$INSTANCE_NAME" --peer-urls="$peer_url"); then
-            # Extract initial cluster from add output
-            initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
-            if [ -n "$initial_cluster" ]; then
-                echo "Successfully added to cluster. Creating configuration..."
-                config="name: \"$INSTANCE_NAME\"
-data-dir: \"/var/lib/etcd/default.etcd\"
-listen-metrics-urls: \"http://$myip:2378\"
-listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
-listen-peer-urls: \"$protocol://$myip:2380\"
-advertise-client-urls: \"$protocol://$myip:2379\"
-initial-advertise-peer-urls: \"$protocol://$myip:2380\"
-initial-cluster: \"$initial_cluster\"
-initial-cluster-state: \"existing\"
-heartbeat-interval: 1000
-election-timeout: 15000
-auto-compaction-mode: periodic
-auto-compaction-retention: \"24h\""
-
-                write_and_start_etcd "$config"
-                if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-                    echo "Successfully joined existing cluster"
-                    etcd_configured=1
-                else
-                    echo "Failed to write config and start etcd"
-                fi
-            else
-                echo "Failed to get initial cluster configuration from add output"
-                endpoint=""
-            fi
-        else
-            echo "Failed to add member to cluster"
-            endpoint=""
-        fi
-    fi
-
-    # If joining failed or no cluster found, create new one
-    if [ -z "$endpoint" ]; then
-        echo "No existing cluster found, creating new cluster using discovery URL"
-        if [ -z "$ETCD_DISCOVERY_URL" ]; then
-            echo "Error: ETCD_DISCOVERY_URL is not set"
-            exit 1
-        fi
-        
-        # Verify discovery URL is accessible
-        if ! curl -sf "$ETCD_DISCOVERY_URL" >/dev/null; then
-            echo "Error: Cannot access discovery URL: $ETCD_DISCOVERY_URL"
-            exit 1
-        fi
-
-        config="name: \"$INSTANCE_NAME\"
-data-dir: \"/var/lib/etcd/default.etcd\"
-listen-metrics-urls: \"http://$myip:2378\"
-listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
-listen-peer-urls: \"$protocol://$myip:2380\"
-advertise-client-urls: \"$protocol://$myip:2379\"
-initial-advertise-peer-urls: \"$protocol://$myip:2380\"
-discovery: \"$ETCD_DISCOVERY_URL\"
-heartbeat-interval: 1000
-election-timeout: 15000
-auto-compaction-mode: periodic
-auto-compaction-retention: \"24h\""
-
-        write_and_start_etcd "$config"
-        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-            echo "Successfully created new cluster using discovery URL"
-            etcd_configured=1
-        else
-            echo "Failed to write config and start etcd"
-            exit 1
-        fi
-    else
-        # Create configuration for joining existing cluster
-        config="name: \"$INSTANCE_NAME\"
-data-dir: \"/var/lib/etcd/default.etcd\"
-listen-metrics-urls: \"http://$myip:2378\"
-listen-client-urls: \"$protocol://$myip:2379,http://127.0.0.1:2379\"
-listen-peer-urls: \"$protocol://$myip:2380\"
-advertise-client-urls: \"$protocol://$myip:2379\"
-initial-advertise-peer-urls: \"$protocol://$myip:2380\"
-initial-cluster: \"$initial_cluster\"
-initial-cluster-state: \"existing\"
-heartbeat-interval: 1000
-election-timeout: 15000
-auto-compaction-mode: periodic
-auto-compaction-retention: \"24h\""
-
-        write_and_start_etcd "$config"
-        if [ "$ETCD_WRITE_RESULT" -eq 0 ]; then
-            echo "Successfully joined existing cluster"
-            etcd_configured=1
-        else
-            echo "Failed to write config and start etcd"
-            exit 1
-        fi
-    fi
-else
-    echo "Skipping cluster join/creation logic as node is healthy and updated."
-fi
-
 # Add TLS configuration to the YAML file if TLS is enabled
 if [ "$TLS_DISABLED" = "False" ]; then
     cat >> /etc/etcd/etcd.conf.yaml <<EOF
