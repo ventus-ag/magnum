@@ -1240,7 +1240,7 @@ resources:
       signal_transport: HEAT_SIGNAL
       config: { get_resource: upgrade_kubernetes_config }
       server: { get_resource: kube-master }
-      actions: ["UPDATE"]
+      actions: ["CREATE", "UPDATE"]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
         timestamp_upgrade: { get_param: timestamp_upgrade }
