@@ -24,10 +24,6 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-if [[ ! -f "/tmp/old_kube_tag" ]]; then
-  $ssh_cmd rm -rf /etc/cni/net.d/*
-fi
-
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
     $ssh_cmd mkdir -p /opt/cni/bin
 

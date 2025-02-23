@@ -21,11 +21,6 @@ for PROXY in HTTP_PROXY HTTPS_PROXY NO_PROXY; do
     fi
 done
 
-# Clean up CNI if needed
-if [[ ! -f "/tmp/old_kube_tag" ]]; then
-    $ssh_cmd rm -rf /etc/cni/net.d/*
-fi
-
 # Setup network driver
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
     $ssh_cmd mkdir -p /opt/cni/bin
