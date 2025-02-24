@@ -175,7 +175,7 @@ is_member() {
 # "new" mode uses the discovery URL; "existing" mode uses the initial_cluster string.
 build_config() {
     local mode="$1"
-    local extra="$2"
+    local extra="${2:-}"
     if [ "$mode" = "new" ]; then
         cat << EOF
 name: "$INSTANCE_NAME"
