@@ -476,6 +476,7 @@ KUBE_API_ARGS=\"${KUBE_API_ARGS}\"
 KUBE_ETCD_SERVERS=\"--etcd-servers=http://127.0.0.1:2379\"
 "
 
+mkdir -p /etc/kubernetes/
 if [ ! -f /etc/kubernetes/apiserver ] || [ "$(cat /etc/kubernetes/apiserver)" != "${apiserver_config}" ]; then
     echo "${apiserver_config}" > /etc/kubernetes/apiserver.tmp
     mv /etc/kubernetes/apiserver.tmp /etc/kubernetes/apiserver
@@ -516,6 +517,7 @@ EOF
 
 # Write controller kubeconfig if it doesn't exist or content differs
 if [ ! -f "${CONTROLLER_KUBECONFIG}" ] || [ "$(cat ${CONTROLLER_KUBECONFIG})" != "${controller_kubeconfig}" ]; then
+    mkdir -p $(dirname "${CONTROLLER_KUBECONFIG}")
     echo "${controller_kubeconfig}" > "${CONTROLLER_KUBECONFIG}.tmp"
     mv "${CONTROLLER_KUBECONFIG}.tmp" "${CONTROLLER_KUBECONFIG}"
     chmod 0640 "${CONTROLLER_KUBECONFIG}"
