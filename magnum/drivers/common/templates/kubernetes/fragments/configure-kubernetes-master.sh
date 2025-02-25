@@ -613,7 +613,6 @@ fi
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
-KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 
 KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.conf
 cat > ${KUBELET_KUBECONFIG} << EOF
@@ -730,7 +729,7 @@ eventRecordQPS: 5
 ${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
 
-KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
+KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
 
 cat > /etc/kubernetes/kubelet.env <<EOF

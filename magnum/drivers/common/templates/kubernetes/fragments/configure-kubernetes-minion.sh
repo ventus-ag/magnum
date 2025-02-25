@@ -236,7 +236,6 @@ KUBELET_ARGS="--kubeconfig ${KUBELET_KUBECONFIG}"
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
-KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
 if [ -f /etc/sysconfig/docker ] ; then
@@ -312,7 +311,7 @@ runtimeRequestTimeout: 15m
 eventRecordQPS: 5
 ${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
-KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
+KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
 cat > /etc/kubernetes/kubelet.env <<EOF
 KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
