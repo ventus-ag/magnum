@@ -515,7 +515,7 @@ parameters:
   flannel_cni_tag:
     type: string
     description: tag of the flannel cni container
-    default: v1.3.0
+    default: v1.6.2
 
   kube_version:
     type: string
@@ -943,7 +943,7 @@ parameters:
   containerd_version:
     type: string
     description: The containerd version to download from https://github.com/containerd/containerd/releases
-    default: "1.7.2"
+    default: "2.0.2"
 
   containerd_tarball_url:
     type: string
