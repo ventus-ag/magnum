@@ -24,7 +24,7 @@ fi
 myip="${KUBE_NODE_IP}"
 
 # -------------------------------------------------------
-# Volume preparation (unchanged)
+# Volume preparation
 # -------------------------------------------------------
 if [ -n "$ETCD_VOLUME_SIZE" ] && [ "$ETCD_VOLUME_SIZE" -gt 0 ]; then
     if ! $ssh_cmd mountpoint -q /var/lib/etcd; then
@@ -57,7 +57,7 @@ if [ -n "$ETCD_VOLUME_SIZE" ] && [ "$ETCD_VOLUME_SIZE" -gt 0 ]; then
 fi
 
 # -------------------------------------------------------
-# Service creation section (unchanged)
+# Service creation section
 # -------------------------------------------------------
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" = "true" ]; then
     service_file="/etc/systemd/system/etcd.service"
@@ -107,7 +107,7 @@ else
 fi
 
 # -------------------------------------------------------
-# etcdctl installation (unchanged)
+# etcdctl installation
 # -------------------------------------------------------
 etcdctl_dir="/usr/local/bin"
 etcd_download_path="/srv/magnum/etcd"
@@ -275,7 +275,7 @@ write_and_start_etcd() {
 }
 
 # -------------------------------------------------------
-# Refactored Cluster Join/Creation Logic with Added Membership Check
+# Cluster Join/Creation Logic with Added Membership Check
 # -------------------------------------------------------
 
 # Define key endpoints.
