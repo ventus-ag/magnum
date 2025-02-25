@@ -49,28 +49,39 @@ oom_score = 0
   grpc_histogram = false
 
 [plugins]
-  [plugins."io.containerd.grpc.v1.cri"]
-    sandbox_image = "registry.k8s.io/pause:3.9"
+  [plugins.'io.containerd.cri.v1.images']
+    snapshotter = "overlayfs"
+    
+    [plugins.'io.containerd.cri.v1.images'.pinned_images]
+      sandbox = "registry.k8s.io/pause:3.9"
+    
+    [plugins.'io.containerd.cri.v1.images'.registry]
+      config_path = "/etc/containerd/certs.d"
+      
+      [plugins.'io.containerd.cri.v1.images'.registry.mirrors]
+        [plugins.'io.containerd.cri.v1.images'.registry.mirrors."docker.io"]
+          endpoint = ["https://registry-1.docker.io"]
+  
+  [plugins.'io.containerd.cri.v1.runtime']
     max_container_log_line_size = 16384
     enable_unprivileged_ports = true
     enable_unprivileged_icmp = true
-    [plugins."io.containerd.grpc.v1.cri".cni]
-      bin_dir = "/opt/cni/bin/"
-      conf_dir = "/etc/cni/net.d"
-    [plugins."io.containerd.grpc.v1.cri".containerd]
+    
+    [plugins.'io.containerd.cri.v1.runtime'.containerd]
       default_runtime_name = "runc"
-      snapshotter = "overlayfs"
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+      
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes]
+        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
           runtime_type = "io.containerd.runc.v2"
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+          
+          [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
             BinaryName = "/usr/local/bin/runc"
-    [plugins."io.containerd.grpc.v1.cri".registry]
-      config_path = "/etc/containerd/certs.d"
-      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-          endpoint = ["https://registry-1.docker.io"]
-  [plugins."io.containerd.internal.v1.opt"]
+    
+    [plugins.'io.containerd.cri.v1.runtime'.cni]
+      bin_dir = "/opt/cni/bin"
+      conf_dir = "/etc/cni/net.d"
+  
+  [plugins.'io.containerd.internal.v1.opt']
     path = "/var/lib/containerd/opt"
 EOF
 

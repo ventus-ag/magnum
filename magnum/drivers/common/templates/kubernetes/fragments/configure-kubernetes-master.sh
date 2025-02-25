@@ -713,8 +713,6 @@ readOnlyPort: 0
 containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 registerWithTaints:
-  - effect: "NoSchedule"
-    key: "node-role.kubernetes.io/master"
 ${EXTRA_REGISTER_WITH_TAINTS}
 maxPods: 110
 podPidsLimit: -1
