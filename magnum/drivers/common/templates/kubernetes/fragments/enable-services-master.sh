@@ -27,18 +27,6 @@ for action in enable restart; do
         $ssh_cmd systemctl $action $service
     done
 done
-      
-# Label leader nodes
-i=0
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ] && \
-    kubectl patch node ${INSTANCE_NAME} \
-        --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
-do
-    i=$((i+1))
-    [ $i -lt 60 ] || break;
-    echo "Trying to label master node with node-role.kubernetes.io/master=\"\""
-    sleep 10s
-done
 
 if [[ ${LEAD_NODE_ROLE_NAME} == "control-plane" ]]; then
   i=0

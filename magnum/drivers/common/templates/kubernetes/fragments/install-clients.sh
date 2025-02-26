@@ -15,15 +15,23 @@ mkdir -p /srv/magnum/k8s/
 echo "PATH=/srv/magnum/bin:\$PATH" >> /etc/bashrc
 echo "export HISTCONTROL=ignoredups" >> /etc/bashrc
 
-$ssh_cmd 'if systemctl list-unit-files | grep -q "^kubelet\.service"; then
-    echo "kubelet service exists. Stopping it..."
-    systemctl stop kubelet
-else
-    echo "kubelet service not found. Skipping stop."
-fi'
+# Download to temporary files first
+$ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet.tmp https://cdn.dl.k8s.io/release/${KUBE_TAG}/bin/linux/${ARCH}/kubelet
+$ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl.tmp https://cdn.dl.k8s.io/release/${KUBE_TAG}/bin/linux/${ARCH}/kubectl
 
-$ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/${KUBE_TAG}/bin/linux/${ARCH}/kubelet
-$ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${KUBE_TAG}/bin/linux/${ARCH}/kubectl
+# For kubelet
+if ! $ssh_cmd test -f /usr/local/bin/kubelet || ! $ssh_cmd cmp -s /usr/local/bin/kubelet.tmp /usr/local/bin/kubelet; then
+    $ssh_cmd mv /usr/local/bin/kubelet.tmp /usr/local/bin/kubelet
+else
+    $ssh_cmd rm /usr/local/bin/kubelet.tmp
+fi
+
+# For kubectl
+if ! $ssh_cmd test -f /usr/local/bin/kubectl || ! $ssh_cmd cmp -s /usr/local/bin/kubectl.tmp /usr/local/bin/kubectl; then
+    $ssh_cmd mv /usr/local/bin/kubectl.tmp /usr/local/bin/kubectl
+else
+    $ssh_cmd rm /usr/local/bin/kubectl.tmp
+fi
 
 $ssh_cmd chmod +x /usr/local/bin/kube*
 

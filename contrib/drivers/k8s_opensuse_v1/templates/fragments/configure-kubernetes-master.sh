@@ -43,7 +43,7 @@ sed -i '
 
 cat >> /etc/kubernetes/apiserver <<EOF
 #Uncomment the following line to enable Load Balancer feature
-#KUBE_API_ARGS="--service-account-key-file='"$SERVICE_ACCOUNT_KEY"' --runtime-config=api\/all=true" --runtime-config=api\/all=true --cloud-config=/etc/sysconfig/kubernetes_openstack_config --cloud-provider=openstack"
+#KUBE_API_ARGS="--service-account-key-file='"$SERVICE_ACCOUNT_KEY"' --runtime-config=api\/all=true" --runtime-config=api\/all=true --cloud-config=/etc/sysconfig/kubernetes_openstack_config"
 EOF
 
 sed -i '
@@ -52,7 +52,7 @@ sed -i '
 
 cat >> /etc/kubernetes/controller-manager <<EOF
 #Uncomment the following line to enable Load Balancer feature
-#KUBE_CONTROLLER_MANAGER_ARGS="--service_account_private_key_file='"$SERVICE_ACCOUNT_KEY"' --leader-elect=true --cluster-name=kubernetes --cluster-cidr='"$FLANNEL_NETWORK_CIDR"' --cloud-config=/etc/sysconfig/kubernetes_openstack_config --cloud-provider=openstack"
+#KUBE_CONTROLLER_MANAGER_ARGS="--service_account_private_key_file='"$SERVICE_ACCOUNT_KEY"' --leader-elect=true --cluster-name=kubernetes --cluster-cidr='"$FLANNEL_NETWORK_CIDR"' --cloud-config=/etc/sysconfig/kubernetes_openstack_config"
 EOF
 
 # Generate a the configuration for Kubernetes services to talk to OpenStack Neutron
