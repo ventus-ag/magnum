@@ -3,7 +3,7 @@
 set +x
 . /etc/sysconfig/heat-params
 set -x
-
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 $ssh_cmd mkdir -p /etc/kubernetes/
 
 # Copy ca-bundle only if it doesn't exist or has changed
@@ -45,7 +45,7 @@ EOF
     echo "$config_content" > ${KUBE_OS_CLOUD_CONFIG}.tmp
 
     # Move to final location if different or doesn't exist
-    if [ ! -f ${KUBE_OS_CLOUD_CONFIG} ] || ! cmp -s ${KUBE_OS_CLOUD_CONFIG}.tmp ${KUBE_OS_CLOUD_CONFIG}; then
+    if [ ! -f ${KUBE_OS_CLOUD_CONFIG} ] || ! $ssh_cmd cmp -s ${KUBE_OS_CLOUD_CONFIG}.tmp ${KUBE_OS_CLOUD_CONFIG}; then
         mv ${KUBE_OS_CLOUD_CONFIG}.tmp ${KUBE_OS_CLOUD_CONFIG}
 
         # backwards compatibility, some apps may expect this file from previous magnum versions
@@ -63,7 +63,7 @@ internal-network-name=$CLUSTER_NETWORK_NAME"
     echo "$occm_config" > ${KUBE_OS_CLOUD_CONFIG}-occm.tmp
 
     # Move to final location if different or doesn't exist
-    if [ ! -f ${KUBE_OS_CLOUD_CONFIG}-occm ] || ! cmp -s ${KUBE_OS_CLOUD_CONFIG}-occm.tmp ${KUBE_OS_CLOUD_CONFIG}-occm; then
+    if [ ! -f ${KUBE_OS_CLOUD_CONFIG}-occm ] || ! $ssh_cmd cmp -s ${KUBE_OS_CLOUD_CONFIG}-occm.tmp ${KUBE_OS_CLOUD_CONFIG}-occm; then
         mv ${KUBE_OS_CLOUD_CONFIG}-occm.tmp ${KUBE_OS_CLOUD_CONFIG}-occm
     else
         rm ${KUBE_OS_CLOUD_CONFIG}-occm.tmp

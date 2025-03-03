@@ -3,7 +3,7 @@
 set +x
 . /etc/sysconfig/heat-params
 set -x
-
+ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 CERT_DIR=/etc/kubernetes/certs
 
 # root kubeconfig
@@ -78,7 +78,7 @@ fi
 echo "$config_content" > ${ADMIN_KUBECONFIG}.tmp
 
 # Move to final location if different or doesn't exist
-if [ ! -f ${ADMIN_KUBECONFIG} ] || ! cmp -s ${ADMIN_KUBECONFIG}.tmp ${ADMIN_KUBECONFIG}; then
+if [ ! -f ${ADMIN_KUBECONFIG} ] || ! $ssh_cmd cmp -s ${ADMIN_KUBECONFIG}.tmp ${ADMIN_KUBECONFIG}; then
     mv ${ADMIN_KUBECONFIG}.tmp ${ADMIN_KUBECONFIG}
     chown root:root ${ADMIN_KUBECONFIG}
     chmod 600 ${ADMIN_KUBECONFIG}
