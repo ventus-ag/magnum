@@ -684,6 +684,8 @@ EXTRA_REGISTER_WITH_TAINTS='  - effect: "NoSchedule"
     key: "node-role.kubernetes.io/control-plane"'
 fi
 
+INSTANCE_ID=$($ssh_cmd curl -s http://169.254.169.254/openstack/latest/meta_data.json | $ssh_cmd jq -r .uuid)
+
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
 ---
@@ -716,6 +718,7 @@ registerWithTaints:
 ${EXTRA_REGISTER_WITH_TAINTS}
 maxPods: 110
 podPidsLimit: -1
+providerID: openstack://${INSTANCE_ID}
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true
