@@ -270,7 +270,7 @@ featureGates:
   GracefulNodeShutdown: false'
 fi
 
-INSTANCE_ID=$($ssh_cmd curl -s http://169.254.169.254/openstack/latest/meta_data.json | jq -r .uuid)
+INSTANCE_ID=$($ssh_cmd curl -s http://169.254.169.254/openstack/latest/meta_data.json | $ssh_cmd jq -r .uuid)
 
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
