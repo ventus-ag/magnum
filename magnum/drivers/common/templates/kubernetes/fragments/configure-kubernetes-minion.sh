@@ -24,10 +24,6 @@ if [ ! -z "$NO_PROXY" ]; then
     export NO_PROXY
 fi
 
-if [[ ! -f "/tmp/old_kube_tag" ]]; then
-  $ssh_cmd rm -rf /etc/cni/net.d/*
-fi
-
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
     $ssh_cmd mkdir -p /opt/cni/bin
 
@@ -75,6 +71,7 @@ net.ipv4.ping_group_range = 0 2147483647
 EOF
 
 mkdir -p /srv/magnum/kubernetes/
+mkdir -p /etc/kubernetes
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOG_LEVEL="--v=3"
 EOF
@@ -239,7 +236,6 @@ KUBELET_ARGS="--kubeconfig ${KUBELET_KUBECONFIG}"
 
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/role=${NODEGROUP_ROLE}"
 KUBELET_ARGS="${KUBELET_ARGS} --node-labels=magnum.openstack.org/nodegroup=${NODEGROUP_NAME}"
-KUBELET_ARGS="${KUBELET_ARGS} --volume-plugin-dir=/var/lib/kubelet/volumeplugins"
 KUBELET_ARGS="${KUBELET_ARGS} ${KUBELET_OPTIONS}"
 
 if [ -f /etc/sysconfig/docker ] ; then
@@ -274,6 +270,7 @@ featureGates:
   GracefulNodeShutdown: false'
 fi
 
+INSTANCE_ID=$($ssh_cmd curl -s http://169.254.169.254/openstack/latest/meta_data.json | $ssh_cmd jq -r .uuid)
 
 KUBELET_CONFIG=/etc/kubernetes/kubelet-config.yaml
 cat > ${KUBELET_CONFIG} << EOF
@@ -305,6 +302,7 @@ containerLogMaxFiles: 5
 containerLogMaxSize: 10Mi
 maxPods: 110
 podPidsLimit: -1
+providerID: openstack:///${INSTANCE_ID}
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true
@@ -315,7 +313,7 @@ runtimeRequestTimeout: 15m
 eventRecordQPS: 5
 ${EXTRA_KUBELETCONFIG_PARAMETERS}
 EOF
-KUBELET_ARGS="${KUBELET_ARGS} --cloud-provider=external --config=${KUBELET_CONFIG}"
+KUBELET_ARGS="${KUBELET_ARGS} --config=${KUBELET_CONFIG}"
 
 cat > /etc/kubernetes/kubelet.env <<EOF
 KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"

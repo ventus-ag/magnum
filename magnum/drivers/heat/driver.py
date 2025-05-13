@@ -256,6 +256,16 @@ class HeatDriver(driver.Driver):
             scale_manager,
             nodes_to_remove=None)
         
+        # Get existing stack parameters if available
+        try:
+            osc = clients.OpenStackClients(context)
+            stack = osc.heat().stacks.get(nodegroup.stack_id)
+            existing_params = stack.parameters
+            if 'timestamp_upgrade' in existing_params:
+                scale_params['timestamp_upgrade'] = existing_params['timestamp_upgrade']
+        except Exception:
+            pass
+
         scale_params['is_upgrade'] = False
 
         fields = {
@@ -280,6 +290,15 @@ class HeatDriver(driver.Driver):
             resize_manager,
             nodes_to_remove=nodes_to_remove)
         
+        # Get existing stack parameters if available
+        try:
+            osc = clients.OpenStackClients(context)
+            stack = osc.heat().stacks.get(nodegroup.stack_id)
+            if 'timestamp_upgrade' in stack.parameters:
+                scale_params['timestamp_upgrade'] = stack.parameters['timestamp_upgrade']
+        except Exception:
+            pass
+
         scale_params['is_upgrade'] = False
 
         fields = {
@@ -474,21 +493,19 @@ class FedoraKubernetesDriver(KubernetesDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                         env_files)
         tpl_files.update(env_map)
-        # Get current datetime
-        now = datetime.datetime.now()
 
-        # Convert datetime to string
-        now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
         heat_params['is_upgrade'] = True
-        heat_params['timestamp_upgrade'] = now_str
+        if 'timestamp_upgrade' in osc.heat().stacks.get(stack_id).parameters:
+            heat_params['timestamp_upgrade'] = osc.heat().stacks.get(stack_id).parameters['timestamp_upgrade']
+        heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
-            # 'existing': True, 
+            'existing': True, 
             'parameters': heat_params,
-            'timeout_mins': 60,
+            'timeout_mins': 60
         }
 
         # Fetch the current parameters of the stack
@@ -502,6 +519,24 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'containerd_version'
             ]
         for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
+
+
+        # old parameters what was removed from template
+        parameters_to_clear = [
+            'timestamp_upgrade'
+            ]
+
+        params_to_clear = []
+        for param in parameters_to_clear:
+            if param in current_parameters:
+                params_to_clear.append(param)
+
+        if params_to_clear:
+            fields['clear_parameter'] = params_to_clear
+
+        # Remove the cleared parameters from current_parameters
+        for param in params_to_clear:
             current_parameters.pop(param, None)
 
         # Remove parameters ending with '_tag' or '_sha256'
