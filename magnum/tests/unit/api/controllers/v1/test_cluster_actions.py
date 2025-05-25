@@ -302,7 +302,7 @@ class TestClusterUpgrade(api_base.FunctionalTest):
                                   expect_errors=True)
         self.assertEqual(404, response.status_code)
 
-    def test_upgrade_non_default_ng_invalid_ct(self):
+    def test_upgrade_non_default_ng_different_ct(self):
         cluster_upgrade_req = {
             "cluster_template": "test_2",
             "nodegroup": self.nodegroup_obj.uuid
@@ -311,6 +311,5 @@ class TestClusterUpgrade(api_base.FunctionalTest):
                                   self.cluster_obj.uuid,
                                   cluster_upgrade_req,
                                   headers={"Openstack-Api-Version":
-                                           "container-infra 1.9"},
-                                  expect_errors=True)
-        self.assertEqual(409, response.status_code)
+                                           "container-infra 1.9"})
+        self.assertEqual(202, response.status_code)

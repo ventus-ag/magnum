@@ -175,21 +175,8 @@ class ActionsController(base.Controller):
         else:
             nodegroup = objects.NodeGroup.get(
                 context, cluster.uuid, cluster_upgrade_req.nodegroup)
-            # Check if nodegroup has cluster_template_id label
-            # If it does, allow upgrade to that specific template
-            # If it doesn't and it's not default, restrict to cluster's template
-            if (not nodegroup.is_default and 
-                new_cluster_template.uuid != cluster.cluster_template_id):
-                # Check if nodegroup has cluster_template_id label
-                if (nodegroup.labels is None or 
-                    'cluster_template_id' not in nodegroup.labels or
-                    nodegroup.labels['cluster_template_id'] != new_cluster_template.uuid):
-                    reason = ("Nodegroup %s can be upgraded only to "
-                              "match cluster's template (%s) or have "
-                              "cluster_template_id label matching the target template.")
-                    reason = reason % (nodegroup.name,
-                                       cluster.cluster_template.name)
-                    raise exception.InvalidClusterTemplateForUpgrade(reason=reason)
+            # Allow non-default nodegroups to upgrade to any template
+            # The cluster_template_id label will be updated in the driver
 
         pecan.request.rpcapi.cluster_upgrade(
             cluster,
