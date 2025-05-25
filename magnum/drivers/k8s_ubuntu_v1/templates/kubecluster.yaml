@@ -12,9 +12,13 @@ conditions:
       - true
 
   upgrade_cluster_resources:
-    equals:
-      - get_param: is_upgrade
-      - true
+    and:
+      - equals:
+          - get_param: is_upgrade
+          - true
+      - equals:
+          - get_param: is_cluster_stack
+          - true
 
   is_master:
     and:
