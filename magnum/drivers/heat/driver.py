@@ -480,6 +480,12 @@ class FedoraKubernetesDriver(KubernetesDriver):
                 other_default_ng = cluster.default_ng_master
             other_default_ng.labels = new_labels
             other_default_ng.save()
+        else:
+            # For non-default nodegroups, check if they should use a specific cluster_template_id
+            if (nodegroup.labels is not None and 'cluster_template_id' in nodegroup.labels):
+                # Update the nodegroup's cluster_template_id label to match the upgrade target
+                new_labels['cluster_template_id'] = cluster_template.uuid
+                nodegroup.labels = new_labels
 
         # New code for applying heat template
         nodegroups = [nodegroup] if nodegroup else None
@@ -715,6 +721,12 @@ class UbuntuKubernetesDriver(KubernetesDriver):
                 other_default_ng = cluster.default_ng_master
             other_default_ng.labels = new_labels
             other_default_ng.save()
+        else:
+            # For non-default nodegroups, check if they should use a specific cluster_template_id
+            if (nodegroup.labels is not None and 'cluster_template_id' in nodegroup.labels):
+                # Update the nodegroup's cluster_template_id label to match the upgrade target
+                new_labels['cluster_template_id'] = cluster_template.uuid
+                nodegroup.labels = new_labels
 
         # New code for applying heat template
         nodegroups = [nodegroup] if nodegroup else None
