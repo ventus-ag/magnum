@@ -659,7 +659,6 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-services-minion.sh
 
   node_config_deployment:
-    condition: create_minions
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
