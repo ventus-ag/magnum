@@ -89,9 +89,15 @@ class TestClusterResize(api_base.FunctionalTest):
                                   self.cluster_obj.uuid,
                                   cluster_resize_req,
                                   headers={"Openstack-Api-Version":
-                                           "container-infra 1.9"},
-                                  expect_errors=True)
-        self.assertEqual(400, response.status_code)
+                                           "container-infra 1.9"})
+        self.assertEqual(202, response.status_code)
+
+        # Verify that the master node count was updated  
+        response = self.get_json('/clusters/%s' % self.cluster_obj.uuid)
+        self.assertEqual(new_node_count, response['master_count'])
+        self.assertEqual(self.cluster_obj.uuid, response['uuid'])
+        self.assertEqual(self.cluster_obj.cluster_template_id,
+                         response['cluster_template_id'])
 
     def test_resize_with_node_count_greater_than_max(self):
         new_node_count = 6

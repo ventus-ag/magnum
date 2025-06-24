@@ -115,8 +115,11 @@ class ActionsController(base.Controller):
                 context, cluster.uuid, cluster_resize_req.nodegroup)
 
         if nodegroup.role == 'master':
-            # NOTE(ttsiouts): Restrict the resize to worker nodegroups
-            raise exception.MasterNGResizeNotSupported()
+            cluster_template = cluster.cluster_template
+            if (cluster_resize_req.node_count > 1 and 
+                not cluster_template.master_lb_enabled):
+                raise exception.InvalidParameterValue(
+                    "Master node count must be 1 when master_lb_enabled is False")
 
         # NOTE(ttsiouts): Make sure that the new node count is within
         # the configured boundaries of the selected nodegroup.
