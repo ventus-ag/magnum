@@ -763,6 +763,11 @@ resources:
                   set -e
                   set +u
 
+                  echo "=== SSH Configuration Debug Log ==="
+                  echo "Starting SSH configuration at $(date)"
+                  echo "Current user: $(whoami)"
+                  echo "Current working directory: $(pwd)"
+
                   until [ -f /etc/ssl/certs/openstack-ca.pem ]
                   do
                       echo "waiting for /etc/ssl/certs/openstack-ca.pem"
@@ -791,6 +796,7 @@ resources:
                   fi
 
                   id
+                  echo "=== Setting up Heat Agent SSH keys ==="
                   mkdir -p /srv/magnum/.ssh
                   chmod 0700 /srv/magnum/.ssh
                   ssh-keygen -q -t rsa -N '' -f /tmp/heat_agent_rsa
@@ -798,7 +804,9 @@ resources:
                   mv /tmp/heat_agent_rsa.pub /srv/magnum/.ssh/heat_agent_rsa.pub
                   chmod 0400 /srv/magnum/.ssh/heat_agent_rsa
                   chmod 0400 /srv/magnum/.ssh/heat_agent_rsa.pub
+                  echo "Heat agent SSH keys created successfully"
                   
+                  echo "=== Setting up Ubuntu user SSH access ==="
                   # Configure SSH access for ubuntu user
                   mkdir -p /home/ubuntu/.ssh
                   chmod 0700 /home/ubuntu/.ssh
@@ -806,12 +814,17 @@ resources:
                   cat /srv/magnum/.ssh/heat_agent_rsa.pub > /home/ubuntu/.ssh/authorized_keys
                   chmod 0600 /home/ubuntu/.ssh/authorized_keys
                   chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+                  echo "Ubuntu user SSH access configured"
+                  echo "Ubuntu SSH key fingerprint: $(ssh-keygen -lf /home/ubuntu/.ssh/authorized_keys)"
                   
+                  echo "=== Setting up Root user SSH access ==="
                   # Also setup for root for heat agent operations
                   mkdir -p /root/.ssh
                   chmod 0700 /root/.ssh
                   cat /srv/magnum/.ssh/heat_agent_rsa.pub > /root/.ssh/authorized_keys
+                  echo "Root user SSH access configured"
                   
+                  echo "=== Setting up SSH known hosts and config ==="
                   ssh-keyscan 127.0.0.1 > /srv/magnum/.ssh/known_hosts
                   cat > /srv/magnum/.ssh/config <<EOF
                   Host localhost
@@ -820,17 +833,45 @@ resources:
                       IdentityFile /srv/magnum/.ssh/heat_agent_rsa
                       UserKnownHostsFile /srv/magnum/.ssh/known_hosts
                   EOF
+                  echo "SSH config and known_hosts configured"
 
+                  echo "=== Configuring SSH daemon ==="
+                  # Backup original sshd_config
+                  cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+                  echo "SSH config backed up"
+                  
                   # Configure SSH to disable root password login but allow key-based login
                   sed -i '/^#*PermitRootLogin/ s/.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
                   sed -i '/^#*PasswordAuthentication/ s/.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+                  echo "SSH daemon basic security configured"
                   
                   # Allow ubuntu user SSH access
                   if ! grep -q "^AllowUsers" /etc/ssh/sshd_config; then
                       echo "AllowUsers ubuntu root" >> /etc/ssh/sshd_config
+                      echo "AllowUsers directive added to SSH config"
                   fi
 
+                  echo "=== Final SSH configuration check ==="
+                  echo "SSH daemon config test:"
+                  /usr/sbin/sshd -t && echo "SSH config syntax: OK" || echo "SSH config syntax: ERROR"
+                  
+                  echo "Ubuntu user home directory permissions:"
+                  ls -la /home/ubuntu/.ssh/
+                  
+                  echo "Root .ssh directory permissions:"
+                  ls -la /root/.ssh/
+                  
+                  echo "=== Restarting SSH service ==="
                   systemctl restart ssh
+                  if systemctl is-active --quiet ssh; then
+                      echo "SSH service restarted successfully"
+                  else
+                      echo "ERROR: SSH service failed to restart"
+                      systemctl status ssh
+                  fi
+
+                  echo "SSH configuration completed at $(date)"
+                  echo "=== End SSH Configuration Debug Log ==="
                 params:
                   $HTTP_PROXY: { get_param: http_proxy }
                   $HTTPS_PROXY: { get_param: https_proxy }
