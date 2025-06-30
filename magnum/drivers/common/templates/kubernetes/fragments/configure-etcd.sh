@@ -171,11 +171,13 @@ is_member() {
     return 0
 }
 
-# Build configuration string based on mode.
+# Build complete etcd configuration including TLS and proxy settings.
 # "new" mode uses the discovery URL; "existing" mode uses the initial_cluster string.
-build_config() {
+build_complete_config() {
     local mode="$1"
     local extra="${2:-}"
+    
+    # Start with base configuration
     if [ "$mode" = "new" ]; then
         cat << EOF
 name: "$INSTANCE_NAME"
@@ -208,6 +210,35 @@ auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
     fi
+    
+    # Add TLS configuration if enabled
+    if [ "$TLS_DISABLED" = "False" ]; then
+        cat << EOF
+client-transport-security:
+  cert-file: "$cert_dir/server.crt"
+  key-file: "$cert_dir/server.key"
+  client-cert-auth: true
+  trusted-ca-file: "$cert_dir/ca.crt"
+peer-transport-security:
+  cert-file: "$cert_dir/server.crt"
+  key-file: "$cert_dir/server.key"
+  client-cert-auth: true
+  trusted-ca-file: "$cert_dir/ca.crt"
+EOF
+    fi
+    
+    # Add HTTP proxy configuration if set
+    if [ -n "$HTTP_PROXY" ]; then
+        cat << EOF
+# HTTP proxy to use for traffic to discovery service.
+discovery-proxy: $HTTP_PROXY
+EOF
+    fi
+}
+
+# Legacy function for compatibility (now calls the complete config builder)
+build_config() {
+    build_complete_config "$@"
 }
 
 # Remove our node from LB (if present) and add it back.
@@ -219,6 +250,7 @@ rejoin_cluster() {
         initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
         config=$(build_config existing "$initial_cluster")
         write_and_start_etcd "$config"
+        etcd_restart_needed=0  # Reset flag since we just restarted via write_and_start_etcd
         return 0
     else
         echo "Failed to rejoin cluster via LB" >&2
@@ -233,6 +265,7 @@ join_existing_cluster() {
         initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
         config=$(build_config existing "$initial_cluster")
         write_and_start_etcd "$config"
+        etcd_restart_needed=0  # Reset flag since we just restarted via write_and_start_etcd
         return 0
     else
         echo "Failed to join existing cluster via LB" >&2
@@ -373,12 +406,64 @@ write_and_start_etcd() {
         $ssh_cmd systemctl daemon-reload
         $ssh_cmd systemctl restart etcd
         ETCD_WRITE_RESULT=0
+        etcd_restart_needed=0  # Reset flag since we just restarted
+    fi
+}
+
+# Rebuild complete configuration for existing healthy nodes
+rebuild_config_if_needed() {
+    if [ ! -f /etc/etcd/etcd.conf.yaml ]; then
+        echo "No existing etcd config found, skipping rebuild" >&2
+        return 0
+    fi
+    
+    # Check if we need to add missing TLS or proxy configuration
+    needs_tls=0
+    needs_proxy=0
+    
+    if [ "$TLS_DISABLED" = "False" ] && ! grep -q "client-transport-security" /etc/etcd/etcd.conf.yaml 2>/dev/null; then
+        needs_tls=1
+    fi
+    
+    if [ -n "$HTTP_PROXY" ] && ! grep -q "discovery-proxy" /etc/etcd/etcd.conf.yaml 2>/dev/null; then
+        needs_proxy=1
+    fi
+    
+    if [ $needs_tls -eq 1 ] || [ $needs_proxy -eq 1 ]; then
+        echo "Rebuilding etcd configuration to add missing TLS/proxy settings" >&2
+        
+        # Extract current cluster configuration from existing config
+        existing_config=$(cat /etc/etcd/etcd.conf.yaml)
+        
+        if echo "$existing_config" | grep -q "^discovery:"; then
+            # Node uses discovery URL
+            discovery_url=$(echo "$existing_config" | grep "^discovery:" | cut -d' ' -f2 | tr -d '"')
+            ETCD_DISCOVERY_URL="$discovery_url"
+            new_config=$(build_complete_config "new")
+        elif echo "$existing_config" | grep -q "^initial-cluster:"; then
+            # Node uses initial-cluster
+            initial_cluster=$(echo "$existing_config" | grep "^initial-cluster:" | cut -d' ' -f2- | tr -d '"')
+            new_config=$(build_complete_config "existing" "$initial_cluster")
+        else
+            echo "Could not determine cluster configuration type, skipping rebuild" >&2
+            return 0
+        fi
+        
+        # Write the new complete configuration
+        echo "$new_config" > /etc/etcd/etcd.conf.yaml
+        etcd_restart_needed=1
+        echo "Configuration rebuilt with complete TLS/proxy settings" >&2
+    else
+        echo "Configuration is already complete, no rebuild needed" >&2
     fi
 }
 
 # -------------------------------------------------------
 # Cluster Join/Creation Logic with Added Membership Check
 # -------------------------------------------------------
+
+# Flag to track if etcd restart is needed
+etcd_restart_needed=0
 
 # Define key endpoints.
 local_endpoint="$protocol://$myip:2379"
@@ -433,6 +518,8 @@ if [ $discovery_ok -eq 1 ]; then
                 rejoin_cluster || exit 1
             else
                 echo "Local endpoint is healthy. Skipping join/creation logic." >&2
+                # Check if we need to rebuild config for TLS/proxy settings
+                rebuild_config_if_needed
             fi
         else
             # Check if LB has an existing cluster (has other members)
@@ -462,6 +549,8 @@ elif [ $discovery_ok -eq 0 ]; then
                 rejoin_cluster || exit 1
             else
                 echo "Local endpoint is healthy. Skipping join/creation logic." >&2
+                # Check if we need to rebuild config for TLS/proxy settings
+                rebuild_config_if_needed
             fi
         else
             echo "Discovery invalid but LB shows existing cluster without our node. Joining existing cluster." >&2
@@ -482,27 +571,19 @@ cleanup_excess_members
 # -------------------------------------------------------
 # TLS and Proxy Configuration
 # -------------------------------------------------------
-if [ "$TLS_DISABLED" = "False" ]; then
-    cat >> /etc/etcd/etcd.conf.yaml <<EOF
-client-transport-security:
-  cert-file: "$cert_dir/server.crt"
-  key-file: "$cert_dir/server.key"
-  client-cert-auth: true
-  trusted-ca-file: "$cert_dir/ca.crt"
-peer-transport-security:
-  cert-file: "$cert_dir/server.crt"
-  key-file: "$cert_dir/server.key"
-  client-cert-auth: true
-  trusted-ca-file: "$cert_dir/ca.crt"
-EOF
-fi
+# NOTE: TLS and proxy configuration are now handled within build_complete_config()
+# and rebuild_config_if_needed() functions to avoid duplicate configuration entries.
 
-if [ -n "$HTTP_PROXY" ]; then
-    cat >> /etc/etcd/etcd.conf.yaml <<EOF
-# HTTP proxy to use for traffic to discovery service.
-discovery-proxy: $HTTP_PROXY
-EOF
+# -------------------------------------------------------
+# Final etcd restart (only if needed)
+# -------------------------------------------------------
+if [ $etcd_restart_needed -eq 1 ]; then
+    echo "Restarting etcd service due to configuration changes" >&2
+    $ssh_cmd systemctl daemon-reload
+    $ssh_cmd systemctl restart etcd
+    echo "Etcd restart completed" >&2
+else
+    echo "No configuration changes detected, skipping etcd restart" >&2
+    # Still reload daemon in case systemd service file changed
+    $ssh_cmd systemctl daemon-reload
 fi
-
-$ssh_cmd systemctl daemon-reload
-$ssh_cmd systemctl restart etcd
