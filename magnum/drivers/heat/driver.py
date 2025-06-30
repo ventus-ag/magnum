@@ -288,7 +288,8 @@ class HeatDriver(driver.Driver):
             cluster,
             nodegroup.node_count,
             resize_manager,
-            nodes_to_remove=nodes_to_remove)
+            nodes_to_remove=nodes_to_remove,
+            nodegroup=nodegroup)
         
         # Get existing stack parameters if available
         try:

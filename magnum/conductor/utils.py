@@ -189,7 +189,12 @@ def _get_nodegroup_object(context, cluster, node_count, is_master=False):
        and 'min_node_count' in cluster.labels):
         ng.min_node_count = cluster.labels['min_node_count']
     else:
-        ng.min_node_count = 0
+        # Set minimum node count based on role
+        # Masters must have at least 1 node for cluster functionality
+        if is_master:
+            ng.min_node_count = 1
+        else:
+            ng.min_node_count = 0
 
     if (cluster.labels != wtypes.Unset and cluster.labels is not None
        and 'max_node_count' in cluster.labels):

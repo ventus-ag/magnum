@@ -116,6 +116,9 @@ class ActionsController(base.Controller):
 
         if nodegroup.role == 'master':
             cluster_template = cluster.cluster_template
+            if cluster_resize_req.node_count == 0:
+                raise exception.InvalidParameterValue(
+                    "Master node count cannot be 0. Kubernetes clusters require at least 1 master node.")
             if (cluster_resize_req.node_count > 1 and 
                 not cluster_template.master_lb_enabled):
                 raise exception.InvalidParameterValue(
