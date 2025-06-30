@@ -312,6 +312,74 @@ class HeatDriver(driver.Driver):
                  cluster.uuid, nodegroup.stack_id, scale_params)
         osc = clients.OpenStackClients(context)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
+        
+        # Special handling for master scaledown: ensure master-0 gets updated with new NUMBER_OF_MASTERS
+        # This is needed for etcd member cleanup to work properly during scale-down operations
+        if (nodegroup and nodegroup.role == 'master' and nodes_to_remove and len(nodes_to_remove) > 0):
+            self._update_master_0_for_scaledown(context, cluster, nodegroup, scale_params)
+
+    def _update_master_0_for_scaledown(self, context, cluster, scaled_nodegroup, scale_params):
+        """Update master-0 with new NUMBER_OF_MASTERS parameter during master scaledown.
+        
+        This ensures that master-0 can perform etcd member cleanup even if it's in a different
+        nodegroup than the one being scaled down.
+        """
+        try:
+            # Find the default master nodegroup (which typically contains master-0)
+            default_master_ng = cluster.default_ng_master
+            
+            # If the scaled nodegroup is already the default master nodegroup, no extra update needed
+            if default_master_ng.uuid == scaled_nodegroup.uuid:
+                LOG.debug('Scaled nodegroup is the default master nodegroup, no additional update needed')
+                return
+                
+            osc = clients.OpenStackClients(context)
+            
+            # Get the complete template definition to generate proper parameters for the default master nodegroup
+            definition = self.get_template_definition()
+            
+            # Generate scale parameters for the default master nodegroup, but with the updated master count
+            # This ensures we pass all necessary parameters, not just the count
+            default_master_params = definition.get_scale_params(
+                context,
+                cluster,
+                default_master_ng.node_count,  # Keep current node count for default nodegroup
+                None,  # No resize manager
+                nodes_to_remove=None,  # No nodes to remove from default nodegroup
+                nodegroup=default_master_ng)
+            
+            # Override with the new total master count from the scale operation
+            if 'number_of_masters' in scale_params:
+                default_master_params['number_of_masters'] = scale_params['number_of_masters']
+                
+            # Preserve important existing parameters
+            try:
+                master_stack = osc.heat().stacks.get(default_master_ng.stack_id)
+                existing_params = master_stack.parameters
+                
+                for param in ['timestamp_upgrade', 'discovery_url', 'cluster_uuid']:
+                    if param in existing_params:
+                        default_master_params[param] = existing_params[param]
+                        
+            except Exception as e:
+                LOG.warning('Could not retrieve existing parameters for master nodegroup %s: %s',
+                           default_master_ng.uuid, str(e))
+            
+            default_master_params['is_upgrade'] = False
+            
+            fields = {
+                'parameters': default_master_params,
+                'existing': True,
+                'disable_rollback': True  # Use safer rollback setting for supplementary update
+            }
+            
+            LOG.info('Updating default master nodegroup %s with updated master count %s for scaledown coordination',
+                     default_master_ng.uuid, default_master_params.get('number_of_masters'))
+            osc.heat().stacks.update(default_master_ng.stack_id, **fields)
+            
+        except Exception as e:
+            LOG.error('Failed to update master-0 for scaledown operation: %s', str(e))
+            # Don't fail the main resize operation if this supplementary update fails
 
     def _delete_stack(self, context, osc, stack_id):
         osc.heat().stacks.delete(stack_id)

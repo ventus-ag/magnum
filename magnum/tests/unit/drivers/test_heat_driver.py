@@ -760,3 +760,217 @@ class TestHeatPoller(base.TestCase):
 
         self.assertIn('worker_ng', cluster.status_reason)
         self.assertIn('master_ng', cluster.status_reason)
+
+
+class TestHeatDriverResize(base.TestCase):
+    """Test cases for the resize functionality with master-0 updates."""
+
+    def setUp(self):
+        super(TestHeatDriverResize, self).setUp()
+
+    @patch('magnum.common.clients.OpenStackClients')
+    @patch('magnum.drivers.heat.driver.HeatDriver.get_template_definition')
+    def test_resize_stack_master_scaledown_updates_master_0(self, mock_get_template_def, mock_osc_class):
+        """Test that master scaledown triggers update to master-0 for etcd cleanup."""
+        # Setup mocks
+        mock_osc = mock.MagicMock()
+        mock_osc_class.return_value = mock_osc
+        
+        mock_heat_client = mock.MagicMock()
+        mock_osc.heat.return_value = mock_heat_client
+        
+        # Mock the stack get operations
+        scaled_stack = mock.MagicMock()
+        scaled_stack.parameters = {'timestamp_upgrade': '2023-01-01T00:00:00'}
+        
+        master_0_stack = mock.MagicMock()
+        master_0_stack.parameters = {
+            'timestamp_upgrade': '2023-01-01T00:00:00',
+            'discovery_url': 'http://discovery.example.com',
+            'cluster_uuid': 'test-cluster-uuid'
+        }
+        
+        def mock_stack_get(stack_id):
+            if stack_id == 'scaled_master_stack_id':
+                return scaled_stack
+            elif stack_id == 'default_master_stack_id':
+                return master_0_stack
+            else:
+                raise Exception(f"Unexpected stack_id: {stack_id}")
+        
+        mock_heat_client.stacks.get = mock_stack_get
+        
+        # Mock template definition
+        mock_template_def = mock.MagicMock()
+        mock_template_def.get_scale_params.side_effect = [
+            # First call for the scaled nodegroup
+            {'number_of_masters': 2, 'masters_to_remove': ['master-2']},
+            # Second call for the default master nodegroup  
+            {'number_of_masters': 3}  # Current count before scaling
+        ]
+        mock_get_template_def.return_value = mock_template_def
+        
+        # Create test objects
+        driver = heat_driver.HeatDriver()
+        
+        cluster = mock.MagicMock()
+        default_master_ng = mock.MagicMock()
+        default_master_ng.uuid = 'default_master_uuid'
+        default_master_ng.stack_id = 'default_master_stack_id'
+        default_master_ng.node_count = 3
+        cluster.default_ng_master = default_master_ng
+        
+        scaled_master_ng = mock.MagicMock()
+        scaled_master_ng.uuid = 'scaled_master_uuid'  # Different from default
+        scaled_master_ng.stack_id = 'scaled_master_stack_id'
+        scaled_master_ng.role = 'master'
+        scaled_master_ng.node_count = 2
+        
+        resize_manager = mock.MagicMock()
+        nodes_to_remove = ['master-2']
+        
+        # Execute the resize operation
+        driver._resize_stack(
+            context=mock.MagicMock(),
+            cluster=cluster,
+            resize_manager=resize_manager,
+            node_count=2,
+            nodes_to_remove=nodes_to_remove,
+            nodegroup=scaled_master_ng,
+            rollback=False
+        )
+        
+        # Verify that both stacks were updated
+        self.assertEqual(2, mock_heat_client.stacks.update.call_count)
+        
+        # Verify the calls
+        call_args_list = mock_heat_client.stacks.update.call_args_list
+        
+        # First call should be the main resize
+        first_call = call_args_list[0]
+        self.assertEqual('scaled_master_stack_id', first_call[0][0])
+        
+        # Second call should be the master-0 update
+        second_call = call_args_list[1]  
+        self.assertEqual('default_master_stack_id', second_call[0][0])
+        
+        # Check that the master-0 update includes the new master count
+        master_0_params = second_call[1]['parameters']
+        self.assertEqual(2, master_0_params['number_of_masters'])
+        self.assertEqual(False, master_0_params['is_upgrade'])
+        
+        # Check that existing parameters were preserved
+        self.assertEqual('2023-01-01T00:00:00', master_0_params['timestamp_upgrade'])
+        self.assertEqual('http://discovery.example.com', master_0_params['discovery_url'])
+        self.assertEqual('test-cluster-uuid', master_0_params['cluster_uuid'])
+
+    @patch('magnum.common.clients.OpenStackClients')
+    @patch('magnum.drivers.heat.driver.HeatDriver.get_template_definition')
+    def test_resize_stack_master_scaledown_same_nodegroup_no_extra_update(self, mock_get_template_def, mock_osc_class):
+        """Test that no extra update is triggered when scaling the default master nodegroup."""
+        # Setup mocks
+        mock_osc = mock.MagicMock()
+        mock_osc_class.return_value = mock_osc
+        
+        mock_heat_client = mock.MagicMock()
+        mock_osc.heat.return_value = mock_heat_client
+        
+        # Mock the stack get operation
+        stack = mock.MagicMock()
+        stack.parameters = {'timestamp_upgrade': '2023-01-01T00:00:00'}
+        mock_heat_client.stacks.get.return_value = stack
+        
+        # Mock template definition
+        mock_template_def = mock.MagicMock()
+        mock_template_def.get_scale_params.return_value = {
+            'number_of_masters': 2, 
+            'masters_to_remove': ['master-2']
+        }
+        mock_get_template_def.return_value = mock_template_def
+        
+        # Create test objects - same nodegroup is both scaled and default
+        driver = heat_driver.HeatDriver()
+        
+        cluster = mock.MagicMock()
+        default_master_ng = mock.MagicMock()
+        default_master_ng.uuid = 'default_master_uuid'
+        default_master_ng.stack_id = 'default_master_stack_id'
+        default_master_ng.role = 'master'
+        default_master_ng.node_count = 2
+        cluster.default_ng_master = default_master_ng
+        
+        resize_manager = mock.MagicMock()
+        nodes_to_remove = ['master-2']
+        
+        # Execute the resize operation
+        driver._resize_stack(
+            context=mock.MagicMock(),
+            cluster=cluster,
+            resize_manager=resize_manager,
+            node_count=2,
+            nodes_to_remove=nodes_to_remove,
+            nodegroup=default_master_ng,  # Same as default
+            rollback=False
+        )
+        
+        # Verify that only one stack update was called (no extra update for master-0)
+        self.assertEqual(1, mock_heat_client.stacks.update.call_count)
+        
+        # Verify the call was for the correct stack
+        call_args = mock_heat_client.stacks.update.call_args_list[0]
+        self.assertEqual('default_master_stack_id', call_args[0][0])
+
+    @patch('magnum.common.clients.OpenStackClients')
+    @patch('magnum.drivers.heat.driver.HeatDriver.get_template_definition')
+    def test_resize_stack_worker_no_master_0_update(self, mock_get_template_def, mock_osc_class):
+        """Test that worker resize does not trigger master-0 updates."""
+        # Setup mocks
+        mock_osc = mock.MagicMock()
+        mock_osc_class.return_value = mock_osc
+        
+        mock_heat_client = mock.MagicMock()
+        mock_osc.heat.return_value = mock_heat_client
+        
+        # Mock the stack get operation
+        stack = mock.MagicMock()
+        stack.parameters = {}
+        mock_heat_client.stacks.get.return_value = stack
+        
+        # Mock template definition
+        mock_template_def = mock.MagicMock()
+        mock_template_def.get_scale_params.return_value = {
+            'number_of_minions': 3, 
+            'minions_to_remove': ['worker-3']
+        }
+        mock_get_template_def.return_value = mock_template_def
+        
+        # Create test objects
+        driver = heat_driver.HeatDriver()
+        
+        cluster = mock.MagicMock()
+        worker_ng = mock.MagicMock()
+        worker_ng.uuid = 'worker_uuid'
+        worker_ng.stack_id = 'worker_stack_id'
+        worker_ng.role = 'worker'  # Not master
+        worker_ng.node_count = 3
+        
+        resize_manager = mock.MagicMock()
+        nodes_to_remove = ['worker-3']
+        
+        # Execute the resize operation
+        driver._resize_stack(
+            context=mock.MagicMock(),
+            cluster=cluster,
+            resize_manager=resize_manager,
+            node_count=3,
+            nodes_to_remove=nodes_to_remove,
+            nodegroup=worker_ng,
+            rollback=False
+        )
+        
+        # Verify that only one stack update was called (no master-0 update for worker resize)
+        self.assertEqual(1, mock_heat_client.stacks.update.call_count)
+        
+        # Verify the call was for the worker stack
+        call_args = mock_heat_client.stacks.update.call_args_list[0]
+        self.assertEqual('worker_stack_id', call_args[0][0])
