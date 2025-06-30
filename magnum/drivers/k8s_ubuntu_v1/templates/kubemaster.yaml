@@ -1020,6 +1020,7 @@ resources:
                   $ETCD_TAG: { get_param: etcd_tag }
                   $COREDNS_TAG: { get_param: coredns_tag }
                   $FLANNEL_TAG: { get_param: flannel_tag }
+                  $NUMBER_OF_MASTERS: { get_param: number_of_masters }
                   $FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }
                   $KUBE_VERSION: { get_param: kube_version }
                   $KUBE_DASHBOARD_VERSION: { get_param: kube_dashboard_version }
@@ -1321,6 +1322,7 @@ resources:
                   $ETCD_TAG: { get_param: etcd_tag }
                   $COREDNS_TAG: { get_param: coredns_tag }
                   $FLANNEL_TAG: { get_param: flannel_tag }
+                  $NUMBER_OF_MASTERS: { get_param: number_of_masters }
                   $FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }
                   $KUBE_VERSION: { get_param: kube_version }
                   $KUBE_DASHBOARD_VERSION: { get_param: kube_dashboard_version }

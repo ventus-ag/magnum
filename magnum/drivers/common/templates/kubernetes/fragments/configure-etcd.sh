@@ -226,6 +226,93 @@ rejoin_cluster() {
     fi
 }
 
+# Join a new node to an existing cluster.
+join_existing_cluster() {
+    echo "Joining new node to existing cluster via LB endpoint $lb_endpoint" >&2
+    if add_output=$(run_etcdctl "$lb_endpoint" member add "$INSTANCE_NAME" --peer-urls="$protocol://$myip:2380"); then
+        initial_cluster=$(echo "$add_output" | grep '^ETCD_INITIAL_CLUSTER=' | cut -d'=' -f2- | tr -d '"')
+        config=$(build_config existing "$initial_cluster")
+        write_and_start_etcd "$config"
+        return 0
+    else
+        echo "Failed to join existing cluster via LB" >&2
+        return 1
+    fi
+}
+
+# Remove excess members during scale-down operations.
+# This should only run on master-0 when the target master count is less than current members.
+cleanup_excess_members() {
+    # Only run on master-0
+    if ! echo "$INSTANCE_NAME" | grep -q "master-0$"; then
+        echo "Not master-0, skipping member cleanup" >&2
+        return 0
+    fi
+    
+    # Only proceed if we have a target master count
+    if [ -z "$NUMBER_OF_MASTERS" ] || [ "$NUMBER_OF_MASTERS" -eq 0 ]; then
+        echo "No target master count specified, skipping member cleanup" >&2
+        return 0
+    fi
+    
+    # Only proceed if LB is available
+    if [ $lb_ok -eq 0 ]; then
+        echo "LB not available, skipping member cleanup" >&2
+        return 0
+    fi
+    
+    echo "Checking if member cleanup is needed (target: $NUMBER_OF_MASTERS masters)" >&2
+    
+    # Get current member list
+    if ! member_list=$(run_etcdctl "$lb_endpoint" member list 2>/dev/null); then
+        echo "Failed to get member list, skipping cleanup" >&2
+        return 0
+    fi
+    
+    # Count current master members (assume all etcd members are masters)
+    current_count=$(echo "$member_list" | wc -l)
+    echo "Current etcd members: $current_count, target: $NUMBER_OF_MASTERS" >&2
+    
+    # If current count is not greater than target, no cleanup needed
+    if [ "$current_count" -le "$NUMBER_OF_MASTERS" ]; then
+        echo "No excess members to remove" >&2
+        return 0
+    fi
+    
+    # Calculate how many to remove
+    to_remove=$((current_count - NUMBER_OF_MASTERS))
+    echo "Need to remove $to_remove excess members" >&2
+    
+    # Get member names and IDs, sort by name to remove highest numbered masters first
+    members_to_remove=$(echo "$member_list" | \
+        grep -E "master-[0-9]+|$myip" | \
+        grep -v "$INSTANCE_NAME" | \
+        sort -t'-' -k2 -nr | \
+        head -n "$to_remove")
+    
+    if [ -z "$members_to_remove" ]; then
+        echo "No suitable members found for removal" >&2
+        return 0
+    fi
+    
+    # Remove each excess member
+    echo "$members_to_remove" | while read member_info; do
+        if [ -n "$member_info" ]; then
+            member_id=$(echo "$member_info" | cut -d',' -f1)
+            member_name=$(echo "$member_info" | cut -d',' -f3 | tr -d ' ')
+            echo "Removing excess member: $member_name (ID: $member_id)" >&2
+            
+            if run_etcdctl "$lb_endpoint" member remove "$member_id"; then
+                echo "Successfully removed member $member_name" >&2
+            else
+                echo "Failed to remove member $member_name" >&2
+            fi
+        fi
+    done
+    
+    echo "Member cleanup completed" >&2
+}
+
 # Clean up etcd data and stop service.
 cleanup_etcd() {
     echo "Cleaning up etcd data..." >&2
@@ -310,13 +397,17 @@ echo "Discovery OK: $discovery_ok, LB OK: $lb_ok, Local OK: $local_ok" >&2
 #       - If our node is present in LB member list:
 #           * If local endpoint is unhealthy → trigger rejoin.
 #           * Otherwise → skip join/creation.
-#       - If our node is NOT present → create new cluster using discovery URL.
+#       - If our node is NOT present:
+#           * If LB has an existing cluster → join existing cluster.
+#           * Otherwise → create new cluster using discovery URL.
 #    b. If LB is not available → create new cluster using discovery URL.
 #
 # 2. If discovery URL is not valid:
-#    a. If LB is available and our node is a member:
+#    a. If LB is available:
+#       - If our node is a member:
 #           * If local endpoint is unhealthy → trigger rejoin.
 #           * Otherwise → skip join/creation.
+#       - If our node is NOT a member → join existing cluster.
 #    b. Else, error out.
 if [ $discovery_ok -eq 1 ]; then
     if [ $lb_ok -eq 1 ]; then
@@ -329,10 +420,17 @@ if [ $discovery_ok -eq 1 ]; then
                 echo "Local endpoint is healthy. Skipping join/creation logic." >&2
             fi
         else
-            echo "Discovery valid but LB does not list our node. Creating new cluster using discovery URL." >&2
-            cleanup_etcd
-            config=$(build_config new)
-            write_and_start_etcd "$config"
+            # Check if LB has an existing cluster (has other members)
+            if existing_members=$(run_etcdctl "$lb_endpoint" member list 2>/dev/null) && [ -n "$existing_members" ]; then
+                echo "Discovery valid but LB shows existing cluster without our node. Joining existing cluster." >&2
+                cleanup_etcd
+                join_existing_cluster || exit 1
+            else
+                echo "Discovery valid and no existing cluster. Creating new cluster using discovery URL." >&2
+                cleanup_etcd
+                config=$(build_config new)
+                write_and_start_etcd "$config"
+            fi
         fi
     else
         echo "LB not available but discovery URL is valid. Creating new cluster using discovery URL." >&2
@@ -351,14 +449,20 @@ elif [ $discovery_ok -eq 0 ]; then
                 echo "Local endpoint is healthy. Skipping join/creation logic." >&2
             fi
         else
-            echo "Error: Discovery URL is invalid and LB does not list our node. Cannot proceed." >&2
-            exit 1
+            echo "Discovery invalid but LB shows existing cluster without our node. Joining existing cluster." >&2
+            cleanup_etcd
+            join_existing_cluster || exit 1
         fi
     else
         echo "Error: Neither a valid discovery URL nor a healthy LB endpoint is available." >&2
         exit 1
     fi
 fi
+
+# -------------------------------------------------------
+# Member Cleanup for Scale-Down Operations
+# -------------------------------------------------------
+cleanup_excess_members
 
 # -------------------------------------------------------
 # TLS and Proxy Configuration
