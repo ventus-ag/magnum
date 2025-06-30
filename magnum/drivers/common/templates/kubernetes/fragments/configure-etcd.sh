@@ -262,6 +262,7 @@ cleanup_excess_members() {
     fi
     
     echo "Checking if member cleanup is needed (target: $NUMBER_OF_MASTERS masters)" >&2
+    echo "Note: For etcd quorum safety during scale-down, only 1 master will be removed per operation" >&2
     
     # Get current member list
     if ! member_list=$(run_etcdctl "$lb_endpoint" member list 2>/dev/null); then
@@ -282,6 +283,20 @@ cleanup_excess_members() {
     # Calculate how many to remove
     to_remove=$((current_count - NUMBER_OF_MASTERS))
     echo "Need to remove $to_remove excess members" >&2
+    
+    # Safety: Only remove 1 member at a time to maintain etcd quorum during scale-down
+    if [ "$to_remove" -gt 1 ]; then
+        echo "Limiting removal to 1 member at a time for etcd quorum safety during scale-down" >&2
+        echo "Additional scale-down operations will be needed to reach the target count" >&2
+        to_remove=1
+    fi
+    
+    # Additional safety: Ensure we don't remove all members
+    remaining_after_removal=$((current_count - to_remove))
+    if [ "$remaining_after_removal" -lt 1 ]; then
+        echo "Cannot remove member: would leave cluster with $remaining_after_removal members" >&2
+        return 0
+    fi
     
     # Get member names and IDs, sort by name to remove highest numbered masters first
     members_to_remove=$(echo "$member_list" | \

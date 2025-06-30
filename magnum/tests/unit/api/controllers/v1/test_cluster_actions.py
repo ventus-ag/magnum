@@ -166,6 +166,61 @@ class TestClusterResize(api_base.FunctionalTest):
                                            "container-infra 1.10"})
         self.assertEqual(202, response.status_code)
 
+    def test_resize_master_scaling_up_success(self):
+        """Test that scaling masters from 1 to 3 succeeds (scale-up allowed in larger increments)"""
+        nodegroup = self.cluster_obj.default_ng_master
+        nodegroup.node_count = 1  # Start with 1 master
+        nodegroup.save()
+        
+        cluster_resize_req = {
+            "node_count": 3,  # Scale directly to 3, should succeed for scale-up
+            "nodegroup": nodegroup.uuid
+        }
+        response = self.post_json('/clusters/%s/actions/resize' %
+                                  self.cluster_obj.uuid,
+                                  cluster_resize_req,
+                                  headers={"Openstack-Api-Version":
+                                           "container-infra 1.10"})
+        self.assertEqual(202, response.status_code)
+
+    def test_resize_master_incremental_scaling_down_fail(self):
+        """Test that scaling masters from 3 to 1 fails (must be incremental)"""
+        nodegroup = self.cluster_obj.default_ng_master
+        nodegroup.node_count = 3  # Start with 3 masters
+        nodegroup.save()
+        
+        cluster_resize_req = {
+            "node_count": 1,  # Try to scale directly to 1
+            "nodegroup": nodegroup.uuid
+        }
+        response = self.post_json('/clusters/%s/actions/resize' %
+                                  self.cluster_obj.uuid,
+                                  cluster_resize_req,
+                                  headers={"Openstack-Api-Version":
+                                           "container-infra 1.10"},
+                                  expect_errors=True)
+        self.assertEqual(400, response.status_code)
+        self.assertIn("Master nodes can only be scaled down by 1 at a time", 
+                     response.json['faultstring'])
+        self.assertIn("scale down to 2 first", response.json['faultstring'])
+
+    def test_resize_master_incremental_scaling_success(self):
+        """Test that scaling masters by 1 succeeds"""
+        nodegroup = self.cluster_obj.default_ng_master
+        nodegroup.node_count = 1  # Start with 1 master
+        nodegroup.save()
+        
+        cluster_resize_req = {
+            "node_count": 2,  # Scale by 1, should succeed
+            "nodegroup": nodegroup.uuid
+        }
+        response = self.post_json('/clusters/%s/actions/resize' %
+                                  self.cluster_obj.uuid,
+                                  cluster_resize_req,
+                                  headers={"Openstack-Api-Version":
+                                           "container-infra 1.10"})
+        self.assertEqual(202, response.status_code)
+
 
 class TestClusterUpgrade(api_base.FunctionalTest):
     def setUp(self):
