@@ -14,6 +14,10 @@ parameters:
     type: boolean
     default: false
 
+  number_of_masters:
+    type: number
+    description: number of masters in the cluster
+
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade

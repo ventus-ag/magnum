@@ -1222,6 +1222,7 @@ resources:
               - [{ get_param: "OS::stack_name" }, "master", "%index%"]
           nodegroup_role: { get_param: master_role }
           nodegroup_name: { get_param: master_nodegroup_name }
+          number_of_masters: { get_param: number_of_masters }
           is_upgrade: { get_param: is_upgrade }
           timestamp_upgrade: { get_param: timestamp_upgrade }
           heapster_enabled: { get_param: heapster_enabled }

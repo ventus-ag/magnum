@@ -19,6 +19,10 @@ parameters:
     description: A timestamp value that changes on every stack upgrade
     default: ""
 
+  number_of_masters:
+    type: number
+    description: number of masters in the cluster
+
   server_image:
     type: string
     description: glance image used to boot the server
