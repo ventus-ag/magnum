@@ -459,6 +459,31 @@ rebuild_config_if_needed() {
 }
 
 # -------------------------------------------------------
+# Resize operation handling
+# -------------------------------------------------------
+if [ "${IS_RESIZE:-false}" = "true" ]; then
+    echo "Resize operation detected. Running member cleanup only." >&2
+    
+    # Set up required variables for cleanup function
+    local_endpoint="$protocol://$myip:2379"
+    lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
+    
+    # Check LB VIP response for cleanup function
+    if run_etcdctl "$lb_endpoint" endpoint health >/dev/null 2>&1; then
+        lb_ok=1
+    else
+        lb_ok=0
+    fi
+    
+    # For resize operations, we only need to clean up excess members
+    # but skip cluster join/creation logic to avoid stale discovery URL issues
+    cleanup_excess_members
+    
+    echo "Resize operation completed." >&2
+    exit 0
+fi
+
+# -------------------------------------------------------
 # Cluster Join/Creation Logic with Added Membership Check
 # -------------------------------------------------------
 
@@ -588,8 +613,3 @@ else
     $ssh_cmd systemctl daemon-reload
 fi
 
-
-if [ "${IS_RESIZE:-false}" = "true" ]; then
-    echo "Resize operation detected." >&2
-    exit 0
-fi
