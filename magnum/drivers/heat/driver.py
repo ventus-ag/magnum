@@ -283,6 +283,24 @@ class HeatDriver(driver.Driver):
     def _resize_stack(self, context, cluster, resize_manager,
                       node_count, nodes_to_remove, nodegroup=None,
                       rollback=False):
+        # Get current node count from Heat stack to detect scale-down operations
+        try:
+            osc = clients.OpenStackClients(context)
+            stack = osc.heat().stacks.get(nodegroup.stack_id)
+            current_node_count = int(stack.parameters.get('number_of_masters' if nodegroup.role == 'master' else 'number_of_minions', 0))
+        except Exception:
+            # If we can't get current count, assume it's the same as target
+            current_node_count = nodegroup.node_count
+        
+        # Prevent scale-down operations for master nodes
+        if nodegroup.role == 'master' and nodegroup.node_count < current_node_count:
+            raise exception.InvalidParameterValue(
+                "Scale-down operations are not supported for master nodes. "
+                f"Current master count: {current_node_count}, "
+                f"requested master count: {nodegroup.node_count}. "
+                "Master scale-down operations are disabled for cluster stability."
+            )
+        
         definition = self.get_template_definition()
         scale_params = definition.get_scale_params(
             context,
