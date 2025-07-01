@@ -461,7 +461,7 @@ rebuild_config_if_needed() {
 # -------------------------------------------------------
 # Resize operation handling
 # -------------------------------------------------------
-if [ "${IS_RESIZE:-false}" = "true" ]; then
+if [ "${IS_RESIZE:-false}" = "True" ]; then
     echo "Resize operation detected. Running member cleanup only." >&2
     
     # Set up required variables for cleanup function
@@ -587,11 +587,6 @@ elif [ $discovery_ok -eq 0 ]; then
         exit 1
     fi
 fi
-
-# -------------------------------------------------------
-# Member Cleanup for Scale-Down Operations
-# -------------------------------------------------------
-cleanup_excess_members
 
 # -------------------------------------------------------
 # TLS and Proxy Configuration
