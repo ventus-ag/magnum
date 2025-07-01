@@ -587,3 +587,9 @@ else
     # Still reload daemon in case systemd service file changed
     $ssh_cmd systemctl daemon-reload
 fi
+
+
+if [ "${IS_RESIZE:-false}" = "true" ]; then
+    echo "Resize operation detected." >&2
+    exit 0
+fi

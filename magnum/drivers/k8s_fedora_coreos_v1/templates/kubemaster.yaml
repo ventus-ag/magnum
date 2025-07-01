@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  is_resize:
+    type: boolean
+    description: Flag indicating if the stack is being resized
+    default: false
+
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade
@@ -693,6 +698,15 @@ conditions:
       - get_param: is_upgrade
       - true
 
+  upgrade_or_resize_masters:
+    or:
+      - equals:
+          - get_param: is_upgrade
+          - true
+      - equals:
+          - get_param: is_resize
+          - true
+
 resources:
   ######################################################################
   #
@@ -1041,7 +1055,7 @@ resources:
       mountpoint: /dev/vdb
 
   upgrade_kubernetes_config:
-    condition: upgrade_masters
+    condition: upgrade_or_resize_masters
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1058,6 +1072,7 @@ resources:
                 params:
                   $INSTANCE_NAME: { get_param: name }
                   $IS_UPGRADE: { get_param: is_upgrade }
+                  $IS_RESIZE: { get_param: is_resize }
                   $HEAPSTER_ENABLED: { get_param: heapster_enabled }
                   $METRICS_SERVER_ENABLED: { get_param: metrics_server_enabled }
                   $METRICS_SERVER_CHART_TAG:
@@ -1231,7 +1246,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
-    condition: upgrade_masters
+    condition: upgrade_or_resize_masters
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL

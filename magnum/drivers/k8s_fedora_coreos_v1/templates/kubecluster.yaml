@@ -20,6 +20,19 @@ conditions:
           - get_param: is_cluster_stack
           - true
 
+  upgrade_or_resize_cluster_resources:
+    and:
+      - or:
+          - equals:
+              - get_param: is_upgrade
+              - true
+          - equals:
+              - get_param: is_resize
+              - true
+      - equals:
+          - get_param: is_cluster_stack
+          - true
+
   is_master:
     and:
       - equals:
@@ -63,6 +76,11 @@ parameters:
 
   is_upgrade:
     type: boolean
+    default: false
+
+  is_resize:
+    type: boolean
+    description: Flag indicating if the stack is being resized
     default: false
 
   timestamp_upgrade:
@@ -1224,6 +1242,7 @@ resources:
           nodegroup_name: { get_param: master_nodegroup_name }
           number_of_masters: { get_param: number_of_masters }
           is_upgrade: { get_param: is_upgrade }
+          is_resize: { get_param: is_resize }
           timestamp_upgrade: { get_param: timestamp_upgrade }
           heapster_enabled: { get_param: heapster_enabled }
           metrics_server_enabled: { get_param: metrics_server_enabled }

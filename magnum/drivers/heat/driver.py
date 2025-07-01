@@ -223,6 +223,7 @@ class HeatDriver(driver.Driver):
 
         heat_params['is_cluster_stack'] = nodegroup is None
         heat_params['is_upgrade'] = False
+        heat_params['is_resize'] = False
 
         if nodegroup:
             # In case we are creating a new stack for a new nodegroup then
@@ -301,6 +302,7 @@ class HeatDriver(driver.Driver):
             pass
 
         scale_params['is_upgrade'] = False
+        scale_params['is_resize'] = True
 
         fields = {
             'parameters': scale_params,
@@ -313,72 +315,73 @@ class HeatDriver(driver.Driver):
         osc = clients.OpenStackClients(context)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
         
-        # Special handling for master scaledown: ensure master-0 gets updated with new NUMBER_OF_MASTERS
-        # This is needed for etcd member cleanup to work properly during scale-down operations
-        if (nodegroup and nodegroup.role == 'master' and nodes_to_remove and len(nodes_to_remove) > 0):
-            self._update_master_0_for_scaledown(context, cluster, nodegroup, scale_params)
+        # Special handling for master resize: ensure cluster stack gets updated with total master count
+        # This is needed for etcd member cleanup to work properly during master operations
+        if (nodegroup and nodegroup.role == 'master'):
+            self._update_cluster_stack_for_master_resize(context, cluster, nodegroup, scale_params)
 
-    def _update_master_0_for_scaledown(self, context, cluster, scaled_nodegroup, scale_params):
-        """Update master-0 with new NUMBER_OF_MASTERS parameter during master scaledown.
+    def _update_cluster_stack_for_master_resize(self, context, cluster, resized_nodegroup, scale_params):
+        """Update cluster stack with total master count during master resize operations.
         
-        This ensures that master-0 can perform etcd member cleanup even if it's in a different
-        nodegroup than the one being scaled down.
+        This ensures that master-0 can perform etcd member cleanup by getting the correct
+        total NUMBER_OF_MASTERS parameter, especially when non-default master nodegroups are resized.
         """
         try:
-            # Find the default master nodegroup (which typically contains master-0)
+            # Calculate total master count across all master nodegroups
+            total_master_count = 0
+            for ng in cluster.nodegroups:
+                if ng.role == 'master':
+                    if ng.uuid == resized_nodegroup.uuid:
+                        # Use the new count for the resized nodegroup
+                        total_master_count += resized_nodegroup.node_count
+                    else:
+                        # Use existing count for other master nodegroups
+                        total_master_count += ng.node_count
+            
+            # Check if the cluster stack (default nodegroups) needs updating
             default_master_ng = cluster.default_ng_master
             
-            # If the scaled nodegroup is already the default master nodegroup, no extra update needed
-            if default_master_ng.uuid == scaled_nodegroup.uuid:
-                LOG.debug('Scaled nodegroup is the default master nodegroup, no additional update needed')
+            # If this is the default master nodegroup being resized, it already gets the update
+            if default_master_ng.uuid == resized_nodegroup.uuid:
+                LOG.debug('Resized nodegroup is the default master nodegroup, cluster stack already updated')
+                return
+                
+            # If there's only one master nodegroup (the default), no additional update needed
+            master_nodegroups = [ng for ng in cluster.nodegroups if ng.role == 'master']
+            if len(master_nodegroups) <= 1:
+                LOG.debug('Only one master nodegroup exists, no cluster stack update needed')
                 return
                 
             osc = clients.OpenStackClients(context)
             
-            # Get the complete template definition to generate proper parameters for the default master nodegroup
-            definition = self.get_template_definition()
+            # Get the cluster stack ID (shared by default nodegroups)
+            cluster_stack_id = default_master_ng.stack_id
             
-            # Generate scale parameters for the default master nodegroup, but with the updated master count
-            # This ensures we pass all necessary parameters, not just the count
-            default_master_params = definition.get_scale_params(
-                context,
-                cluster,
-                default_master_ng.node_count,  # Keep current node count for default nodegroup
-                None,  # No resize manager
-                nodes_to_remove=None,  # No nodes to remove from default nodegroup
-                nodegroup=default_master_ng)
-            
-            # Override with the new total master count from the scale operation
-            if 'number_of_masters' in scale_params:
-                default_master_params['number_of_masters'] = scale_params['number_of_masters']
-                
-            # Preserve important existing parameters
+            # Get existing cluster stack parameters
             try:
-                master_stack = osc.heat().stacks.get(default_master_ng.stack_id)
-                existing_params = master_stack.parameters
-                
-                for param in ['timestamp_upgrade', 'discovery_url', 'cluster_uuid']:
-                    if param in existing_params:
-                        default_master_params[param] = existing_params[param]
-                        
+                cluster_stack = osc.heat().stacks.get(cluster_stack_id)
+                existing_params = cluster_stack.parameters.copy()
             except Exception as e:
-                LOG.warning('Could not retrieve existing parameters for master nodegroup %s: %s',
-                           default_master_ng.uuid, str(e))
+                LOG.warning('Could not retrieve existing cluster stack parameters: %s', str(e))
+                existing_params = {}
             
-            default_master_params['is_upgrade'] = False
+            # Update the total master count parameter
+            existing_params['number_of_masters'] = total_master_count
+            existing_params['is_upgrade'] = False
+            existing_params['is_resize'] = True
             
             fields = {
-                'parameters': default_master_params,
+                'parameters': existing_params,
                 'existing': True,
                 'disable_rollback': True  # Use safer rollback setting for supplementary update
             }
             
-            LOG.info('Updating default master nodegroup %s with updated master count %s for scaledown coordination',
-                     default_master_ng.uuid, default_master_params.get('number_of_masters'))
-            osc.heat().stacks.update(default_master_ng.stack_id, **fields)
+            LOG.info('Updating cluster stack %s with total master count %s for master resize coordination',
+                     cluster_stack_id, total_master_count)
+            osc.heat().stacks.update(cluster_stack_id, **fields)
             
         except Exception as e:
-            LOG.error('Failed to update master-0 for scaledown operation: %s', str(e))
+            LOG.error('Failed to update cluster stack for master resize operation: %s', str(e))
             # Don't fail the main resize operation if this supplementary update fails
 
     def _delete_stack(self, context, osc, stack_id):
@@ -494,6 +497,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
         }
 
         heat_params['is_upgrade'] = True
+        heat_params['is_resize'] = False
 
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
@@ -569,6 +573,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         heat_params['is_upgrade'] = True
+        heat_params['is_resize'] = False
         if 'timestamp_upgrade' in osc.heat().stacks.get(stack_id).parameters:
             heat_params['timestamp_upgrade'] = osc.heat().stacks.get(stack_id).parameters['timestamp_upgrade']
         heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -734,6 +739,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         }
 
         heat_params['is_upgrade'] = True
+        heat_params['is_resize'] = False
 
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
@@ -813,6 +819,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         # Convert datetime to string
         now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
         heat_params['is_upgrade'] = True
+        heat_params['is_resize'] = False
         heat_params['timestamp_upgrade'] = now_str
 
         fields = {
