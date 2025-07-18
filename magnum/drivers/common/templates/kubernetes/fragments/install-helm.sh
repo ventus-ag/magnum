@@ -39,8 +39,10 @@ if ! echo "${HELM_CLIENT_SHA256} /srv/magnum/helm-client.tar.gz" | sha256sum -c 
     exit 1
 fi
 
-source /etc/bashrc
+source ~/.bashrc
 $ssh_cmd tar xzvf /srv/magnum/helm-client.tar.gz linux-amd64/helm -O > /srv/magnum/bin/helm
+$ssh_cmd cp /srv/magnum/bin/helm /usr/local/bin/helm
 $ssh_cmd chmod +x /srv/magnum/bin/helm
+$ssh_cmd chmod +x /usr/local/bin/helm
 
 echo "END: ${step}"

@@ -326,8 +326,27 @@ class Handler(object):
                           '"%s"') % cluster.status
             raise exception.NotSupported(operation=operation)
 
-        # Get driver
-        ct = conductor_utils.retrieve_cluster_template(context, cluster)
+        # Get driver - use nodegroup's cluster_template_id if available for non-default nodegroups
+        if (nodegroup and not nodegroup.is_default and 
+            nodegroup.labels and 'cluster_template_id' in nodegroup.labels):
+            # Use the nodegroup's specific cluster template to get the driver
+            ng_cluster_template_id = nodegroup.labels['cluster_template_id']
+            current_ct = conductor_utils.retrieve_ct_by_name_or_uuid(context, ng_cluster_template_id)
+            ct = current_ct
+        else:
+            # Use the cluster's default template
+            current_ct = conductor_utils.retrieve_cluster_template(context, cluster)
+            ct = current_ct
+        
+        # Validate that the new cluster template has the same driver type
+        new_ct = cluster_template
+        if ((current_ct.server_type, current_ct.cluster_distro, current_ct.coe) != 
+            (new_ct.server_type, new_ct.cluster_distro, new_ct.coe)):
+            raise exception.InvalidParameterValue(
+                "Driver change during upgrade is not supported. "
+                f"Current driver: ({current_ct.server_type}, {current_ct.cluster_distro}, {current_ct.coe}), "
+                f"New driver: ({new_ct.server_type}, {new_ct.cluster_distro}, {new_ct.coe})")
+        
         cluster_driver = driver.Driver.get_driver(ct.server_type,
                                                   ct.cluster_distro,
                                                   ct.coe)

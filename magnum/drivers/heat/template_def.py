@@ -530,7 +530,9 @@ class BaseTemplateDefinition(TemplateDefinition):
                 cluster.discovery_url = discovery_url
         return discovery_url
 
-    def get_scale_params(self, context, cluster, scale_manager=None):
+    def get_scale_params(self, context, cluster, node_count=None,
+                         scale_manager=None, nodes_to_remove=None, 
+                         nodegroup=None):
         return dict()
 
 

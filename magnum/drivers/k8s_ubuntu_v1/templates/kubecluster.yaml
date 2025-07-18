@@ -531,7 +531,7 @@ parameters:
   etcd_tag:
     type: string
     description: tag of the etcd system container
-    default: v3.5.18
+    default: v3.5.9
 
   coredns_tag:
     type: string
@@ -541,12 +541,12 @@ parameters:
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.26.4
+    default: v0.22.0
 
   flannel_cni_tag:
     type: string
     description: tag of the flannel cni container
-    default: v1.6.2
+    default: v1.3.0
 
   kube_version:
     type: string
@@ -974,7 +974,7 @@ parameters:
   containerd_version:
     type: string
     description: The containerd version to download from https://github.com/containerd/containerd/releases
-    default: "1.7.25"
+    default: "1.7.2"
 
   containerd_tarball_url:
     type: string

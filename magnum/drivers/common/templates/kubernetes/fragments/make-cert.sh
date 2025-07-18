@@ -19,7 +19,6 @@
 set -x
 set -o errexit
 set -o nounset
-set -o pipefail
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
@@ -268,6 +267,27 @@ fi
 
 if [ ! -f "${cert_dir}/service_account_private.key" ]; then
     echo -e "${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY}" > ${cert_dir}/service_account_private.key
+fi
+
+# Function to check if a user exists
+user_exists() {
+  $ssh_cmd id "$1" >/dev/null 2>&1
+}
+
+# Check if the user exists
+if user_exists "etcd"; then
+  echo "User etcd already exists."
+else
+  # Create the user with the specified shell and as a system user
+  $ssh_cmd useradd -s "/sbin/nologin" --system "etcd"
+  echo "User etcd has been created."
+fi
+if user_exists "kube"; then
+  echo "User kube already exists."
+else
+  # Create the user with the specified shell and as a system user
+  $ssh_cmd useradd -s "/sbin/nologin" --system "kube"
+  echo "User kube has been created."
 fi
 
 # Common certs and key are created for both etcd and kubernetes services.

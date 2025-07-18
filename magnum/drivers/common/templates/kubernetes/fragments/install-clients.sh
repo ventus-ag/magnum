@@ -12,8 +12,8 @@ ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 mkdir -p /srv/magnum/bin/
 mkdir -p /srv/magnum/k8s/
 
-echo "PATH=/srv/magnum/bin:\$PATH" >> /etc/bashrc
-echo "export HISTCONTROL=ignoredups" >> /etc/bashrc
+echo "PATH=/srv/magnum/bin:\$PATH" >> ~/.bashrc
+echo "export HISTCONTROL=ignoredups" >> ~/.bashrc
 
 # Download to temporary files first
 $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet.tmp https://cdn.dl.k8s.io/release/${KUBE_TAG}/bin/linux/${ARCH}/kubelet
