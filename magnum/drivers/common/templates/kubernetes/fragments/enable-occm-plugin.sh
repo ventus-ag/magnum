@@ -18,7 +18,7 @@ cat << EOF > ${OCCM_VALUES_YAML}
 # Image repository name and tag
 image:
   repository: ${_k8s_prefix}
-  tag: ""
+  tag: "v1.24.6"
 
 # Create a secret resource cloud-config (or other name) to store credentials and settings from cloudConfig
 # You can also provide your own secret (not created by the Helm chart), in this case set create to false
