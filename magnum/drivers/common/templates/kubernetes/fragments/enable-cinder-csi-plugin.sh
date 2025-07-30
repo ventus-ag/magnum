@@ -126,7 +126,7 @@ EOF
     if $ssh_cmd helm list --namespace kube-system | grep -q "cinder-csi"; then
         $ssh_cmd helm mapkubeapis cinder-csi --namespace kube-system
     fi
-
+    $ssh_cmd helm repo update
     $ssh_cmd helm upgrade -i cinder-csi cpo/openstack-cinder-csi --version 2.27.1 -n kube-system -f ${CINDER_CSI_VALUES_YAML}
 
     if $ssh_cmd helm list --namespace kube-system | grep -q "cinder-csi"; then

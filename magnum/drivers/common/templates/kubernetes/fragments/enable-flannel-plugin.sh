@@ -61,7 +61,7 @@ EOF
     if $ssh_cmd helm list --namespace kube-flannel| grep -q "flannel"; then
         $ssh_cmd helm mapkubeapis flannel --namespace kube-flannel
     fi
-
+    $ssh_cmd helm repo update
     $ssh_cmd helm upgrade -i flannel flannel/flannel --version ${FLANNEL_TAG} -n kube-flannel -f ${FLANNEL_VALUES_YAML}
     
     if $ssh_cmd helm list --namespace kube-flannel| grep -q "flannel"; then

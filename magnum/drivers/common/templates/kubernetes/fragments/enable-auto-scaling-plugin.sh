@@ -63,7 +63,7 @@ fi
 if $ssh_cmd helm list --namespace kube-system | grep -q "openstack-autoscaler"; then
     $ssh_cmd helm mapkubeapis openstack-autoscaler --namespace kube-system
 fi
-
+$ssh_cmd helm repo update
 $ssh_cmd helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.29.1 -n kube-system -f ${CLUSTER_AUTOSCALER_VALUES_YAML}
 
 if $ssh_cmd helm list --namespace kube-system | grep -q "openstack-autoscaler"; then
