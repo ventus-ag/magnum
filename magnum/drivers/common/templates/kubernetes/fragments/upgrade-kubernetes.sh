@@ -24,7 +24,7 @@ function drain {
     all_masters=$(${ssh_cmd} ${kubecontrol} get nodes --selector=node-role.kubernetes.io/master= -o name)
     all_workers=$(${ssh_cmd} ${kubecontrol} get nodes --selector=node-role.kubernetes.io/master!= -o name)
     if [ "node/${INSTANCE_NAME}" != "${all_masters}" ] && [ "node/${INSTANCE_NAME}" != "${all_workers}" ]; then
-        ${ssh_cmd} ${kubecontrol} drain ${INSTANCE_NAME} --ignore-daemonsets --delete-local-data --force
+        ${ssh_cmd} ${kubecontrol} drain ${INSTANCE_NAME} --ignore-daemonsets --delete-emptydir-data --force
     else
         ${ssh_cmd} ${kubecontrol} cordon ${INSTANCE_NAME}
     fi
@@ -40,23 +40,17 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
 
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}
-            ${ssh_cmd} podman rm ${service}
-            ${ssh_cmd} podman rmi ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}:${KUBE_TAG}
+            ${ssh_cmd} podman rm $(${ssh_cmd} podman ps --filter name=${service} -a -q)
+            ${ssh_cmd} podman rmi $(${ssh_cmd} podman images --filter=reference=*${service}*:${KUBE_TAG} -a -q)
         done
 
-        if [ -z "${KUBERNETES_TARBALL_URL}" ] ; then
-            KUBERNETES_TARBALL_URL="https://dl.k8s.io/${new_kube_tag}/kubernetes-server-linux-${ARCH}.tar.gz"
-        fi
         $ssh_cmd systemctl stop kubelet
         $ssh_cmd rm /usr/local/bin/kube*
         $ssh_cmd mkdir -p /srv/magnum/k8s/
-        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL}
 
-        # Extrace binaries and images
-        $ssh_cmd tar xzvf /srv/magnum/k8s.tar.gz -C /srv/magnum/k8s/ kubernetes/server/bin
+        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubelet https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubelet
+        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/${new_kube_tag}/bin/linux/${ARCH}/kubectl
 
-        # Put node components in /usr/local/bin
-        $ssh_cmd mv /srv/magnum/k8s/kubernetes/server/bin/{kubelet,kubectl,kubeadm} /usr/local/bin/
         $ssh_cmd chmod +x /usr/local/bin/kube*
 
         if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
@@ -70,30 +64,8 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
             $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
         fi
 
-        # Import images
-        if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ] ; then
-            for component in kube-apiserver kube-controller-manager kube-scheduler kube-proxy
-            do
-                $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar
-            done
-        fi
-
-        $ssh_cmd rm -f /srv/magnum/k8s.tar.gz
-        $ssh_cmd rm -rf /srv/magnum/k8s
-
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl start ${service}
-        done
-
-        for service in ${SERVICE_LIST}; do
-            i=0
-            until [ "`${ssh_cmd} podman image exists ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}-${ARCH}:${new_kube_tag} && echo $?`" = 0 ]
-            do
-                i=$((i+1))
-                [ $i -lt 30 ] || break;
-                echo "Pulling image: ${service}:${new_kube_tag}"
-                sleep 5s
-            done
         done
 
         ${ssh_cmd} systemctl start kubelet

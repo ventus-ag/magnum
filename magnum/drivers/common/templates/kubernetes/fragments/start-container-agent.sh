@@ -57,7 +57,8 @@ if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
 # Maximum size of log files (in bytes)
 # -1 is unlimited
 # 50m
-max_log_size = 52428800
+[containers]
+log_size_max = 52428800
 EOF
     cat > /etc/systemd/system/heat-container-agent.service <<EOF
 [Unit]

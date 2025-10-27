@@ -9,15 +9,24 @@ auto_scaling_plugin_enabled=$(echo $AUTO_SCALING_ENABLED | tr '[:upper:]' '[:low
 
 if [[ "${auto_scaling_plugin_enabled}" = "true" || ("${auto_healing_enabled}" = "true" && "${autohealing_controller}" = "draino") ]]; then
 
+_autoscaler_prefix=${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/autoscaling/}
+
 helm repo add autoscaler https://kubernetes.github.io/autoscaler
-helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.1.0 -n kube-system \
-  --set autoDiscovery.clusterName=${CLUSTER_UUID} \
+helm upgrade -i openstack-autoscaler autoscaler/cluster-autoscaler --version 9.10.5 -n kube-system \
+  --set magnumClusterName=${CLUSTER_UUID} \
+  --set image.repository=${_autoscaler_prefix}cluster-autoscaler \
+  --set image.tag=${AUTOSCALER_TAG} \
   --set cloudProvider=magnum \
   --set nameOverride=manager \
   --set cloudConfigPath=/etc/kubernetes/cloud-config \
   --set autoscalingGroups[0].name=default-worker \
   --set autoscalingGroups[0].minSize=${MIN_NODE_COUNT} \
-  --set autoscalingGroups[0].maxSize=${MAX_NODE_COUNT}
+  --set autoscalingGroups[0].maxSize=${MAX_NODE_COUNT} \
+  --set extraArgs.logtostderr=true \
+  --set extraArgs.stderrthreshold=info \
+  --set extraArgs.v=4 \
+  --set extraArgs.leader-elect-lease-duration=40s \
+  --set extraArgs.leader-elect-renew-deadline=20s
 
 fi
 printf "Finished running ${step}\n"
