@@ -15,32 +15,19 @@ METRICS_SERVER_VALUES_YAML=/srv/magnum/kubernetes/helm/metrics-server/values.yam
 echo "Writing File: $METRICS_SERVER_VALUES_YAML"
 mkdir -p $(dirname ${METRICS_SERVER_VALUES_YAML})
 cat << EOF > ${METRICS_SERVER_VALUES_YAML}
-metrics-server:
-  image:
-    repository: ${_metrics_prefix}metrics-server
-  service:
-    labels:
-    kubernetes.io/cluster-service: "true"
-    kubernetes.io/name: "Metrics-server"
-  nodeSelector:
-      node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
-  tolerations:
-      - effect: NoSchedule
-        operator: Exists
-      - key: CriticalAddonsOnly
-        operator: Exists
-      - effect: NoExecute
-        operator: Exists
-  apiService:
-    caBundle: ""
-    create: false
-    insecureSkipTLSVerify: true
-  args:
-    - --cert-dir=/tmp
-    - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
-    - --kubelet-use-node-status-port
-    - --metric-resolution=15s
-    - --kubelet-insecure-tls=true
+image:
+  repository: ${_metrics_prefix}metrics-server
+
+nodeSelector:
+  node-role.kubernetes.io/${LEAD_NODE_ROLE_NAME}: ""
+
+tolerations:
+  - effect: NoSchedule
+    operator: Exists
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
 EOF
 
 
