@@ -54,7 +54,7 @@ fi
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ] ; then
     for component in kube-apiserver kube-controller-manager kube-scheduler kube-proxy
     do
-        $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar "${CONTAINER_INFRA_PREFIX:-k8s.gcr.io}/${component}:$(cat /srv/magnum/k8s/kubernetes/server/bin/${component}.docker_tag)"
+        $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar
     done
 fi
 

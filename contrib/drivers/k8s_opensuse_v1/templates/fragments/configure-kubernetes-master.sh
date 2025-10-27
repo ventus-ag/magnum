@@ -39,7 +39,6 @@ sed -i '
     /^KUBE_SERVICE_ADDRESSES=/ s|=.*|="--service-cluster-ip-range='"$PORTAL_NETWORK_CIDR"'"|
     /^KUBE_API_ARGS=/ s|=.*|="--service-account-key-file='"$SERVICE_ACCOUNT_KEY"' --runtime-config=api\/all=true"|
     /^KUBE_ETCD_SERVERS=/ s/=.*/="--etcd-servers=http:\/\/127.0.0.1:2379"/
-    /^KUBE_ADMISSION_CONTROL=/ s/=.*/="--admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota"/
 ' /etc/kubernetes/apiserver
 
 cat >> /etc/kubernetes/apiserver <<EOF
