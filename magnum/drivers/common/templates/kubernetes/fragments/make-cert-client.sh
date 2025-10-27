@@ -18,8 +18,6 @@ set -x
 
 set -o errexit
 set -o nounset
-set -o pipefail
-
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 

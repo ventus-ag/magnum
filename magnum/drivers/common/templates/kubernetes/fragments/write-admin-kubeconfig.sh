@@ -95,4 +95,4 @@ fi
 
 export KUBECONFIG=${ADMIN_KUBECONFIG}
 $ssh_cmd mkdir -p $HOME/.kube
-$ssh_cmd cp -f ${ADMIN_KUBECONFIG} $HOME/.kube/config
+$ssh_cmd cp -i ${ADMIN_KUBECONFIG} $HOME/.kube/config

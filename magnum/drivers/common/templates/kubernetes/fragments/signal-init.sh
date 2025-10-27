@@ -1,5 +1,5 @@
 #!/bin/sh
-set -o pipefail
+
 . /etc/sysconfig/heat-params
 
 echo "heat signal init"

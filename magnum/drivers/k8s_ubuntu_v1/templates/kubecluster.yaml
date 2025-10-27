@@ -999,17 +999,6 @@ parameters:
     default: []
 
 resources:
-  # wait_handle_cluster_upgrade:
-  #   condition: upgrade_cluster_resources
-  #   type: OS::Heat::WaitConditionHandle
-  # wait_condition_cluster_upgrade:
-  #   condition: upgrade_cluster_resources
-  #   type: OS::Heat::WaitCondition
-  #   depends_on: kube_cluster_upgrade
-  #   properties:
-  #     handle: { get_resource: wait_handle_cluster_upgrade }
-  #     timeout: 900
-
   ######################################################################
   #
   # network resources.  allocate a network and router for our server.
@@ -1417,6 +1406,7 @@ resources:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
+            - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-flannel-plugin.sh
@@ -1444,14 +1434,6 @@ resources:
                   echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
-            # - str_replace:
-            #     template:
-            #       {
-            #         get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
-            #       }
-            #     params:
-            #       $WAIT_CURL:
-            #         { get_attr: ["wait_handle_cluster_upgrade", "curl_cli"] }
             - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
@@ -1464,14 +1446,6 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-            # - str_replace:
-            #     template:
-            #       {
-            #         get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
-            #       }
-            #     params:
-            #       $WAIT_CURL:
-            #         { get_attr: ["wait_handle_cluster_upgrade", "curl_cli"] }
 
   kube_cluster_deploy:
     condition: create_cluster_resources
