@@ -1,3 +1,5 @@
+#!/bin/sh
+
 . /etc/sysconfig/heat-params
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
@@ -27,7 +29,7 @@ for action in enable restart; do
 done
 
 # Label self as master
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ] && \
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ] && \
     kubectl patch node ${INSTANCE_NAME} \
         --patch '{"metadata": {"labels": {"node-role.kubernetes.io/master": ""}}}'
 do
@@ -35,8 +37,9 @@ do
     sleep 5s
 done
 
-if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
-    KUBE_DIGEST=$($ssh_cmd podman image inspect ${CONTAINER_INFRA_PREFIX:-${HYPERKUBE_PREFIX}}hyperkube:${KUBE_TAG} --format "{{.Digest}}")
+if [[ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" && -n "${KUBE_IMAGE_DIGEST}" ]]; then
+    echo "Image inspect"
+    KUBE_DIGEST=$($ssh_cmd podman image inspect ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}hyperkube:${KUBE_TAG} --format "{{.Digest}}")
     if [ -n "${KUBE_IMAGE_DIGEST}"  ] && [ "${KUBE_IMAGE_DIGEST}" != "${KUBE_DIGEST}" ]; then
         printf "The sha256 ${KUBE_DIGEST} of current hyperkube image cannot match the given one: ${KUBE_IMAGE_DIGEST}."
         exit 1

@@ -222,7 +222,7 @@ parameters:
     type: string
     description: >
       List of admission control plugins to activate
-    default: "PodSecurityPolicy,NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota,TaintNodesByCondition,Priority,DefaultTolerationSeconds,DefaultStorageClass,StorageObjectInUseProtection,PersistentVolumeClaimResize,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,RuntimeClass"
+    default: "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota"
 
   kube_allow_priv:
     type: string
@@ -446,38 +446,41 @@ parameters:
     type: string
     description: url for keystone
 
-  hyperkube_prefix:
-    type: string
-    description: prefix to use for hyperkube images
-    default: k8s.gcr.io/
-
   kube_tag:
     type: string
     description:
       tag of the k8s containers used to provision the kubernetes cluster
       https://github.com/kubernetes/kubernetes/releases
-    default: v1.18.16
+    default: v1.18.2
+
+  kubernetes_tarball_sha512:
+    type: string
+    default: ""
+
+  kubernetes_tarball_url:
+    type: string
+    default: ""
 
   master_kube_tag:
     type: string
     description:
       tag of the k8s containers used to provision the kubernetes cluster
       https://github.com/kubernetes/kubernetes/releases
-    default: v1.18.16
+    default: v1.18.2
 
   minion_kube_tag:
     type: string
     description:
       tag of the k8s containers used to provision the kubernetes cluster
       https://github.com/kubernetes/kubernetes/releases
-    default: v1.18.16
+    default: v1.18.2
 
   cloud_provider_tag:
     type: string
     description:
       tag of the k8scloudprovider/openstack-cloud-controller-manager
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.22.0
+    default: v1.20.1
 
   cloud_provider_enabled:
     type: boolean
@@ -486,7 +489,7 @@ parameters:
   etcd_tag:
     type: string
     description: tag of the etcd system container
-    default: v3.5.0
+    default: v3.4.14
 
   coredns_tag:
     type: string
@@ -496,7 +499,7 @@ parameters:
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.12.0-amd64
+    default: v0.13.0
 
   flannel_cni_tag:
     type: string
@@ -506,7 +509,7 @@ parameters:
   kube_version:
     type: string
     description: version of kubernetes used for kubernetes cluster
-    default: v1.18.16
+    default: v1.18.2
 
   kube_dashboard_version:
     type: string
@@ -683,7 +686,7 @@ parameters:
   heat_container_agent_tag:
     type: string
     description: tag of the heat_container_agent system container
-    default: victoria-stable-1
+    default: ussuri-stable-1
 
   keystone_auth_enabled:
     type: boolean
@@ -702,7 +705,7 @@ parameters:
     description:
       tag of the k8scloudprovider/k8s-keystone-auth container
       https://hub.docker.com/r/k8scloudprovider/k8s-keystone-auth/tags/
-    default: v1.18.0
+    default: v1.20.0
 
   monitoring_enabled:
     type: boolean
@@ -784,7 +787,7 @@ parameters:
     description:
       tag of the k8scloudprovider/magnum-auto-healer container
       https://hub.docker.com/r/k8scloudprovider/magnum-auto-healer/tags/
-    default: v1.18.0
+    default: v1.20.0
 
   auto_scaling_enabled:
     type: boolean
@@ -793,44 +796,58 @@ parameters:
     default:
       false
 
+  manila_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the manila csi plugin feature should be enabled
+    default:
+      false
+
+  cinder_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the cinder csi plugin feature should be enabled
+    default:
+      false
+
   cinder_csi_enabled:
     type: boolean
     description: >
       true if the cinder csi feature should be enabled
     default:
-      true
+      false
 
   cinder_csi_plugin_tag:
     type: string
     description: tag of cinder csi plugin
       tag of the k8scloudprovider/cinder-csi-plugin container
       https://hub.docker.com/r/k8scloudprovider/cinder-csi-plugin/tags/
-    default: v1.18.0
+    default: v1.20.0
 
   csi_attacher_tag:
     type: string
     description: tag of csi attacher
-    default: v2.0.0
+    default: v2.2.1
 
   csi_provisioner_tag:
     type: string
     description: tag of csi provisioner
-    default: v1.4.0
+    default: v1.6.1
 
   csi_snapshotter_tag:
     type: string
     description: tag of csi snapshotter
-    default: v1.2.2
+    default: v3.0.3
 
   csi_resizer_tag:
     type: string
     description: tag of csi resizer
-    default: v0.3.0
+    default: v0.4.0
 
   csi_node_driver_registrar_tag:
     type: string
     description: tag of csi node driver registrar
-    default: v1.1.0
+    default: v2.1.0
 
   node_problem_detector_tag:
     type: string
@@ -857,7 +874,7 @@ parameters:
     description: tag of the autoscaler container
       tag of the openstackmagnum/cluster-autoscaler container
       https://hub.docker.com/r/openstackmagnum/cluster-autoscaler/tags/
-    default: v1.18.1
+    default: v1.19.0
 
   min_node_count:
     type: number
@@ -923,8 +940,8 @@ parameters:
 
   containerd_version:
     type: string
-    description: The containerd version to download from https://github.com/containerd/containerd/releases
-    default: '1.4.4'
+    description: The containerd version to download from https://storage.googleapis.com/cri-containerd-release/
+    default: '1.2.8'
 
   containerd_tarball_url:
     type: string
@@ -934,7 +951,7 @@ parameters:
   containerd_tarball_sha256:
     type: string
     description: sha256 of the target containerd tarball.
-    default: '96641849cb78a0a119223a427dfdc1ade88412ef791a14193212c8c8e29d447b'
+    default: '1f2f0fb928179df90492a83c326a194b8e9d992538498efb44cbb6ef15465627'
 
   post_install_manifest_url:
     type: string
@@ -1018,9 +1035,6 @@ resources:
         - protocol: tcp
           port_range_min: 8080
           port_range_max: 8080
-        - protocol: tcp
-          port_range_min: 2378
-          port_range_max: 2378
         - protocol: tcp
           port_range_min: 2379
           port_range_max: 2379
@@ -1219,8 +1233,9 @@ resources:
           http_proxy: {get_param: http_proxy}
           https_proxy: {get_param: https_proxy}
           no_proxy: {get_param: no_proxy}
-          hyperkube_prefix: {get_param: hyperkube_prefix}
           kube_tag: {get_param: master_kube_tag}
+          kubernetes_tarball_sha512: {get_param: kubernetes_tarball_sha512}
+          kubernetes_tarball_url: {get_param: kubernetes_tarball_url}
           cloud_provider_tag: {get_param: cloud_provider_tag}
           cloud_provider_enabled: {get_param: cloud_provider_enabled}
           kube_version: {get_param: kube_version}
@@ -1283,6 +1298,8 @@ resources:
           auto_healing_controller: {get_param: auto_healing_controller}
           magnum_auto_healer_tag: {get_param: magnum_auto_healer_tag}
           auto_scaling_enabled: {get_param: auto_scaling_enabled}
+          manila_csi_plugin_enabled: {get_param: manila_csi_plugin_enabled}
+          cinder_csi_plugin_enabled: {get_param: cinder_csi_plugin_enabled}
           cinder_csi_enabled: {get_param: cinder_csi_enabled}
           cinder_csi_plugin_tag: {get_param: cinder_csi_plugin_tag}
           csi_attacher_tag: {get_param: csi_attacher_tag}
@@ -1316,8 +1333,7 @@ resources:
         list_join:
           - "\n"
           -
-            - "#!/bin/bash"
-            - "source /etc/bashrc"
+            - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
             - get_file: ../../common/templates/kubernetes/fragments/core-dns-service.sh
             - if:
@@ -1341,7 +1357,7 @@ resources:
                 params:
                   "$KEYSTONE_AUTH_DEFAULT_POLICY": {get_param: keystone_auth_default_policy}
             - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
+            #- get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi.sh
             # Helm Based Installation Configuration Scripts
             - get_file: ../../common/templates/kubernetes/helm/metrics-server.sh
@@ -1349,10 +1365,13 @@ resources:
                 template: {get_file: ../../common/templates/kubernetes/helm/prometheus-operator.sh}
                 params:
                   "${GRAFANA_ADMIN_PASSWD}": {get_param: grafana_admin_passwd}
-                  "${KUBE_MASTERS_PRIVATE}": {get_attr: [kube_masters, kube_master_ip]}
+                  "${KUBE_MASTERS_PRIVATE}": {get_attr: [kube_masters, kube_master_external_ip]}
             - get_file: ../../common/templates/kubernetes/helm/prometheus-adapter.sh
             - get_file: ../../common/templates/kubernetes/helm/ingress-nginx.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-helm-modules.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
   kube_cluster_deploy:
     condition: create_cluster_resources
@@ -1451,8 +1470,9 @@ resources:
           http_proxy: {get_param: http_proxy}
           https_proxy: {get_param: https_proxy}
           no_proxy: {get_param: no_proxy}
-          hyperkube_prefix: {get_param: hyperkube_prefix}
           kube_tag: {get_param: minion_kube_tag}
+          kubernetes_tarball_sha512: {get_param: kubernetes_tarball_sha512}
+          kubernetes_tarball_url: {get_param: kubernetes_tarball_url}
           kube_version: {get_param: kube_version}
           trustee_user_id: {get_param: trustee_user_id}
           trustee_username: {get_param: trustee_username}
@@ -1483,8 +1503,7 @@ resources:
           containerd_version: {get_param: containerd_version}
           containerd_tarball_url: {get_param: containerd_tarball_url}
           containerd_tarball_sha256: {get_param: containerd_tarball_sha256}
-          kube_service_account_key: {get_param: kube_service_account_key}
-          kube_service_account_private_key: {get_param: kube_service_account_private_key}
+
 outputs:
 
   api_address:

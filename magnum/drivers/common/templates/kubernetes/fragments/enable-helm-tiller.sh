@@ -1,3 +1,5 @@
+#!/bin/bash
+
 . /etc/sysconfig/heat-params
 
 step="enable-helm-tiller"
@@ -222,7 +224,7 @@ data:
 EOF
     }
 
-    until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+    until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
     do
         echo "Waiting for Kubernetes API..."
         sleep 5

@@ -1,3 +1,5 @@
+#!/bin/sh
+
 step="core-dns-service"
 printf "Starting to run ${step}\n"
 
@@ -298,11 +300,10 @@ EOF
 }
 
 echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
     sleep 5
 done
-
 kubectl apply --validate=false -f $CORE_DNS
 
 printf "Finished running ${step}\n"

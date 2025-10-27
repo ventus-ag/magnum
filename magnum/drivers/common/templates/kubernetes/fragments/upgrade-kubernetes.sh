@@ -1,15 +1,20 @@
+#!/bin/bash
+
 . /etc/sysconfig/heat-params
+
 set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
-KUBECONFIG="/etc/kubernetes/kubelet-config.yaml"
+
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
 if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
     kubecontrol="/srv/magnum/bin/kubectl --kubeconfig $KUBECONFIG"
 else
     kubecontrol="/var/lib/containers/atomic/heat-container-agent.0/rootfs/usr/bin/kubectl --kubeconfig $KUBECONFIG"
 fi
 new_kube_tag="$kube_tag_input"
-new_kube_image_digest="$kube_image_digest_input"
+new_kube_image_digest="$kube_image_digest"
 new_ostree_remote="$ostree_remote_input"
 new_ostree_commit="$ostree_commit_input"
 
@@ -31,33 +36,67 @@ if [ "${new_kube_tag}" != "${KUBE_TAG}" ]; then
 
     if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ]; then
         SERVICE_LIST=$($ssh_cmd podman ps -f name=kube --format {{.Names}})
+        echo "KUBE_TAG=$new_kube_tag" >> /etc/sysconfig/heat-params
 
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl stop ${service}
             ${ssh_cmd} podman rm ${service}
+            ${ssh_cmd} podman rmi ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}:${KUBE_TAG}
         done
 
-        ${ssh_cmd} podman rmi ${CONTAINER_INFRA_PREFIX:-${HYPERKUBE_PREFIX}}hyperkube:${KUBE_TAG}
-        echo "KUBE_TAG=$new_kube_tag" >> /etc/sysconfig/heat-params
+        if [ -z "${KUBERNETES_TARBALL_URL}" ] ; then
+            KUBERNETES_TARBALL_URL="https://dl.k8s.io/${new_kube_tag}/kubernetes-server-linux-${ARCH}.tar.gz"
+        fi
+        $ssh_cmd systemctl stop kubelet
+        $ssh_cmd rm /usr/local/bin/kube*
+        $ssh_cmd mkdir -p /srv/magnum/k8s/
+        $ssh_cmd curl --retry 5 --retry-delay 10 -L -o /srv/magnum/k8s.tar.gz ${KUBERNETES_TARBALL_URL}
+
+        # Extrace binaries and images
+        $ssh_cmd tar xzvf /srv/magnum/k8s.tar.gz -C /srv/magnum/k8s/ kubernetes/server/bin
+
+        # Put node components in /usr/local/bin
+        $ssh_cmd mv /srv/magnum/k8s/kubernetes/server/bin/{kubelet,kubectl,kubeadm} /usr/local/bin/
+        $ssh_cmd chmod +x /usr/local/bin/kube*
+
+        if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
+            $ssh_cmd chcon system_u:object_r:bin_t:s0 /usr/local/bin/kube*
+        fi
+
+        $ssh_cmd cp /usr/local/bin/kubectl /srv/magnum/bin/
+        $ssh_cmd chmod +x /srv/magnum/bin/kube*
+
+        if [[ "$SELINUX_MODE" == "enforcing" ]] ; then
+            $ssh_cmd chcon system_u:object_r:bin_t:s0 /srv/magnum/bin/kube*
+        fi
+
+        # Import images
+        if [ "$(echo $USE_PODMAN | tr '[:upper:]' '[:lower:]')" == "true" ] ; then
+            for component in kube-apiserver kube-controller-manager kube-scheduler kube-proxy
+            do
+                $ssh_cmd podman load -i /srv/magnum/k8s/kubernetes/server/bin/${component}.tar "${CONTAINER_INFRA_PREFIX:-k8s.gcr.io}/${component}:$(cat /srv/magnum/k8s/kubernetes/server/bin/${component}.docker_tag)"
+            done
+        fi
+
+        $ssh_cmd rm -f /srv/magnum/k8s.tar.gz
+        $ssh_cmd rm -rf /srv/magnum/k8s
 
         for service in ${SERVICE_LIST}; do
             ${ssh_cmd} systemctl start ${service}
         done
 
-        i=0
-        until [ "`${ssh_cmd} podman image exists ${CONTAINER_INFRA_PREFIX:-${HYPERKUBE_PREFIX}}hyperkube:${new_kube_tag} && echo $?`" = 0 ]
-        do
-            i=$((i+1))
-            [ $i -lt 30 ] || break;
-            echo "Pulling image: hyperkube:${new_kube_tag}"
-            sleep 5s
+        for service in ${SERVICE_LIST}; do
+            i=0
+            until [ "`${ssh_cmd} podman image exists ${CONTAINER_INFRA_PREFIX:-k8s.gcr.io/}${service}:${new_kube_tag} && echo $?`" = 0 ]
+            do
+                i=$((i+1))
+                [ $i -lt 30 ] || break;
+                echo "Pulling image: ${service}:${new_kube_tag}"
+                sleep 5s
+            done
         done
 
-        KUBE_DIGEST=$($ssh_cmd podman image inspect ${CONTAINER_INFRA_PREFIX:-${HYPERKUBE_PREFIX}}hyperkube:${new_kube_tag} --format "{{.Digest}}")
-        if [ -n "${new_kube_image_digest}"  ] && [ "${new_kube_image_digest}" != "${KUBE_DIGEST}" ]; then
-            printf "The sha256 ${KUBE_DIGEST} of current hyperkube image cannot match the given one: ${new_kube_image_digest}."
-            exit 1
-        fi
+        ${ssh_cmd} systemctl start kubelet
 
         i=0
         until ${ssh_cmd} ${kubecontrol} uncordon ${INSTANCE_NAME}

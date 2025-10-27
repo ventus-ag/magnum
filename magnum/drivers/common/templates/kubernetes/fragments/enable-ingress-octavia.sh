@@ -112,7 +112,7 @@ EOF
 writeFile $OCTAVIA_INGRESS_CONTROLLER "$OCTAVIA_INGRESS_CONTROLLER_CONTENT"
 
 echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
     sleep 5
 done

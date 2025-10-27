@@ -1,3 +1,5 @@
+#!/bin/sh
+
 . /etc/sysconfig/heat-params
 
 step="enable-keystone-auth"
@@ -64,17 +66,6 @@ metadata:
 data:
   policies: |
     $KEYSTONE_AUTH_DEFAULT_POLICY
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: keystone-sync-policy
-  namespace: kube-system
-data:
-  syncConfig: |
-    role-mappings:
-      - keystone-role: member
-        groups: []
 EOF
     }
 
@@ -132,8 +123,6 @@ spec:
             - k8s-keystone-auth-policy
             - --keystone-url
             - ${AUTH_URL}
-            - --sync-configmap-name
-            - keystone-sync-policy
             - --keystone-ca-file
             - /etc/kubernetes/ca-bundle.crt
             - --listen
@@ -166,7 +155,7 @@ spec:
 EOF
     }
 
-    until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+    until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
     do
         echo "Waiting for Kubernetes API..."
         sleep 5

@@ -1,3 +1,5 @@
+#!/bin/bash
+
 set +x
 . /etc/sysconfig/heat-params
 set -ex
@@ -14,7 +16,6 @@ if [ "$(echo ${MONITORING_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ]; th
 - name: ${CHART_NAME}
   version: ${PROMETHEUS_OPERATOR_CHART_TAG}
   repository: https://prometheus-community.github.io/helm-charts
-EOF
 
     # Calculate resources needed to run the Prometheus Monitoring Solution
     # MAX_NODE_COUNT so we can have metrics even if cluster scales
@@ -54,13 +55,10 @@ prometheus-operator:
       #     memory: 256Mi
       priorityClassName: "system-cluster-critical"
 
+
   # Dashboard
   grafana:
-    image:
-      repository: ${CONTAINER_INFRA_PREFIX:-grafana/}grafana
     #enabled: ${ENABLE_GRAFANA}
-    sidecar:
-      image: ${CONTAINER_INFRA_PREFIX:-kiwigrid/}k8s-sidecar:0.1.99
     resources:
       requests:
         cpu: 100m

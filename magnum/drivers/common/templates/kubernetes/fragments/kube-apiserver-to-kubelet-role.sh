@@ -1,18 +1,21 @@
+#!/bin/sh
+
 step="kube-apiserver-to-kubelet-role"
 printf "Starting to run ${step}\n"
 
 set +x
 . /etc/sysconfig/heat-params
+
 set -x
 
-echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
+    echo "Waiting for Kubernetes API..."
     sleep 5
 done
 
 cat <<EOF | kubectl apply --validate=false -f -
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   annotations:
@@ -31,10 +34,16 @@ rules:
       - nodes/metrics
     verbs:
       - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts/token
+    verbs:
+      - "create"
 EOF
 
 cat <<EOF | kubectl apply --validate=false -f -
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: system:kube-apiserver
@@ -62,7 +71,7 @@ metadata:
   name: admin
   namespace: kube-system
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: admin
@@ -207,12 +216,6 @@ items:
     verbs:
     - create
     - get
-  - apiGroups:
-    - ""
-    resources:
-    - serviceaccounts/token
-    verbs:
-    - create
   - apiGroups:
     - ""
     resources:
@@ -366,12 +369,12 @@ spec:
         - /bin/openstack-cloud-controller-manager
         - --v=2
         - --cloud-config=/etc/kubernetes/cloud-config-occm
-        - --cloud-provider=openstack
         - --cluster-name=${CLUSTER_UUID}
         - --use-service-account-credentials=true
+        - --bind-address=127.0.0.1
+        - --cloud-provider=openstack
         - --leader-elect-lease-duration=40s
         - --leader-elect-renew-deadline=20s
-        - --bind-address=127.0.0.1
         volumeMounts:
         - name: cloudconfig
           mountPath: /etc/kubernetes

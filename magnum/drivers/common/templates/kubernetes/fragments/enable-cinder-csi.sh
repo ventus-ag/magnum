@@ -1,3 +1,5 @@
+#!/bin/sh
+
 step="enable-cinder-csi"
 printf "Starting to run ${step}\n"
 
@@ -246,15 +248,6 @@ spec:
         app: csi-cinder-controllerplugin
     spec:
       serviceAccount: csi-cinder-controller-sa
-      tolerations:
-        # Make sure the pod can be scheduled on master kubelet.
-        - effect: NoSchedule
-          operator: Exists
-        # Mark the pod as a critical add-on for rescheduling.
-        - key: CriticalAddonsOnly
-          operator: Exists
-      nodeSelector:
-        node-role.kubernetes.io/master: ""
       containers:
         - name: csi-attacher
           image: ${CONTAINER_INFRA_PREFIX:-quay.io/k8scsi/}csi-attacher:${CSI_ATTACHER_TAG}
@@ -499,7 +492,7 @@ spec:
 EOF
 
     echo "Waiting for Kubernetes API..."
-    until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+    until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
     do
         sleep 5
     done

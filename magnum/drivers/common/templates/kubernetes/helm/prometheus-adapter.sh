@@ -1,3 +1,5 @@
+#!/bin/bash
+
 set +x
 . /etc/sysconfig/heat-params
 set -ex
@@ -16,7 +18,6 @@ if [ "$(echo ${MONITORING_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ] && 
 - name: ${CHART_NAME}
   version: ${PROMETHEUS_ADAPTER_CHART_TAG}
   repository: https://prometheus-community.github.io/helm-charts
-EOF
 
     cat << EOF >> ${HELM_CHART_DIR}/values.yaml
 prometheus-adapter:

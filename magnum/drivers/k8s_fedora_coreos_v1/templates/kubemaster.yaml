@@ -267,6 +267,12 @@ parameters:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
 
+  kubernetes_tarball_sha512:
+    type: string
+
+  kubernetes_tarball_url:
+    type: string
+
   cloud_provider_tag:
     type: string
     description:
@@ -539,6 +545,16 @@ parameters:
     description: >
       true if the auto scaling feature should be enabled
 
+  manila_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the manila csi plugin feature should be enabled
+
+  cinder_csi_plugin_enabled:
+    type: boolean
+    description: >
+      true if the cinder csi plugin feature should be enabled
+
   cinder_csi_enabled:
     type: boolean
     description: >
@@ -780,6 +796,8 @@ resources:
                   "$NO_PROXY": {get_param: no_proxy}
                   "$HYPERKUBE_PREFIX": {get_param: hyperkube_prefix}
                   "$KUBE_TAG": {get_param: kube_tag}
+                  "$KUBERNETES_TARBALL_SHA512": {get_param: kubernetes_tarball_sha512}
+                  "$KUBERNETES_TARBALL_URL": {get_param: kubernetes_tarball_url}
                   "$CLOUD_PROVIDER_TAG": {get_param: cloud_provider_tag}
                   "$CLOUD_PROVIDER_ENABLED": {get_param: cloud_provider_enabled}
                   "$ETCD_TAG": {get_param: etcd_tag}
@@ -838,6 +856,8 @@ resources:
                   "$AUTO_HEALING_CONTROLLER": {get_param: auto_healing_controller}
                   "$MAGNUM_AUTO_HEALER_TAG": {get_param: magnum_auto_healer_tag}
                   "$AUTO_SCALING_ENABLED": {get_param: auto_scaling_enabled}
+                  "$MANILA_CSI_PLUGIN_ENABLED": {get_param: manila_csi_plugin_enabled}
+                  "$CINDER_CSI_PLUGIN_ENABLED": {get_param: cinder_csi_plugin_enabled}
                   "$CINDER_CSI_ENABLED": {get_param: cinder_csi_enabled}
                   "$CINDER_CSI_PLUGIN_TAG": {get_param: cinder_csi_plugin_tag}
                   "$CSI_ATTACHER_TAG": {get_param: csi_attacher_tag}

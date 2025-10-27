@@ -305,7 +305,11 @@ class KubernetesDriver(HeatDriver):
         if keystone.is_octavia_enabled():
             LOG.info("Starting to delete loadbalancers for cluster %s",
                      cluster.uuid)
-            octavia.delete_loadbalancers(context, cluster)
+            try:
+                octavia.delete_loadbalancers(context, cluster)
+            except Exception as e:
+                LOG.error("Loadbalancers for cluster %s could not be "
+                          "pre-deleted: %s", cluster.uuid, str(e))
 
     def upgrade_cluster(self, context, cluster, cluster_template,
                         max_batch_size, nodegroup, scale_manager=None,

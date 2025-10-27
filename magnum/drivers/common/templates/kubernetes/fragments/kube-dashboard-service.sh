@@ -1,10 +1,12 @@
+#!/bin/sh
+
 step="kube-dashboard-service"
 printf "Starting to run ${step}\n"
 
 . /etc/sysconfig/heat-params
 
 echo "Waiting for Kubernetes API..."
-until  [ "ok" = "$(kubectl get --raw='/healthz')" ]
+until  [ "ok" = "$(kubectl get --raw='/healthz' 2>nil)" ]
 do
     sleep 5
 done

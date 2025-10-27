@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright 2014 The Kubernetes Authors All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -117,7 +119,7 @@ EOF
     curl $VERIFY_CA -X GET \
         -H "X-Auth-Token: $USER_TOKEN" \
         -H "OpenStack-API-Version: container-infra latest" \
-        $MAGNUM_URL/certificates/$CLUSTER_UUID | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' >> ${CA_CERT}
+        $MAGNUM_URL/certificates/$CLUSTER_UUID | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > ${CA_CERT}
 
     # Generate server's private key and csr
     $ssh_cmd openssl genrsa -out "${_KEY}" 4096
@@ -149,6 +151,61 @@ CN = kubernetes
 [req_ext]
 subjectAltName = ${sans}
 extendedKeyUsage = clientAuth,serverAuth
+EOF
+
+
+#kube-proxy Certs
+cat > ${cert_dir}/proxy.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-proxy
+O=system:node-proxier
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+EOF
+
+#kube-scheduler Certs
+cat > ${cert_dir}/scheduler.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-scheduler
+O=system:kube-scheduler
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
+EOF
+
+#kube-controller Certs
+cat > ${cert_dir}/controller.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-controller-manager
+O=system:kube-controller-manager
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
 EOF
 
 #Kubelet Certs
@@ -190,6 +247,9 @@ EOF
 generate_certificates server ${cert_dir}/server.conf
 generate_certificates kubelet ${cert_dir}/kubelet.conf
 generate_certificates admin ${cert_dir}/admin.conf
+generate_certificates proxy ${cert_dir}/proxy.conf
+generate_certificates controller ${cert_dir}/controller.conf
+generate_certificates scheduler ${cert_dir}/scheduler.conf
 
 # Generate service account key and private key
 echo -e "${KUBE_SERVICE_ACCOUNT_KEY}" > ${cert_dir}/service_account.key
@@ -197,13 +257,15 @@ echo -e "${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY}" > ${cert_dir}/service_account_priv
 
 # Common certs and key are created for both etcd and kubernetes services.
 # Both etcd and kube user should have permission to access the certs and key.
-if [ -z "`cat /etc/group | grep kube_etcd`" ]; then
-    $ssh_cmd groupadd kube_etcd
-    $ssh_cmd usermod -a -G kube_etcd etcd
-    $ssh_cmd usermod -a -G kube_etcd kube
-    $ssh_cmd chmod 550 "${cert_dir}"
-    $ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
-    $ssh_cmd chmod 440 "$cert_dir/server.key"
-    $ssh_cmd mkdir -p /etc/etcd/certs
-    $ssh_cmd cp ${cert_dir}/* /etc/etcd/certs
-fi
+$ssh_cmd groupadd kube_etcd
+$ssh_cmd usermod -a -G kube_etcd etcd
+$ssh_cmd usermod -a -G kube_etcd kube
+$ssh_cmd chmod 550 "${cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
+$ssh_cmd chmod 440 "$cert_dir/server.key"
+$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
+$ssh_cmd chmod 440 "${cert_dir}/controller.key"
+$ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
+$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
+$ssh_cmd mkdir -p /etc/etcd/certs
+$ssh_cmd cp ${cert_dir}/* /etc/etcd/certs
