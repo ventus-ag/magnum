@@ -61,6 +61,11 @@ parameters:
     type: boolean
     default: false
 
+  timestamp_upgrade:
+    type: string
+    description: A timestamp value that changes on every stack upgrade
+    default: ""
+
   master_role:
     type: string
     default: ""
@@ -963,6 +968,17 @@ parameters:
     default: []
 
 resources:
+  # wait_handle_cluster_upgrade:
+  #   condition: upgrade_cluster_resources
+  #   type: OS::Heat::WaitConditionHandle
+  # wait_condition_cluster_upgrade:
+  #   condition: upgrade_cluster_resources
+  #   type: OS::Heat::WaitCondition
+  #   depends_on: kube_cluster_upgrade
+  #   properties:
+  #     handle: { get_resource: wait_handle_cluster_upgrade }
+  #     timeout: 900
+
   ######################################################################
   #
   # network resources.  allocate a network and router for our server.
@@ -1204,6 +1220,7 @@ resources:
           nodegroup_role: { get_param: master_role }
           nodegroup_name: { get_param: master_nodegroup_name }
           is_upgrade: { get_param: is_upgrade }
+          timestamp_upgrade: { get_param: timestamp_upgrade }
           heapster_enabled: { get_param: heapster_enabled }
           metrics_server_enabled: { get_param: metrics_server_enabled }
           metrics_server_chart_tag: { get_param: metrics_server_chart_tag }
@@ -1357,11 +1374,10 @@ resources:
           metrics_scraper_tag: { get_param: metrics_scraper_tag }
 
   kube_cluster_config:
+    condition: create_cluster_resources
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
-      inputs:
-        - name: OS_STACK_ID
       config:
         list_join:
           - "\n"
@@ -1378,6 +1394,51 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
             - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
 
+  kube_cluster_upgrade_config:
+    condition: upgrade_cluster_resources
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: OS_STACK_ID
+      config:
+        list_join:
+          - "\n"
+          - - str_replace:
+                template: |
+                  #!/bin/sh
+                  echo 'stack_id'
+                params:
+                  stack_id: { get_param: "OS::stack_id" }
+            # - str_replace:
+            #     template:
+            #       {
+            #         get_file: ../../common/templates/kubernetes/fragments/signal-init.sh,
+            #       }
+            #     params:
+            #       $WAIT_CURL:
+            #         { get_attr: ["wait_handle_cluster_upgrade", "curl_cli"] }
+            - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
+            - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
+            - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
+            - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-flannel-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-occm-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
+            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
+            # - str_replace:
+            #     template:
+            #       {
+            #         get_file: ../../common/templates/kubernetes/fragments/signal-success.sh,
+            #       }
+            #     params:
+            #       $WAIT_CURL:
+            #         { get_attr: ["wait_handle_cluster_upgrade", "curl_cli"] }
+
   kube_cluster_deploy:
     condition: create_cluster_resources
     type: OS::Heat::SoftwareDeployment
@@ -1388,8 +1449,6 @@ resources:
         get_resource: kube_cluster_config
       server:
         get_attr: [kube_masters, resource.0]
-      input_values:
-        OS_STACK_ID: { get_param: "OS::stack_id" }
 
   kube_cluster_upgrade:
     condition: upgrade_cluster_resources
@@ -1398,11 +1457,12 @@ resources:
       actions: ["CREATE", "UPDATE"]
       signal_transport: HEAT_SIGNAL
       config:
-        get_resource: kube_cluster_config
+        get_resource: kube_cluster_upgrade_config
       server:
         get_attr: [kube_masters, resource.0]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
+        timestamp_upgrade: { get_param: timestamp_upgrade }
 
   ######################################################################
   #
@@ -1432,6 +1492,7 @@ resources:
           nodegroup_role: { get_param: worker_role }
           nodegroup_name: { get_param: worker_nodegroup_name }
           is_upgrade: { get_param: is_upgrade }
+          timestamp_upgrade: { get_param: timestamp_upgrade }
           ssh_key_name: { get_param: ssh_key_name }
           ssh_public_key: { get_param: ssh_public_key }
           server_image: { get_param: minion_image }
@@ -1575,3 +1636,9 @@ outputs:
     description: >
       This is a list of the "public" IP addresses of all the Kubernetes minions.
       Use these IP addresses to log in to the Kubernetes minions via ssh.
+
+  timestamp_upgrade:
+    condition: upgrade_cluster_resources
+    value: { get_param: timestamp_upgrade }
+    description: >
+      Time where the cluster upgrade started.
