@@ -676,6 +676,36 @@ class FedoraKubernetesDriver(KubernetesDriver):
         }
         return extra_params
 
+    def rotate_ca_certificate(self, context, cluster):
+        """Rotate CA certificate for the cluster.
+        
+        Supported for both Fedora CoreOS and Ubuntu drivers.
+        """
+        cluster_template = conductor_utils.retrieve_cluster_template(context,
+                                                                     cluster)
+        if cluster_template.cluster_distro not in ["fedora-coreos", "ubuntu"]:
+            raise exception.NotSupported("Rotating the CA certificate is "
+                                         "not supported for cluster with "
+                                         "cluster_distro: %s." %
+                                         cluster_template.cluster_distro)
+        osc = clients.OpenStackClients(context)
+        rollback = True
+        heat_params = {}
+
+        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
+
+        heat_params['kube_service_account_key'] = \
+            csr_keys["public_key"].replace("\n", "\\n")
+        heat_params['kube_service_account_private_key'] = \
+            csr_keys["private_key"].replace("\n", "\\n")
+
+        fields = {
+            'existing': True,
+            'parameters': heat_params,
+            'disable_rollback': not rollback
+        }
+        osc.heat().stacks.update(cluster.stack_id, **fields)
+
 
 class UbuntuKubernetesDriver(KubernetesDriver):
     """Base driver for Kubernetes clusters."""
