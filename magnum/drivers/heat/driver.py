@@ -15,6 +15,7 @@ import collections
 import os
 from pbr.version import SemanticVersion as SV
 import six
+import json
 
 from string import ascii_letters
 from string import digits
@@ -120,13 +121,16 @@ class HeatDriver(driver.Driver):
             osc = clients.OpenStackClients(context)
             self._delete_stack(context, osc, nodegroup.stack_id)
 
-    def update_cluster_status(self, context, cluster):
+    def update_cluster_status(self, context, cluster, use_admin_ctx=False):
         if cluster.stack_id is None:
             # NOTE(mgoddard): During cluster creation it is possible to poll
             # the cluster before its heat stack has been created. See bug
             # 1682058.
             return
-        stack_ctx = mag_ctx.make_cluster_context(cluster)
+        if use_admin_ctx:
+            stack_ctx = context
+        else:
+            stack_ctx = mag_ctx.make_cluster_context(cluster)
         poller = HeatPoller(clients.OpenStackClients(stack_ctx), context,
                             cluster, self)
         poller.poll_and_check()
@@ -218,6 +222,7 @@ class HeatDriver(driver.Driver):
             heat_timeout = cfg.CONF.cluster_heat.create_timeout
 
         heat_params['is_cluster_stack'] = nodegroup is None
+        heat_params['is_upgrade'] = False
 
         if nodegroup:
             # In case we are creating a new stack for a new nodegroup then
@@ -250,6 +255,8 @@ class HeatDriver(driver.Driver):
             nodegroup.node_count,
             scale_manager,
             nodes_to_remove=None)
+        
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -258,7 +265,7 @@ class HeatDriver(driver.Driver):
         }
 
         LOG.info('Updating cluster %s stack %s with these params: %s',
-                 cluster.uuid, nodegroup.stack_id, scale_params)
+                 cluster.uuid, nodegroup.stack_id, json.dumps(scale_params))
         osc = clients.OpenStackClients(context)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
 
@@ -272,6 +279,8 @@ class HeatDriver(driver.Driver):
             nodegroup.node_count,
             resize_manager,
             nodes_to_remove=nodes_to_remove)
+        
+        scale_params['is_upgrade'] = False
 
         fields = {
             'parameters': scale_params,
@@ -337,6 +346,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         # If both keys are present, only ostree_commit is chosen.
         for ostree_tag in ["ostree_commit", "ostree_remote"]:
+            if ostree_tag not in cluster_template.labels:
+                continue
             try:
                 ostree_param = {
                     ostree_tag: cluster_template.labels[ostree_tag]
@@ -361,7 +372,15 @@ class FedoraKubernetesDriver(KubernetesDriver):
         new_labels = nodegroup.labels.copy()
         if 'kube_tag' in cluster_template.labels:
             new_kube_tag = cluster_template.labels['kube_tag']
-            new_labels.update({'kube_tag': new_kube_tag})
+
+            kube_tag_params = {
+                "kube_tag": new_kube_tag,
+                "kube_version": new_kube_tag,
+                "master_kube_tag": new_kube_tag,
+                "minion_kube_tag": new_kube_tag,
+            }
+
+            new_labels.update(kube_tag_params)
         return new_labels
 
     def upgrade_cluster(self, context, cluster, cluster_template,  # noqa: C901
@@ -385,9 +404,13 @@ class FedoraKubernetesDriver(KubernetesDriver):
             "update_max_batch_size": max_batch_size,
         }
 
+        heat_params['is_upgrade'] = True
+
         if 'kube_tag' in nodegroup.labels:
             heat_params['kube_tag'] = nodegroup.labels['kube_tag']
-
+            heat_params['kube_version'] = nodegroup.labels['kube_tag']
+            heat_params['master_kube_tag'] = nodegroup.labels['kube_tag']
+            heat_params['minion_kube_tag'] = nodegroup.labels['kube_tag']
         current_addons = {}
         new_addons = {}
         for label in cluster_template.labels:
@@ -395,7 +418,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             # but just focus on the version change.
             new_addons[label] = cluster_template.labels[label]
             if ((label.endswith('_tag') or
-                 label.endswith('_version')) and label in heat_params):
+                label.endswith('_version')) and label in heat_params):
                 current_addons[label] = heat_params[label]
                 try:
                     if (SV.from_pip_string(new_addons[label]) <
@@ -438,14 +461,64 @@ class FedoraKubernetesDriver(KubernetesDriver):
             other_default_ng.labels = new_labels
             other_default_ng.save()
 
+        # New code for applying heat template
+        nodegroups = [nodegroup] if nodegroup else None
+        template_path, heat_params, env_files = (
+            self._extract_template_definition(context, cluster,
+                                              nodegroups=nodegroups))
+
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+
+        environment_files, env_map = self._get_env_files(template_path,
+                                                        env_files)
+        tpl_files.update(env_map)
+
+        heat_params['is_upgrade'] = True
+
         fields = {
-            'existing': True,
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
             'parameters': heat_params,
-            'disable_rollback': not rollback
         }
-        LOG.info('Upgrading cluster %s stack %s with these params: %s',
-                 cluster.uuid, nodegroup.stack_id, heat_params)
+
+        # Fetch the current parameters of the stack
+        current_parameters = osc.heat().stacks.get(stack_id).parameters
+        # Remove the parameters to be ignored
+        parameters_to_ignore = [
+            'OS::stack_id',
+            'OS::project_id',
+            'OS::stack_name',
+            'container_runtime',
+            'containerd_version'
+            ]
+        for param in parameters_to_ignore:
+            current_parameters.pop(param, None)
+
+        # Remove parameters ending with '_tag' or '_sha256'
+        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
+        for k in keys_to_remove:
+            current_parameters.pop(k, None)
+
+        # Merge current parameters with new parameters. 
+        # Note that this will overwrite any old parameters with new ones if they have the same name.
+        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        current_parameters.update(fields['parameters'])
+
+        # Replace the old parameters in fields with the merged parameters
+        fields['parameters'] = current_parameters
+
+        # Update the Heat stack
         osc.heat().stacks.update(stack_id, **fields)
+
+        # save the nodegroup and cluster
+        nodegroup.save()
+        cluster.save()
+
+        # The update of a nodegroup will trigger a cluster upgrade.
+        LOG.info("Triggered upgrade of cluster %s", cluster.uuid)
+        return cluster.uuid
 
     def get_nodegroup_extra_params(self, cluster, osc):
         network = osc.heat().resources.get(cluster.stack_id, 'network')

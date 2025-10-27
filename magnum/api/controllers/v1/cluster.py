@@ -68,25 +68,6 @@ class Cluster(base.APIBase):
     between the internal object model and the API representation of a Cluster.
     """
 
-    _cluster_template_id = None
-
-    def _get_cluster_template_id(self):
-        return self._cluster_template_id
-
-    def _set_cluster_template_id(self, value):
-        if value and self._cluster_template_id != value:
-            try:
-                cluster_template = api_utils.get_resource('ClusterTemplate',
-                                                          value)
-                self._cluster_template_id = cluster_template.uuid
-            except exception.ClusterTemplateNotFound as e:
-                # Change error code because 404 (NotFound) is inappropriate
-                # response for a POST request to create a Cluster
-                e.code = 400  # BadRequest
-                raise
-        elif value == wtypes.Unset:
-            self._cluster_template_id = wtypes.Unset
-
     uuid = types.uuid
     """Unique UUID for this cluster"""
 
@@ -95,17 +76,14 @@ class Cluster(base.APIBase):
     """Name of this cluster, max length is limited to 242 because of heat
      stack requires max length limit to 255, and Magnum amend a uuid length"""
 
-    cluster_template_id = wsme.wsproperty(wtypes.text,
-                                          _get_cluster_template_id,
-                                          _set_cluster_template_id,
-                                          mandatory=True)
+    cluster_template_id = wsme.wsattr(wtypes.text, mandatory=True)
     """The cluster_template UUID"""
 
     keypair = wsme.wsattr(wtypes.StringType(min_length=1, max_length=255),
                           default=None)
     """The name of the nova ssh keypair"""
 
-    node_count = wsme.wsattr(wtypes.IntegerType(minimum=1), default=1)
+    node_count = wsme.wsattr(wtypes.IntegerType(minimum=0), default=1)
     """The node count for this cluster. Default to 1 if not set"""
 
     master_count = wsme.wsattr(wtypes.IntegerType(minimum=1), default=1)
@@ -490,10 +468,24 @@ class ClustersController(base.Controller):
                     "one.") % cluster_limit
             raise exception.ResourceLimitExceeded(msg=msg)
 
+    @base.Controller.api_version("1.1", "1.9")
     @expose.expose(ClusterID, body=Cluster, status_code=202)
+    @validation.ct_not_found_to_bad_request()
     @validation.enforce_cluster_type_supported()
     @validation.enforce_cluster_volume_storage_size()
     def post(self, cluster):
+        if cluster.node_count == 0:
+            raise exception.ZeroNodeCountNotSupported()
+        return self._post(cluster)
+
+    @base.Controller.api_version("1.10")  # noqa
+    @expose.expose(ClusterID, body=Cluster, status_code=202)
+    @validation.enforce_cluster_type_supported()
+    @validation.enforce_cluster_volume_storage_size()
+    def post(self, cluster):  # noqa
+        return self._post(cluster)
+
+    def _post(self, cluster):
         """Create a new cluster.
 
         :param cluster: a cluster within the request body.
@@ -505,8 +497,10 @@ class ClustersController(base.Controller):
         self._check_cluster_quota_limit(context)
 
         temp_id = cluster.cluster_template_id
-        cluster_template = objects.ClusterTemplate.get_by_uuid(context,
-                                                               temp_id)
+        cluster_template = objects.ClusterTemplate.get(context, temp_id)
+        # We are not sure if we got a uuid or name here. So just set
+        # explicitly the uuid of the cluster template in the cluster.
+        cluster.cluster_template_id = cluster_template.uuid
         # If keypair not present, use cluster_template value
         if cluster.keypair is None:
             cluster.keypair = cluster_template.keypair_id
@@ -585,12 +579,36 @@ class ClustersController(base.Controller):
         (cluster, node_count,
          health_status,
          health_status_reason) = self._patch(cluster_ident, patch)
+        if node_count == 0:
+            raise exception.ZeroNodeCountNotSupported()
         pecan.request.rpcapi.cluster_update_async(cluster, node_count,
                                                   health_status,
                                                   health_status_reason)
         return ClusterID(cluster.uuid)
 
-    @base.Controller.api_version("1.3")  # noqa
+    @base.Controller.api_version("1.3", "1.9")  # noqa
+    @wsme.validate(types.uuid, bool, [ClusterPatchType])
+    @expose.expose(ClusterID, types.uuid_or_name, types.boolean,
+                   body=[ClusterPatchType], status_code=202)
+    def patch(self, cluster_ident, rollback=False, patch=None):  # noqa
+        """Update an existing Cluster.
+
+        :param cluster_ident: UUID or logical name of a cluster.
+        :param rollback: whether to rollback cluster on update failure.
+        :param patch: a json PATCH document to apply to this cluster.
+        """
+        (cluster, node_count,
+         health_status,
+         health_status_reason) = self._patch(cluster_ident, patch)
+        if node_count == 0:
+            raise exception.ZeroNodeCountNotSupported()
+        pecan.request.rpcapi.cluster_update_async(cluster, node_count,
+                                                  health_status,
+                                                  health_status_reason,
+                                                  rollback)
+        return ClusterID(cluster.uuid)
+
+    @base.Controller.api_version("1.10")  # noqa
     @wsme.validate(types.uuid, bool, [ClusterPatchType])
     @expose.expose(ClusterID, types.uuid_or_name, types.boolean,
                    body=[ClusterPatchType], status_code=202)

@@ -143,11 +143,11 @@ storage:
       contents:
         inline: |
           #!/bin/bash
-          
+
           set -x
           set -e
           set +u
-          
+
           until [ -f /etc/pki/ca-trust/source/anchors/openstack-ca.pem ]
           do
               echo "waiting for /etc/pki/ca-trust/source/anchors/openstack-ca.pem"
@@ -155,26 +155,26 @@ storage:
           done
 
           /usr/bin/update-ca-trust
-          
+
           HTTP_PROXY="__HTTP_PROXY__"
           HTTPS_PROXY="__HTTPS_PROXY__"
           NO_PROXY="__NO_PROXY__"
-          
+
           if [ -n "${HTTP_PROXY}" ]; then
               export HTTP_PROXY
               echo "http_proxy=${HTTP_PROXY}" >> /etc/environment
           fi
-          
+
           if [ -n "${HTTPS_PROXY}" ]; then
               export HTTPS_PROXY
               echo "https_proxy=${HTTPS_PROXY}" >> /etc/environment
           fi
-          
+
           if [ -n "${NO_PROXY}" ]; then
               export NO_PROXY
               echo "no_proxy=${NO_PROXY}" >> /etc/environment
           fi
-          
+
           # Create a keypair for the heat-container-agent to
           # access the node over ssh. It is useful to operate
           # in host mount namespace and apply configuration.
@@ -201,7 +201,7 @@ storage:
                IdentityFile /srv/magnum/.ssh/heat_agent_rsa
                UserKnownHostsFile /srv/magnum/.ssh/known_hosts
           EOF
-          
+
           sed -i '/^PermitRootLogin/ s/ .*/ without-password/' /etc/ssh/sshd_config
           # Security enhancement: Disable password authentication
           sed -i '/^PasswordAuthentication yes/ s/ yes/ no/' /etc/ssh/sshd_config
@@ -265,14 +265,14 @@ systemd:
         [Unit]
         Description=Configure heat agent environment
         After=sshd.service
-        
+
         [Service]
         User=root
         Group=root
         Type=simple
         ExecStart=/bin/bash /root/configure-agent-env.sh
         Restart=on-failure
-        
+
         [Install]
         WantedBy=multi-user.target
     - name: heat-container-agent.service
@@ -282,7 +282,7 @@ systemd:
         Description=Run heat-container-agent
         After=network-online.target configure-agent-env.service
         Wants=network-online.target
-        
+
         [Service]
         EnvironmentFile=-/etc/environment
         ExecStartPre=mkdir -p /var/lib/heat-container-agent
@@ -311,8 +311,8 @@ systemd:
                 __CONTAINER_INFRA_PREFIX__heat-container-agent:__HEAT_CONTAINER_AGENT_TAG__ \
                 /usr/bin/start-heat-container-agent
         TimeoutStartSec=10min
-        
+
         ExecStop=/bin/podman stop heat-container-agent
-        
+
         [Install]
         WantedBy=multi-user.target

@@ -446,3 +446,6 @@ fi
 if [ -n "$HTTP_PROXY" ]; then
     echo "ETCD_DISCOVERY_PROXY=$HTTP_PROXY" >> /etc/etcd/etcd.conf
 fi
+
+$ssh_cmd systemctl daemon-reload
+$ssh_cmd systemctl restart etcd
