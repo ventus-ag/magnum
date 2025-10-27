@@ -48,6 +48,7 @@ fi
 
 KUBE_MASTER_URI="https://127.0.0.1:$KUBE_API_PORT"
 mkdir -p /srv/magnum/kubernetes/
+mkdir -p /etc/kubernetes
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOGTOSTDERR="--logtostderr=true"
 KUBE_LOG_LEVEL="--v=3"

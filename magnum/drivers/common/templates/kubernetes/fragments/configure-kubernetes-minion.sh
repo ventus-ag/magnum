@@ -52,6 +52,7 @@ elif [ "$NETWORK_DRIVER" = "flannel" ]; then
 fi
 
 mkdir -p /srv/magnum/kubernetes/
+mkdir -p /etc/kubernetes
 cat > /etc/kubernetes/config <<EOF
 KUBE_LOGTOSTDERR="--logtostderr=true"
 KUBE_LOG_LEVEL="--v=3"
