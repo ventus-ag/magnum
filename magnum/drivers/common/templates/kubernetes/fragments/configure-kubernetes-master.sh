@@ -567,7 +567,7 @@ registerWithTaints:
 ${EXTRA_REGISTER_WITH_TAINTS}
 maxPods: 110
 podPidsLimit: -1
-providerID: openstack://${INSTANCE_ID}
+providerID: openstack:///${INSTANCE_ID}
 resolvConf: /run/systemd/resolve/resolv.conf
 volumePluginDir: /var/lib/kubelet/volumeplugins
 rotateCertificates: true
