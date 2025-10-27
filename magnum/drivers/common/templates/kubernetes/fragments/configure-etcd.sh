@@ -70,6 +70,10 @@ ExecStart=/bin/podman run \\
     --config-file /etc/etcd/etcd.conf.yaml
 ExecStop=/bin/podman stop etcd
 TimeoutStartSec=10min
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
+Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
