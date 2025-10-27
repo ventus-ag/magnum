@@ -78,6 +78,9 @@ description: Magnum Helm Charts
 EOF
         sed -i '1i\dependencies:' requirements.yaml
 
+        # Update helm repositories before upgrading
+        helm repo update || true
+
         i=0
         until ($helm_history_cmd | grep magnum | grep deployed) || (helm dep update && $helm_install_cmd); do
             i=$((i + 1))
