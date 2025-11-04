@@ -179,13 +179,8 @@ class ActionsController(base.Controller):
         else:
             nodegroup = objects.NodeGroup.get(
                 context, cluster.uuid, cluster_upgrade_req.nodegroup)
-            if (new_cluster_template.uuid != cluster.cluster_template_id
-                    and not nodegroup.is_default):
-                reason = ("Nodegroup %s can be upgraded only to "
-                          "match cluster's template (%s).")
-                reason = reason % (nodegroup.name,
-                                   cluster.cluster_template.name)
-                raise exception.InvalidClusterTemplateForUpgrade(reason=reason)
+            # Allow non-default nodegroups to upgrade to any template
+            # The cluster_template_id label will be updated in the driver
 
         pecan.request.rpcapi.cluster_upgrade(
             cluster,
