@@ -432,6 +432,20 @@ class KubernetesDriver(HeatDriver):
 
     def rotate_ca_certificate(self, context, cluster):
         osc = clients.OpenStackClients(context)
+
+        # Provide the full current template so that clusters created
+        # with an older template (before rotation resources existed)
+        # pick up the new rotate_ca_certs_config/deployment resources.
+        template_path, _, env_files = (
+            self._extract_template_definition(context, cluster))
+
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+
+        environment_files, env_map = self._get_env_files(template_path,
+                                                         env_files)
+        tpl_files.update(env_map)
+
         heat_params = {}
 
         csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
@@ -441,14 +455,13 @@ class KubernetesDriver(HeatDriver):
             csr_keys["private_key"].replace("\n", "\\n")
 
         # Ensure upgrade/resize conditional resources don't re-trigger.
-        # After an upgrade, is_upgrade stays true in the stack params.
-        # Since kube_service_account_key is in the upgrade config's
-        # str_replace, changing it would cause Heat to re-run the full
-        # upgrade scripts. Resetting these flags prevents that.
         heat_params['is_upgrade'] = False
         heat_params['is_resize'] = False
 
         fields = {
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
             'existing': True,
             'parameters': heat_params,
             'disable_rollback': False
