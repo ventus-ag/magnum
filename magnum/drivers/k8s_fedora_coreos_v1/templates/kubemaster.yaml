@@ -1257,6 +1257,29 @@ resources:
         OS_STACK_ID: { get_param: "OS::stack_id" }
         timestamp_upgrade: { get_param: timestamp_upgrade }
 
+  rotate_ca_certs_config:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: kube_service_account_key_input
+        - name: kube_service_account_private_key_input
+      config:
+        list_join:
+          - "\n"
+          - - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
+
+  rotate_ca_certs_deployment:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      signal_transport: HEAT_SIGNAL
+      config: { get_resource: rotate_ca_certs_config }
+      server: { get_resource: kube-master }
+      actions: ['UPDATE']
+      input_values:
+        kube_service_account_key_input: { get_param: kube_service_account_key }
+        kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
+
 outputs:
   OS::stack_id:
     value: { get_resource: kube-master }

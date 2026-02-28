@@ -31,6 +31,7 @@ from heatclient import exc as heatexc
 from magnum.common import clients
 from magnum.common import context as mag_ctx
 from magnum.common import exception
+from magnum.common.x509 import operations as x509
 from magnum.common import keystone
 from magnum.common import octavia
 from magnum.common import short_id
@@ -428,6 +429,31 @@ class KubernetesDriver(HeatDriver):
             except Exception as e:
                 LOG.error("Loadbalancers for cluster %s could not be "
                           "pre-deleted: %s", cluster.uuid, str(e))
+
+    def rotate_ca_certificate(self, context, cluster):
+        osc = clients.OpenStackClients(context)
+        heat_params = {}
+
+        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
+        heat_params['kube_service_account_key'] = \
+            csr_keys["public_key"].replace("\n", "\\n")
+        heat_params['kube_service_account_private_key'] = \
+            csr_keys["private_key"].replace("\n", "\\n")
+
+        # Ensure upgrade/resize conditional resources don't re-trigger.
+        # After an upgrade, is_upgrade stays true in the stack params.
+        # Since kube_service_account_key is in the upgrade config's
+        # str_replace, changing it would cause Heat to re-run the full
+        # upgrade scripts. Resetting these flags prevents that.
+        heat_params['is_upgrade'] = False
+        heat_params['is_resize'] = False
+
+        fields = {
+            'existing': True,
+            'parameters': heat_params,
+            'disable_rollback': False
+        }
+        osc.heat().stacks.update(cluster.stack_id, **fields)
 
     def upgrade_cluster(self, context, cluster, cluster_template,
                         max_batch_size, nodegroup, scale_manager=None,
