@@ -70,6 +70,7 @@ class Handler(object):
             fields.ClusterStatus.UPDATE_COMPLETE,
             fields.ClusterStatus.RESUME_COMPLETE,
             fields.ClusterStatus.RESTORE_COMPLETE,
+            fields.ClusterStatus.ROLLBACK_FAILED,
             fields.ClusterStatus.ROLLBACK_COMPLETE,
             fields.ClusterStatus.SNAPSHOT_COMPLETE,
             fields.ClusterStatus.CHECK_COMPLETE,
