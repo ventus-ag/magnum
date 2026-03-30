@@ -430,14 +430,11 @@ class KubernetesDriver(HeatDriver):
                 LOG.error("Loadbalancers for cluster %s could not be "
                           "pre-deleted: %s", cluster.uuid, str(e))
 
-    def rotate_ca_certificate(self, context, cluster):
-        osc = clients.OpenStackClients(context)
-
-        # Provide the full current template so that clusters created
-        # with an older template (before rotation resources existed)
-        # pick up the new rotate_ca_certs_config/deployment resources.
+    def _get_stack_update_template_fields(self, context, cluster,
+                                          nodegroups=None):
         template_path, _, env_files = (
-            self._extract_template_definition(context, cluster))
+            self._extract_template_definition(context, cluster,
+                                              nodegroups=nodegroups))
 
         tpl_files, template = template_utils.get_template_contents(
             template_path)
@@ -445,6 +442,15 @@ class KubernetesDriver(HeatDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                          env_files)
         tpl_files.update(env_map)
+
+        return {
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
+        }
+
+    def rotate_ca_certificate(self, context, cluster):
+        osc = clients.OpenStackClients(context)
 
         heat_params = {}
 
@@ -457,16 +463,28 @@ class KubernetesDriver(HeatDriver):
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
         heat_params['is_resize'] = False
+        heat_params['is_ca_rotation'] = True
 
         fields = {
-            'template': template,
-            'environment_files': environment_files,
-            'files': tpl_files,
+            **self._get_stack_update_template_fields(context, cluster),
             'existing': True,
             'parameters': heat_params,
             'disable_rollback': False
         }
         osc.heat().stacks.update(cluster.stack_id, **fields)
+
+        for nodegroup in cluster.nodegroups:
+            if nodegroup.is_default or not nodegroup.stack_id:
+                continue
+
+            nodegroup_fields = {
+                **self._get_stack_update_template_fields(
+                    context, cluster, nodegroups=[nodegroup]),
+                'existing': True,
+                'parameters': heat_params,
+                'disable_rollback': False
+            }
+            osc.heat().stacks.update(nodegroup.stack_id, **nodegroup_fields)
 
     def upgrade_cluster(self, context, cluster, cluster_template,
                         max_batch_size, nodegroup, scale_manager=None,
