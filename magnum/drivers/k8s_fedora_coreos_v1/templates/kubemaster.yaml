@@ -19,10 +19,6 @@ parameters:
     description: Flag indicating if the stack is being resized
     default: false
 
-  is_ca_rotation:
-    type: boolean
-    default: false
-
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade
@@ -710,10 +706,6 @@ conditions:
       - equals:
           - get_param: is_resize
           - true
-  rotate_ca_certs:
-    equals:
-      - get_param: is_ca_rotation
-      - true
 
 resources:
   ######################################################################
@@ -1266,20 +1258,19 @@ resources:
         timestamp_upgrade: { get_param: timestamp_upgrade }
 
   rotate_ca_certs_config:
-    condition: rotate_ca_certs
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
       inputs:
         - name: kube_service_account_key_input
         - name: kube_service_account_private_key_input
+        - name: is_upgrade_input
       config:
         list_join:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
 
   rotate_ca_certs_deployment:
-    condition: rotate_ca_certs
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
@@ -1289,6 +1280,7 @@ resources:
       input_values:
         kube_service_account_key_input: { get_param: kube_service_account_key }
         kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
+        is_upgrade_input: { get_param: is_upgrade }
 
 outputs:
   OS::stack_id:

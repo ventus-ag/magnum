@@ -1,7 +1,14 @@
 echo "START: rotate CA certs on master"
 
+HEAT_PARAMS=/etc/sysconfig/heat-params
+
+if [ ! -f "${HEAT_PARAMS}" ]; then
+    echo "heat-params file is missing, skipping CA rotation"
+    exit 0
+fi
+
 set +x
-. /etc/sysconfig/heat-params
+. "${HEAT_PARAMS}"
 set -x
 
 set -eu -o pipefail
@@ -11,8 +18,26 @@ export KUBECONFIG="/etc/kubernetes/admin.conf"
 
 service_account_key=$kube_service_account_key_input
 service_account_private_key=$kube_service_account_private_key_input
+current_service_account_key="${KUBE_SERVICE_ACCOUNT_KEY:-}"
+current_service_account_private_key="${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:-}"
+is_upgrade="${is_upgrade_input:-false}"
 
 if [ ! -z "$service_account_key" ] && [ ! -z "$service_account_private_key" ] ; then
+    if [ "$service_account_key" = "$current_service_account_key" ] && \
+       [ "$service_account_private_key" = "$current_service_account_private_key" ]; then
+        echo "Service account keys are unchanged, skipping CA rotation"
+        exit 0
+    fi
+
+    if [ -z "$current_service_account_key" ] && [ -z "$current_service_account_private_key" ] && \
+       { [ "$is_upgrade" = "True" ] || [ "$is_upgrade" = "true" ]; }; then
+        echo "Initializing service account key state during upgrade"
+        cat <<EOF >> "${HEAT_PARAMS}"
+KUBE_SERVICE_ACCOUNT_KEY="$service_account_key"
+KUBE_SERVICE_ACCOUNT_PRIVATE_KEY="$service_account_private_key"
+EOF
+        exit 0
+    fi
 
     # Follow the instructions on  https://kubernetes.io/docs/tasks/tls/manual-rotation-of-ca-certificates/
     for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
@@ -41,6 +66,11 @@ if [ ! -z "$service_account_key" ] && [ ! -z "$service_account_private_key" ] ; 
 
     # NOTE(flwang): Re-patch the calico-node daemonset again to make sure all pods are being recreated
     kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "2"}}}}}';
+
+    cat <<EOF >> "${HEAT_PARAMS}"
+KUBE_SERVICE_ACCOUNT_KEY="$service_account_key"
+KUBE_SERVICE_ACCOUNT_PRIVATE_KEY="$service_account_private_key"
+EOF
 fi
 
 echo "END: rotate CA certs on master"

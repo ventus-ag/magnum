@@ -463,7 +463,6 @@ class KubernetesDriver(HeatDriver):
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
         heat_params['is_resize'] = False
-        heat_params['is_ca_rotation'] = True
 
         fields = {
             **self._get_stack_update_template_fields(context, cluster),

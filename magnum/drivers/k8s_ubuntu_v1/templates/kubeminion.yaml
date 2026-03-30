@@ -14,10 +14,6 @@ parameters:
     type: boolean
     default: false
 
-  is_ca_rotation:
-    type: boolean
-    default: false
-
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade
@@ -399,10 +395,6 @@ conditions:
     equals:
       - get_param: is_upgrade
       - true
-  rotate_ca_certs:
-    equals:
-      - get_param: is_ca_rotation
-      - true
 
 resources:
   agent_config:
@@ -699,6 +691,10 @@ resources:
                   $KUBELET_OPTIONS: { get_param: kubelet_options }
                   $KUBEPROXY_OPTIONS: { get_param: kubeproxy_options }
                   $OCTAVIA_ENABLED: { get_param: octavia_enabled }
+                  $KUBE_SERVICE_ACCOUNT_KEY:
+                    { get_param: kube_service_account_key }
+                  $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
+                    { get_param: kube_service_account_private_key }
                   $HEAT_CONTAINER_AGENT_TAG:
                     { get_param: heat_container_agent_tag }
                   $AUTO_HEALING_ENABLED: { get_param: auto_healing_enabled }
@@ -863,6 +859,10 @@ resources:
                   $KUBELET_OPTIONS: { get_param: kubelet_options }
                   $KUBEPROXY_OPTIONS: { get_param: kubeproxy_options }
                   $OCTAVIA_ENABLED: { get_param: octavia_enabled }
+                  $KUBE_SERVICE_ACCOUNT_KEY:
+                    { get_param: kube_service_account_key }
+                  $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
+                    { get_param: kube_service_account_private_key }
                   $HEAT_CONTAINER_AGENT_TAG:
                     { get_param: heat_container_agent_tag }
                   $AUTO_HEALING_ENABLED: { get_param: auto_healing_enabled }
@@ -902,20 +902,19 @@ resources:
         OS_STACK_ID: { get_param: "OS::stack_id" }
 
   rotate_ca_certs_config:
-    condition: rotate_ca_certs
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
       inputs:
         - name: kube_service_account_key_input
         - name: kube_service_account_private_key_input
+        - name: is_upgrade_input
       config:
         list_join:
           - "\n"
           - - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-worker.sh
 
   rotate_ca_certs_deployment:
-    condition: rotate_ca_certs
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
@@ -925,6 +924,7 @@ resources:
       input_values:
         kube_service_account_key_input: { get_param: kube_service_account_key }
         kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
+        is_upgrade_input: { get_param: is_upgrade }
 
 outputs:
   kube_minion_ip:

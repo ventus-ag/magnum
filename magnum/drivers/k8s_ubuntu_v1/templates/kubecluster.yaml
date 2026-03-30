@@ -83,10 +83,6 @@ parameters:
     description: Flag indicating if the stack is being resized
     default: false
 
-  is_ca_rotation:
-    type: boolean
-    default: false
-
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade
@@ -1247,7 +1243,6 @@ resources:
           number_of_masters: { get_param: number_of_masters }
           is_upgrade: { get_param: is_upgrade }
           is_resize: { get_param: is_resize }
-          is_ca_rotation: { get_param: is_ca_rotation }
           timestamp_upgrade: { get_param: timestamp_upgrade }
           heapster_enabled: { get_param: heapster_enabled }
           metrics_server_enabled: { get_param: metrics_server_enabled }
@@ -1505,7 +1500,6 @@ resources:
           nodegroup_role: { get_param: worker_role }
           nodegroup_name: { get_param: worker_nodegroup_name }
           is_upgrade: { get_param: is_upgrade }
-          is_ca_rotation: { get_param: is_ca_rotation }
           timestamp_upgrade: { get_param: timestamp_upgrade }
           ssh_key_name: { get_param: ssh_key_name }
           ssh_public_key: { get_param: ssh_public_key }
