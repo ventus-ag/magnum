@@ -13,7 +13,6 @@
 import abc
 import collections
 import os
-import re
 from pbr.version import SemanticVersion as SV
 import six
 import json
@@ -451,45 +450,13 @@ class KubernetesDriver(HeatDriver):
         }
 
     def _get_default_nested_stack_ids(self, osc, cluster, nodegroup):
-        resource_prefix = (
+        resource_name = (
             'kube_masters' if nodegroup.role == 'master' else 'kube_minions')
-        resource_name_pattern = re.compile(
-            r'^%s[./](\d+)$' % re.escape(resource_prefix))
-        resource_link_pattern = re.compile(
-            r'/resources/%s(?:\.(\d+)|/(\d+))$' %
-            re.escape(resource_prefix))
-        nested_stack_ids = []
-
-        resources = osc.heat().resources.list(cluster.stack_id,
-                                              nested_depth=2)
-
-        for resource in resources:
-            stack_id = getattr(resource, 'physical_resource_id', None)
-            if not stack_id:
-                continue
-
-            resource_name = (
-                getattr(resource, 'resource_name', None) or
-                getattr(resource, 'logical_resource_id', None) or '')
-            match = resource_name_pattern.match(resource_name)
-
-            if not match:
-                for link in getattr(resource, 'links', []) or []:
-                    if isinstance(link, dict):
-                        href = link.get('href', '')
-                    else:
-                        href = getattr(link, 'href', '')
-                    match = resource_link_pattern.search(href)
-                    if match:
-                        break
-
-            if not match:
-                continue
-
-            nested_index = match.group(1) or match.group(2)
-            nested_stack_ids.append((int(nested_index), stack_id))
-
-        return [stack_id for _, stack_id in sorted(nested_stack_ids)]
+        resource = osc.heat().resources.get(cluster.stack_id, resource_name)
+        refs = resource.attributes.get('refs') or []
+        if isinstance(refs, (list, tuple)):
+            return [stack_id for stack_id in refs if stack_id]
+        return []
 
     def _get_nested_stack_update_template_fields(self, nodegroup):
         template_name = (
@@ -522,6 +489,13 @@ class KubernetesDriver(HeatDriver):
                 nested_params['ca_key'] = heat_params['ca_key']
 
         return nested_params
+
+    def _get_merged_stack_parameters(self, osc, stack_id, updated_params):
+        current_parameters = osc.heat().stacks.get(stack_id).parameters.copy()
+        for param in ('OS::stack_id', 'OS::project_id', 'OS::stack_name'):
+            current_parameters.pop(param, None)
+        current_parameters.update(updated_params)
+        return current_parameters
 
     def rotate_ca_certificate(self, context, cluster):
         osc = clients.OpenStackClients(context)
@@ -559,14 +533,16 @@ class KubernetesDriver(HeatDriver):
                                 nodegroup.role, cluster.uuid)
                     continue
 
-            nodegroup_fields = {
-                **stack_fields,
-                'existing': True,
-                'parameters': self._get_nested_ca_rotation_params(
-                    nodegroup, heat_params),
-                'disable_rollback': False
-            }
             for stack_id in stack_ids:
+                nodegroup_fields = {
+                    **stack_fields,
+                    'existing': True,
+                    'parameters': self._get_merged_stack_parameters(
+                        osc, stack_id,
+                        self._get_nested_ca_rotation_params(
+                            nodegroup, heat_params)),
+                    'disable_rollback': False
+                }
                 osc.heat().stacks.update(stack_id, **nodegroup_fields)
 
     def _get_ca_rotation_params(self, context, cluster):
