@@ -31,6 +31,15 @@ from magnum import objects
 from magnum.objects import fields
 
 
+def _get_cluster_resource(cluster_id, admin_action=None):
+    context = pecan.request.context
+    if context.is_admin and admin_action:
+        policy.enforce(context, admin_action, action=admin_action)
+        context.all_tenants = True
+
+    return api_utils.get_resource('Cluster', cluster_id)
+
+
 def _validate_node_count(ng):
     if ng.max_node_count:
         if ng.max_node_count < ng.min_node_count:
@@ -267,13 +276,8 @@ class NodeGroupController(base.Controller):
         context = pecan.request.context
         policy.enforce(context, 'nodegroup:get_all',
                        action='nodegroup:get_all')
-
-        if context.is_admin:
-            policy.enforce(context, 'nodegroup:get_all_all_projects',
-                           action='nodegroup:get_all_all_projects')
-            context.all_tenants = True
-
-        cluster = api_utils.get_resource('Cluster', cluster_id)
+        cluster = _get_cluster_resource(cluster_id,
+                                        'nodegroup:get_all_all_projects')
 
         filters = {}
         if not context.is_admin:
@@ -299,11 +303,8 @@ class NodeGroupController(base.Controller):
         """
         context = pecan.request.context
         policy.enforce(context, 'nodegroup:get', action='nodegroup:get')
-        if context.is_admin:
-            policy.enforce(context, "nodegroup:get_one_all_projects",
-                           action="nodegroup:get_one_all_projects")
-            context.all_tenants = True
-        cluster = api_utils.get_resource('Cluster', cluster_id)
+        cluster = _get_cluster_resource(cluster_id,
+                                        'nodegroup:get_one_all_projects')
         nodegroup = objects.NodeGroup.get(context, cluster.uuid, nodegroup_id)
         return NodeGroup.convert(nodegroup)
 
@@ -318,8 +319,8 @@ class NodeGroupController(base.Controller):
 
         context = pecan.request.context
         policy.enforce(context, 'nodegroup:create', action='nodegroup:create')
-
-        cluster = api_utils.get_resource('Cluster', cluster_id)
+        cluster = _get_cluster_resource(cluster_id,
+                                        'nodegroup:create_all_projects')
         # Before we start, we need to check that the cluster has an
         # api_address. If not, just fail.
         if 'api_address' not in cluster or not cluster.api_address:
@@ -350,7 +351,7 @@ class NodeGroupController(base.Controller):
 
         nodegroup_dict = nodegroup.as_dict()
         nodegroup_dict['cluster_id'] = cluster.uuid
-        nodegroup_dict['project_id'] = context.project_id
+        nodegroup_dict['project_id'] = cluster.project_id
 
         new_obj = objects.NodeGroup(context, **nodegroup_dict)
         new_obj.uuid = uuid.uuid4()
@@ -367,7 +368,8 @@ class NodeGroupController(base.Controller):
         :param : resource name.
         :param values: a json document to update a nodegroup.
         """
-        cluster = api_utils.get_resource('Cluster', cluster_id)
+        cluster = _get_cluster_resource(cluster_id,
+                                        'nodegroup:update_all_projects')
         nodegroup = self._patch(cluster.uuid, nodegroup_id, patch)
         pecan.request.rpcapi.nodegroup_update_async(cluster, nodegroup)
         return NodeGroup.convert(nodegroup)
@@ -383,7 +385,8 @@ class NodeGroupController(base.Controller):
         """
         context = pecan.request.context
         policy.enforce(context, 'nodegroup:delete', action='nodegroup:delete')
-        cluster = api_utils.get_resource('Cluster', cluster_id)
+        cluster = _get_cluster_resource(cluster_id,
+                                        'nodegroup:delete_all_projects')
         nodegroup = objects.NodeGroup.get(context, cluster.uuid, nodegroup_id)
         if nodegroup.is_default:
             raise exception.DeletingDefaultNGNotSupported()

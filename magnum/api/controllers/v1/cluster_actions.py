@@ -23,6 +23,15 @@ from magnum.common import policy
 from magnum import objects
 
 
+def _get_cluster_resource(cluster_ident, admin_action=None):
+    context = pecan.request.context
+    if context.is_admin and admin_action:
+        policy.enforce(context, admin_action, action=admin_action)
+        context.all_tenants = True
+
+    return api_utils.get_resource('Cluster', cluster_ident)
+
+
 class ClusterID(wtypes.Base):
     """API representation of a cluster ID
 
@@ -90,7 +99,8 @@ class ActionsController(base.Controller):
         :param cluster_ident: UUID of a cluster or logical name of the cluster.
         """
         context = pecan.request.context
-        cluster = api_utils.get_resource('Cluster', cluster_ident)
+        cluster = _get_cluster_resource(cluster_ident,
+                                        'cluster:resize_all_projects')
         policy.enforce(context, 'cluster:resize', cluster,
                        action='cluster:resize')
 
@@ -159,12 +169,8 @@ class ActionsController(base.Controller):
         :param cluster_ident: UUID of a cluster or logical name of the cluster.
         """
         context = pecan.request.context
-        if context.is_admin:
-            policy.enforce(context, "cluster:upgrade_all_projects",
-                           action="cluster:upgrade_all_projects")
-            context.all_tenants = True
-
-        cluster = api_utils.get_resource('Cluster', cluster_ident)
+        cluster = _get_cluster_resource(cluster_ident,
+                                        'cluster:upgrade_all_projects')
         policy.enforce(context, 'cluster:upgrade', cluster,
                        action='cluster:upgrade')
 
