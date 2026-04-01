@@ -16,11 +16,16 @@ set -eu -o pipefail
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 rotation_id="${ca_rotation_id_input:-}"
-current_rotation_id="${CA_ROTATION_ID:-}"
 service_account_key="${kube_service_account_key_input:-}"
 service_account_private_key="${kube_service_account_private_key_input:-}"
 cert_dir=/etc/kubernetes/certs
 ca_cert="${cert_dir}/ca.crt"
+rotation_state_file=/var/lib/magnum/last_ca_rotation_id
+
+current_rotation_id=""
+if [ -f "${rotation_state_file}" ]; then
+    current_rotation_id=$(cat "${rotation_state_file}")
+fi
 
 update_heat_param() {
     param_key="$1"
@@ -90,6 +95,7 @@ fi
 
 HOSTNAME=$(cat /etc/hostname | head -1)
 mkdir -p "${cert_dir}"
+mkdir -p "$(dirname "${rotation_state_file}")"
 
 auth_json=$(cat <<EOF
 {
@@ -180,5 +186,7 @@ done
 update_heat_param KUBE_SERVICE_ACCOUNT_KEY "${service_account_key}"
 update_heat_param KUBE_SERVICE_ACCOUNT_PRIVATE_KEY "${service_account_private_key}"
 update_heat_param CA_ROTATION_ID "${rotation_id}"
+printf '%s' "${rotation_id}" > "${rotation_state_file}"
+chmod 600 "${rotation_state_file}"
 
 echo "END: rotate CA certs on worker"

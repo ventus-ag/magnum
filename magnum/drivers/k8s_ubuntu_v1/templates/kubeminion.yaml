@@ -920,7 +920,12 @@ resources:
       config:
         list_join:
           - "\n"
-          - - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-worker.sh
+          - - str_replace:
+                template: |
+                  rotation_config_id="__CA_ROTATION_ID__"
+                params:
+                  __CA_ROTATION_ID__: { get_param: ca_rotation_id }
+            - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-worker.sh
 
   rotate_ca_certs_deployment:
     type: OS::Heat::SoftwareDeployment
@@ -928,6 +933,11 @@ resources:
       signal_transport: HEAT_SIGNAL
       config: { get_resource: rotate_ca_certs_config }
       server: { get_resource: kube-minion }
+      name:
+        str_replace:
+          template: rotate-ca-certs-__CA_ROTATION_ID__
+          params:
+            __CA_ROTATION_ID__: { get_param: ca_rotation_id }
       actions: ['CREATE', 'UPDATE']
       input_values:
         kube_service_account_key_input: { get_param: kube_service_account_key }
