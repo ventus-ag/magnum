@@ -13,6 +13,7 @@
 import abc
 import collections
 import os
+import re
 from pbr.version import SemanticVersion as SV
 import six
 import json
@@ -449,6 +450,79 @@ class KubernetesDriver(HeatDriver):
             'files': tpl_files,
         }
 
+    def _get_default_nested_stack_ids(self, osc, cluster, nodegroup):
+        resource_prefix = (
+            'kube_masters' if nodegroup.role == 'master' else 'kube_minions')
+        resource_name_pattern = re.compile(
+            r'^%s[./](\d+)$' % re.escape(resource_prefix))
+        resource_link_pattern = re.compile(
+            r'/resources/%s(?:\.(\d+)|/(\d+))$' %
+            re.escape(resource_prefix))
+        nested_stack_ids = []
+
+        resources = osc.heat().resources.list(cluster.stack_id,
+                                              nested_depth=2)
+
+        for resource in resources:
+            stack_id = getattr(resource, 'physical_resource_id', None)
+            if not stack_id:
+                continue
+
+            resource_name = (
+                getattr(resource, 'resource_name', None) or
+                getattr(resource, 'logical_resource_id', None) or '')
+            match = resource_name_pattern.match(resource_name)
+
+            if not match:
+                for link in getattr(resource, 'links', []) or []:
+                    if isinstance(link, dict):
+                        href = link.get('href', '')
+                    else:
+                        href = getattr(link, 'href', '')
+                    match = resource_link_pattern.search(href)
+                    if match:
+                        break
+
+            if not match:
+                continue
+
+            nested_index = match.group(1) or match.group(2)
+            nested_stack_ids.append((int(nested_index), stack_id))
+
+        return [stack_id for _, stack_id in sorted(nested_stack_ids)]
+
+    def _get_nested_stack_update_template_fields(self, nodegroup):
+        template_name = (
+            'kubemaster.yaml' if nodegroup.role == 'master'
+            else 'kubeminion.yaml')
+        template_path = os.path.join(
+            os.path.dirname(self.get_template_definition().template_path),
+            template_name)
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+        return {
+            'template': template,
+            'environment_files': [],
+            'files': tpl_files,
+        }
+
+    def _get_nested_ca_rotation_params(self, nodegroup, heat_params):
+        nested_params = {
+            'ca_rotation_id': heat_params['ca_rotation_id'],
+            'kube_service_account_key':
+                heat_params['kube_service_account_key'],
+            'kube_service_account_private_key':
+                heat_params['kube_service_account_private_key'],
+            'is_upgrade': False,
+        }
+
+        if nodegroup.role == 'master':
+            nested_params['is_resize'] = False
+            if 'ca_key' in heat_params:
+                nested_params['ca_key'] = heat_params['ca_key']
+
+        return nested_params
+
     def rotate_ca_certificate(self, context, cluster):
         osc = clients.OpenStackClients(context)
 
@@ -467,17 +541,33 @@ class KubernetesDriver(HeatDriver):
         osc.heat().stacks.update(cluster.stack_id, **fields)
 
         for nodegroup in cluster.nodegroups:
-            if nodegroup.is_default or not nodegroup.stack_id:
+            if not nodegroup.stack_id:
                 continue
 
+            stack_ids = [nodegroup.stack_id]
+            stack_fields = self._get_stack_update_template_fields(
+                context, cluster, nodegroups=[nodegroup])
+
+            if nodegroup.is_default:
+                stack_ids = self._get_default_nested_stack_ids(
+                    osc, cluster, nodegroup)
+                stack_fields = self._get_nested_stack_update_template_fields(
+                    nodegroup)
+                if not stack_ids:
+                    LOG.warning('Could not resolve default %s nested stacks '
+                                'for cluster %s during CA rotation',
+                                nodegroup.role, cluster.uuid)
+                    continue
+
             nodegroup_fields = {
-                **self._get_stack_update_template_fields(
-                    context, cluster, nodegroups=[nodegroup]),
+                **stack_fields,
                 'existing': True,
-                'parameters': heat_params,
+                'parameters': self._get_nested_ca_rotation_params(
+                    nodegroup, heat_params),
                 'disable_rollback': False
             }
-            osc.heat().stacks.update(nodegroup.stack_id, **nodegroup_fields)
+            for stack_id in stack_ids:
+                osc.heat().stacks.update(stack_id, **nodegroup_fields)
 
     def _get_ca_rotation_params(self, context, cluster):
         heat_params = {
