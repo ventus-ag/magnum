@@ -716,6 +716,13 @@ parameters:
       The private key will be used to sign generated k8s service account
       tokens.
 
+  ca_rotation_id:
+    type: string
+    default: ""
+    hidden: true
+    description: >
+      Explicit token used to trigger CA rotation on existing nodes.
+
   prometheus_tag:
     type: string
     description: tag of the prometheus container
@@ -1340,6 +1347,7 @@ resources:
           kube_service_account_key: { get_param: kube_service_account_key }
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
+          ca_rotation_id: { get_param: ca_rotation_id }
           prometheus_tag: { get_param: prometheus_tag }
           grafana_tag: { get_param: grafana_tag }
           heat_container_agent_tag: { get_param: heat_container_agent_tag }
@@ -1597,6 +1605,7 @@ resources:
           kube_service_account_key: { get_param: kube_service_account_key }
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
+          ca_rotation_id: { get_param: ca_rotation_id }
 
 outputs:
   api_address:

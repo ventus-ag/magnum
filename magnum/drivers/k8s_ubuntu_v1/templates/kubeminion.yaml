@@ -380,6 +380,12 @@ parameters:
     description: >
       The private key will be used to sign the k8s service account tokens.
 
+  ca_rotation_id:
+    type: string
+    default: ""
+    hidden: true
+    description: Explicit token used to trigger CA rotation.
+
 conditions:
   image_based: { equals: [{ get_param: boot_volume_size }, 0] }
   volume_based:
@@ -695,6 +701,7 @@ resources:
                     { get_param: kube_service_account_key }
                   $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
                     { get_param: kube_service_account_private_key }
+                  $CA_ROTATION_ID: { get_param: ca_rotation_id }
                   $HEAT_CONTAINER_AGENT_TAG:
                     { get_param: heat_container_agent_tag }
                   $AUTO_HEALING_ENABLED: { get_param: auto_healing_enabled }
@@ -863,6 +870,7 @@ resources:
                     { get_param: kube_service_account_key }
                   $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
                     { get_param: kube_service_account_private_key }
+                  $CA_ROTATION_ID: { get_param: ca_rotation_id }
                   $HEAT_CONTAINER_AGENT_TAG:
                     { get_param: heat_container_agent_tag }
                   $AUTO_HEALING_ENABLED: { get_param: auto_healing_enabled }
@@ -908,6 +916,7 @@ resources:
       inputs:
         - name: kube_service_account_key_input
         - name: kube_service_account_private_key_input
+        - name: ca_rotation_id_input
         - name: is_upgrade_input
       config:
         list_join:
@@ -924,6 +933,7 @@ resources:
       input_values:
         kube_service_account_key_input: { get_param: kube_service_account_key }
         kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
+        ca_rotation_id_input: { get_param: ca_rotation_id }
         is_upgrade_input: { get_param: is_upgrade }
 
 outputs:

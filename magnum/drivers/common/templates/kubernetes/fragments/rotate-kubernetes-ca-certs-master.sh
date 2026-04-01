@@ -14,63 +14,355 @@ set -x
 set -eu -o pipefail
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
-export KUBECONFIG="/etc/kubernetes/admin.conf"
 
-service_account_key=$kube_service_account_key_input
-service_account_private_key=$kube_service_account_private_key_input
-current_service_account_key="${KUBE_SERVICE_ACCOUNT_KEY:-}"
-current_service_account_private_key="${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:-}"
-is_upgrade="${is_upgrade_input:-false}"
+rotation_id="${ca_rotation_id_input:-}"
+current_rotation_id="${CA_ROTATION_ID:-}"
+service_account_key="${kube_service_account_key_input:-}"
+service_account_private_key="${kube_service_account_private_key_input:-}"
+ca_key="${ca_key_input:-}"
+cert_dir=/etc/kubernetes/certs
+etcd_cert_dir=/etc/etcd/certs
+ca_cert="${cert_dir}/ca.crt"
+admin_kubeconfig=/etc/kubernetes/admin.conf
 
-if [ ! -z "$service_account_key" ] && [ ! -z "$service_account_private_key" ] ; then
-    if [ "$service_account_key" = "$current_service_account_key" ] && \
-       [ "$service_account_private_key" = "$current_service_account_private_key" ]; then
-        echo "Service account keys are unchanged, skipping CA rotation"
-        exit 0
-    fi
+update_heat_param() {
+    param_key="$1"
+    param_value="$2"
 
-    if [ -z "$current_service_account_key" ] && [ -z "$current_service_account_private_key" ] && \
-       { [ "$is_upgrade" = "True" ] || [ "$is_upgrade" = "true" ]; }; then
-        echo "Initializing service account key state during upgrade"
-        cat <<EOF >> "${HEAT_PARAMS}"
-KUBE_SERVICE_ACCOUNT_KEY="$service_account_key"
-KUBE_SERVICE_ACCOUNT_PRIVATE_KEY="$service_account_private_key"
+    sed -i "/^${param_key}=/d" "${HEAT_PARAMS}"
+    printf '%s="%s"\n' "${param_key}" "${param_value}" >> "${HEAT_PARAMS}"
+}
+
+wait_for_api() {
+    for _attempt in $(seq 1 30); do
+        if kubectl get namespace >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
+
+generate_certificates() {
+    cert_name="$1"
+    cert_config="$2"
+    cert_path="${cert_dir}/${cert_name}.crt"
+    csr_path="${cert_dir}/${cert_name}.csr"
+    key_path="${cert_dir}/${cert_name}.key"
+
+    rm -f "${cert_path}" "${csr_path}" "${key_path}"
+
+    $ssh_cmd openssl genrsa -out "${key_path}" 4096
+    chmod 400 "${key_path}"
+    $ssh_cmd openssl req -new -days 1000 \
+        -key "${key_path}" \
+        -out "${csr_path}" \
+        -reqexts req_ext \
+        -config "${cert_config}"
+
+    csr_req=$(python -c "import json; fp = open('${csr_path}'); print(json.dumps({'cluster_uuid': '$CLUSTER_UUID', 'csr': fp.read()})); fp.close()")
+    curl ${verify_ca_opt} -s -X POST \
+        -H "X-Auth-Token: ${user_token}" \
+        -H "OpenStack-API-Version: container-infra latest" \
+        -H "Content-Type: application/json" \
+        -d "${csr_req}" \
+        "${MAGNUM_URL}/certificates" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${cert_path}"
+
+    rm -f "${csr_path}"
+}
+
+if [ -z "${rotation_id}" ]; then
+    echo "No CA rotation requested, skipping"
+    exit 0
+fi
+
+if [ "${rotation_id}" = "${current_rotation_id}" ]; then
+    echo "CA rotation ${rotation_id} already applied, skipping"
+    exit 0
+fi
+
+if [ -z "${service_account_key}" ] || [ -z "${service_account_private_key}" ]; then
+    echo "Missing service account key material for CA rotation"
+    exit 1
+fi
+
+if [ "${TLS_DISABLED}" = "True" ]; then
+    echo "TLS is disabled, skipping CA rotation"
+    exit 0
+fi
+
+if [ "${VERIFY_CA}" = "True" ]; then
+    verify_ca_opt=""
+else
+    verify_ca_opt="-k"
+fi
+
+if [ -z "${KUBE_NODE_IP:-}" ]; then
+    KUBE_NODE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+fi
+
+sans="IP:${KUBE_NODE_IP}"
+
+if [ -z "${KUBE_NODE_PUBLIC_IP:-}" ]; then
+    KUBE_NODE_PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+fi
+
+if [ -n "${KUBE_NODE_PUBLIC_IP:-}" ]; then
+    sans="${sans},IP:${KUBE_NODE_PUBLIC_IP}"
+fi
+
+if [ "${KUBE_NODE_PUBLIC_IP:-}" != "${KUBE_API_PUBLIC_ADDRESS:-}" ] && \
+   [ -n "${KUBE_API_PUBLIC_ADDRESS:-}" ]; then
+    sans="${sans},IP:${KUBE_API_PUBLIC_ADDRESS}"
+fi
+
+if [ "${KUBE_NODE_IP}" != "${KUBE_API_PRIVATE_ADDRESS:-}" ] && \
+   [ -n "${KUBE_API_PRIVATE_ADDRESS:-}" ]; then
+    sans="${sans},IP:${KUBE_API_PRIVATE_ADDRESS}"
+fi
+
+if [ -n "${MASTER_HOSTNAME:-}" ]; then
+    sans="${sans},DNS:${MASTER_HOSTNAME}"
+fi
+
+if [ -n "${ETCD_LB_VIP:-}" ]; then
+    sans="${sans},IP:${ETCD_LB_VIP}"
+fi
+
+sans="${sans},IP:127.0.0.1"
+KUBE_SERVICE_IP=$(echo "${PORTAL_NETWORK_CIDR}" | awk 'BEGIN{FS="[./]"; OFS="."}{print $1,$2,$3,$4 + 1}')
+sans="${sans},IP:${KUBE_SERVICE_IP}"
+sans="${sans},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.cluster.local"
+
+mkdir -p "${cert_dir}" "${etcd_cert_dir}"
+
+auth_json=$(cat <<EOF
+{
+    "auth": {
+        "identity": {
+            "methods": [
+                "password"
+            ],
+            "password": {
+                "user": {
+                    "id": "${TRUSTEE_USER_ID}",
+                    "password": "${TRUSTEE_PASSWORD}"
+                }
+            }
+        },
+        "scope": {
+            "OS-TRUST:trust": {
+                "id": "${TRUST_ID}"
+            }
+        }
+    }
+}
 EOF
-        exit 0
-    fi
+)
 
-    # Follow the instructions on  https://kubernetes.io/docs/tasks/tls/manual-rotation-of-ca-certificates/
-    for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
-        for name in $(kubectl get deployments -n $namespace -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch deployment -n ${namespace} ${name} -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "1"}}}}}';
-        done
-        for name in $(kubectl get daemonset -n $namespace -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch daemonset -n ${namespace} ${name} -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "1"}}}}}';
-        done
-    done
+user_token=$(curl ${verify_ca_opt} -s -i -X POST \
+    -H "Content-Type: application/json" \
+    -d "${auth_json}" \
+    "${AUTH_URL}/auth/tokens" | grep -i X-Subject-Token | awk '{print $2}' | tr -d '[[:space:]]')
 
-    # Annotate any Daemonsets and Deployments to trigger pod replacement in a safer rolling fashion.
-    for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
-        for name in $(kubectl get deployments -n $namespace -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch deployment -n ${namespace} ${name} -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "1"}}}}}';
-        done
-        for name in $(kubectl get daemonset -n $namespace -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch daemonset -n ${namespace} ${name} -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "1"}}}}}';
-        done
-    done
+if [ -z "${user_token}" ]; then
+    echo "Failed to obtain a Keystone token for CA rotation"
+    exit 1
+fi
 
-    for service in etcd kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy; do
-        echo "restart service $service"
-        $ssh_cmd systemctl restart $service
-    done
+curl ${verify_ca_opt} -s -X GET \
+    -H "X-Auth-Token: ${user_token}" \
+    -H "OpenStack-API-Version: container-infra latest" \
+    "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${ca_cert}"
 
-    # NOTE(flwang): Re-patch the calico-node daemonset again to make sure all pods are being recreated
-    kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation": "2"}}}}}';
-
-    cat <<EOF >> "${HEAT_PARAMS}"
-KUBE_SERVICE_ACCOUNT_KEY="$service_account_key"
-KUBE_SERVICE_ACCOUNT_PRIVATE_KEY="$service_account_private_key"
+cat > "${cert_dir}/server.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = kubernetes
+[req_ext]
+subjectAltName = ${sans}
+extendedKeyUsage = clientAuth,serverAuth
 EOF
+
+cat > "${cert_dir}/proxy.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-proxy
+O=system:node-proxier
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+EOF
+
+cat > "${cert_dir}/scheduler.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-scheduler
+O=system:kube-scheduler
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
+EOF
+
+cat > "${cert_dir}/controller.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:kube-controller-manager
+O=system:kube-controller-manager
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
+EOF
+
+cat > "${cert_dir}/kubelet.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = system:node:${INSTANCE_NAME}
+O=system:nodes
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+subjectAltName = ${sans}
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth,serverAuth
+EOF
+
+cat > "${cert_dir}/admin.conf" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt = no
+[req_distinguished_name]
+CN = admin
+O = system:masters
+OU=OpenStack/Magnum
+C=US
+ST=TX
+L=Austin
+[req_ext]
+extendedKeyUsage= clientAuth
+EOF
+
+generate_certificates server "${cert_dir}/server.conf"
+generate_certificates kubelet "${cert_dir}/kubelet.conf"
+generate_certificates admin "${cert_dir}/admin.conf"
+generate_certificates proxy "${cert_dir}/proxy.conf"
+generate_certificates controller "${cert_dir}/controller.conf"
+generate_certificates scheduler "${cert_dir}/scheduler.conf"
+
+echo -e "${service_account_key}" > "${cert_dir}/service_account.key"
+echo -e "${service_account_private_key}" > "${cert_dir}/service_account_private.key"
+
+if [ -n "${ca_key}" ]; then
+    echo -e "${ca_key}" > "${cert_dir}/ca.key"
+    chmod 400 "${cert_dir}/ca.key"
+fi
+
+if ! $ssh_cmd id etcd >/dev/null 2>&1; then
+    $ssh_cmd useradd -s "/sbin/nologin" --system etcd
+fi
+
+if ! $ssh_cmd id kube >/dev/null 2>&1; then
+    $ssh_cmd useradd -s "/sbin/nologin" --system kube
+fi
+
+$ssh_cmd groupadd kube_etcd -f
+$ssh_cmd usermod -a -G kube_etcd etcd
+$ssh_cmd usermod -a -G kube_etcd kube
+$ssh_cmd chmod 550 "${cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
+$ssh_cmd chmod 440 "${cert_dir}/server.key"
+$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
+$ssh_cmd chmod 440 "${cert_dir}/controller.key"
+$ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
+$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
+$ssh_cmd cp "${cert_dir}"/* "${etcd_cert_dir}"
+
+cat > "${admin_kubeconfig}.tmp" <<EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: ${cert_dir}/ca.crt
+    server: https://127.0.0.1:${KUBE_API_PORT}
+  name: ${CLUSTER_UUID}
+contexts:
+- context:
+    cluster: ${CLUSTER_UUID}
+    user: admin
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    client-certificate: ${cert_dir}/admin.crt
+    client-key: ${cert_dir}/admin.key
+EOF
+mv "${admin_kubeconfig}.tmp" "${admin_kubeconfig}"
+chmod 600 "${admin_kubeconfig}"
+
+export KUBECONFIG="${admin_kubeconfig}"
+$ssh_cmd mkdir -p /root/.kube
+$ssh_cmd cp -f "${admin_kubeconfig}" /root/.kube/config
+
+for service in etcd kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy; do
+    echo "restart service ${service}"
+    $ssh_cmd systemctl restart "${service}"
+done
+
+if ! wait_for_api; then
+    echo "Kubernetes API did not become ready after CA rotation"
+    exit 1
+fi
+
+for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
+    for name in $(kubectl get deployments -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
+        kubectl patch deployment -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+    done
+    for name in $(kubectl get daemonset -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
+        kubectl patch daemonset -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+    done
+done
+
+if kubectl get daemonset -n kube-system calico-node >/dev/null 2>&1; then
+    kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"2"}}}}}'
+fi
+
+update_heat_param KUBE_SERVICE_ACCOUNT_KEY "${service_account_key}"
+update_heat_param KUBE_SERVICE_ACCOUNT_PRIVATE_KEY "${service_account_private_key}"
+update_heat_param CA_ROTATION_ID "${rotation_id}"
+if [ -n "${ca_key}" ]; then
+    update_heat_param CA_KEY "${ca_key}"
 fi
 
 echo "END: rotate CA certs on master"

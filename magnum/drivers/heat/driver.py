@@ -452,13 +452,7 @@ class KubernetesDriver(HeatDriver):
     def rotate_ca_certificate(self, context, cluster):
         osc = clients.OpenStackClients(context)
 
-        heat_params = {}
-
-        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
-        heat_params['kube_service_account_key'] = \
-            csr_keys["public_key"].replace("\n", "\\n")
-        heat_params['kube_service_account_private_key'] = \
-            csr_keys["private_key"].replace("\n", "\\n")
+        heat_params = self._get_ca_rotation_params(context, cluster)
 
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
@@ -484,6 +478,35 @@ class KubernetesDriver(HeatDriver):
                 'disable_rollback': False
             }
             osc.heat().stacks.update(nodegroup.stack_id, **nodegroup_fields)
+
+    def _get_ca_rotation_params(self, context, cluster):
+        heat_params = {
+            'ca_rotation_id': short_id.generate_id(),
+        }
+
+        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
+        heat_params['kube_service_account_key'] = \
+            csr_keys["public_key"].replace("\n", "\\n")
+        heat_params['kube_service_account_private_key'] = \
+            csr_keys["private_key"].replace("\n", "\\n")
+
+        cluster_labels = cluster.labels or {}
+        cert_manager_api = cluster_labels.get('cert_manager_api')
+        if six.text_type(cert_manager_api).lower() == 'true':
+            ca_cert = cert_manager.get_cluster_ca_certificate(cluster,
+                                                              context=context)
+            ca_key_password = ca_cert.get_private_key_passphrase()
+            if six.PY3 and isinstance(ca_key_password, six.text_type):
+                ca_key = x509.decrypt_key(
+                    ca_cert.get_private_key(),
+                    ca_key_password.encode()).decode()
+            else:
+                ca_key = x509.decrypt_key(
+                    ca_cert.get_private_key(),
+                    ca_key_password)
+            heat_params['ca_key'] = ca_key.replace("\n", "\\n")
+
+        return heat_params
 
     def upgrade_cluster(self, context, cluster, cluster_template,
                         max_batch_size, nodegroup, scale_manager=None,

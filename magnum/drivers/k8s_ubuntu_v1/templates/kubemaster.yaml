@@ -462,6 +462,12 @@ parameters:
       The private key will be used to sign generated k8s service account
       tokens.
 
+  ca_rotation_id:
+    type: string
+    default: ""
+    hidden: true
+    description: Explicit token used to trigger CA rotation.
+
   prometheus_tag:
     type: string
     description: tag of prometheus container
@@ -1072,6 +1078,7 @@ resources:
                     { get_param: kube_service_account_key }
                   $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
                     { get_param: kube_service_account_private_key }
+                  $CA_ROTATION_ID: { get_param: ca_rotation_id }
                   $PROMETHEUS_TAG: { get_param: prometheus_tag }
                   $GRAFANA_TAG: { get_param: grafana_tag }
                   $HEAT_CONTAINER_AGENT_TAG:
@@ -1375,6 +1382,7 @@ resources:
                     { get_param: kube_service_account_key }
                   $KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:
                     { get_param: kube_service_account_private_key }
+                  $CA_ROTATION_ID: { get_param: ca_rotation_id }
                   $PROMETHEUS_TAG: { get_param: prometheus_tag }
                   $GRAFANA_TAG: { get_param: grafana_tag }
                   $HEAT_CONTAINER_AGENT_TAG:
@@ -1470,6 +1478,8 @@ resources:
       inputs:
         - name: kube_service_account_key_input
         - name: kube_service_account_private_key_input
+        - name: ca_rotation_id_input
+        - name: ca_key_input
         - name: is_upgrade_input
       config:
         list_join:
@@ -1486,6 +1496,8 @@ resources:
       input_values:
         kube_service_account_key_input: { get_param: kube_service_account_key }
         kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
+        ca_rotation_id_input: { get_param: ca_rotation_id }
+        ca_key_input: { get_param: ca_key }
         is_upgrade_input: { get_param: is_upgrade }
 
 outputs:

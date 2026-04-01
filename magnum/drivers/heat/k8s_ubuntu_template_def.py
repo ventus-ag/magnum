@@ -131,12 +131,7 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
             if label_value:
                 extra_params[label] = label_value
 
-        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
-
-        extra_params['kube_service_account_key'] = \
-            csr_keys["public_key"].replace("\n", "\\n")
-        extra_params['kube_service_account_private_key'] = \
-            csr_keys["private_key"].replace("\n", "\\n")
+        self._set_service_account_params(context, cluster, extra_params)
 
         extra_params['project_id'] = cluster.project_id
         extra_params['post_install_manifest_url'] = \
@@ -171,6 +166,34 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                 extra_params['ca_key'] = x509.decrypt_key(
                     ca_cert.get_private_key(),
                     ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
+
+    def _set_service_account_params(self, context, cluster, extra_params):
+        if cluster.stack_id:
+            try:
+                stack = self.get_osc(context).heat().stacks.get(
+                    cluster.stack_id)
+                extra_params['ca_rotation_id'] = stack.parameters.get(
+                    'ca_rotation_id', '')
+                service_account_key = stack.parameters.get(
+                    'kube_service_account_key')
+                service_account_private_key = stack.parameters.get(
+                    'kube_service_account_private_key')
+                if service_account_key and service_account_private_key:
+                    extra_params['kube_service_account_key'] = (
+                        service_account_key)
+                    extra_params['kube_service_account_private_key'] = (
+                        service_account_private_key)
+                    return
+            except Exception as exc:
+                LOG.debug('Falling back to newly generated service account '
+                          'keys for cluster %s: %s', cluster.uuid, exc)
+
+        extra_params.setdefault('ca_rotation_id', '')
+        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
+        extra_params['kube_service_account_key'] = (
+            csr_keys["public_key"].replace("\n", "\\n"))
+        extra_params['kube_service_account_private_key'] = (
+            csr_keys["private_key"].replace("\n", "\\n"))
 
     def _get_keystone_auth_default_policy(self, extra_params):
         # NOTE(flwang): This purpose of this function is to make the default
