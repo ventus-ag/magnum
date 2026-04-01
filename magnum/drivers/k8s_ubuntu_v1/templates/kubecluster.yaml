@@ -719,7 +719,6 @@ parameters:
   ca_rotation_id:
     type: string
     default: ""
-    hidden: true
     description: >
       Explicit token used to trigger CA rotation on existing nodes.
 
