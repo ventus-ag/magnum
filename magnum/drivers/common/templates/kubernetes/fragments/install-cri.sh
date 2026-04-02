@@ -21,7 +21,7 @@ is_pure_ca_rotation() {
 
 containerd_already_configured() {
     $ssh_cmd test -f /etc/containerd/config.toml || return 1
-    $ssh_cmd grep -q 'bin_dir = "/opt/cni/bin"' /etc/containerd/config.toml || return 1
+    $ssh_cmd "grep -Fq 'bin_dir = \"/opt/cni/bin\"' /etc/containerd/config.toml" || return 1
     $ssh_cmd systemctl list-unit-files containerd.service >/dev/null 2>&1 || return 1
 }
 
@@ -42,9 +42,10 @@ else
             fi
 
             $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
-            $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
+            $ssh_cmd rm -f /etc/containerd/config.toml /etc/containerd/config.toml.magnum.tmp
+            $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=etc/containerd/config.toml --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
             $ssh_cmd mkdir -p /etc/containerd /opt/cni/bin
-cat << EOF | $ssh_cmd tee /etc/containerd/config.toml >/dev/null
+cat << EOF | $ssh_cmd tee /etc/containerd/config.toml.magnum.tmp >/dev/null
 version = 2
 root = "/var/lib/containerd"
 state = "/run/containerd"
@@ -81,6 +82,12 @@ oom_score = 0
   [plugins."io.containerd.internal.v1.opt"]
     path = "/var/lib/containerd/opt"
 EOF
+
+            $ssh_cmd mv /etc/containerd/config.toml.magnum.tmp /etc/containerd/config.toml
+            if ! $ssh_cmd "grep -Fq 'bin_dir = \"/opt/cni/bin\"' /etc/containerd/config.toml"; then
+                echo "Failed to write containerd config with /opt/cni/bin"
+                exit 1
+            fi
 
             $ssh_cmd systemctl daemon-reload
             $ssh_cmd systemctl enable containerd
