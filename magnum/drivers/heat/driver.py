@@ -528,11 +528,11 @@ class KubernetesDriver(HeatDriver):
             'kube_service_account_private_key':
                 heat_params['kube_service_account_private_key'],
             'is_upgrade': False,
+            'is_resize': False,
             'timestamp_upgrade': heat_params['timestamp_upgrade'],
         }
 
         if nodegroup.role == 'master':
-            nested_params['is_resize'] = False
             if 'ca_key' in heat_params:
                 nested_params['ca_key'] = heat_params['ca_key']
 
