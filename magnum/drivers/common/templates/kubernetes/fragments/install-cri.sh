@@ -8,7 +8,6 @@ echo "START: install cri"
 set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
-cni_bin_dir="/opt/cni/bin"
 
 is_true() {
     [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
@@ -44,7 +43,7 @@ else
 
             $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
             $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
-            $ssh_cmd mkdir -p /etc/containerd ${cni_bin_dir}
+            $ssh_cmd mkdir -p /etc/containerd /opt/cni/bin
 cat << EOF | $ssh_cmd tee /etc/containerd/config.toml >/dev/null
 version = 2
 root = "/var/lib/containerd"
@@ -70,7 +69,7 @@ oom_score = 0
     enable_unprivileged_ports = true
     enable_unprivileged_icmp = true
     [plugins."io.containerd.grpc.v1.cri".cni]
-      bin_dir = "${cni_bin_dir}"
+      bin_dir = "/opt/cni/bin"
       conf_dir = "/etc/cni/net.d"
     [plugins."io.containerd.grpc.v1.cri".containerd]
       default_runtime_name = "runc"
