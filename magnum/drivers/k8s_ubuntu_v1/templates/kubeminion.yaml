@@ -400,6 +400,11 @@ conditions:
     equals:
       - get_param: is_upgrade
       - true
+  rotate_ca_requested:
+    not:
+      equals:
+        - get_param: ca_rotation_id
+        - ""
 
 resources:
   agent_config:
@@ -909,6 +914,7 @@ resources:
         OS_STACK_ID: { get_param: "OS::stack_id" }
 
   rotate_ca_certs_config:
+    condition: rotate_ca_requested
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -925,6 +931,7 @@ resources:
             __CA_ROTATION_ID__: { get_param: ca_rotation_id }
 
   rotate_ca_certs_deployment:
+    condition: rotate_ca_requested
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
