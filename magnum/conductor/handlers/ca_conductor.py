@@ -72,6 +72,7 @@ class Handler(object):
         allow_update_status = (
             fields.ClusterStatus.CREATE_COMPLETE,
             fields.ClusterStatus.UPDATE_COMPLETE,
+            fields.ClusterStatus.UPDATE_FAILED,
             fields.ClusterStatus.RESUME_COMPLETE,
             fields.ClusterStatus.RESTORE_COMPLETE,
             fields.ClusterStatus.ROLLBACK_FAILED,
