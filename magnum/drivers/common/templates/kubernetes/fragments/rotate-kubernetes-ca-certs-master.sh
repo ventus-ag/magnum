@@ -41,9 +41,14 @@ fi
 
 set +x
 . "${HEAT_PARAMS}"
-set -x
 
 set -eu -o pipefail
+
+# Keep xtrace in the node-local log file instead of Heat deployment
+# stdout/stderr so successful runs don't generate oversized signal payloads.
+exec 9>>"${LOG_FILE}"
+export BASH_XTRACEFD=9
+set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
