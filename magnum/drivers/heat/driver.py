@@ -536,9 +536,11 @@ class KubernetesDriver(HeatDriver):
         if cluster_stack_params:
             for key in ('trustee_user_id', 'trustee_password', 'trust_id',
                         'auth_url', 'magnum_url', 'verify_ca',
-                        'cluster_uuid', 'tls_disabled'):
+                        'cluster_uuid', 'tls_disabled',
+                        'kube_service_account_key',
+                        'kube_service_account_private_key'):
                 if key in cluster_stack_params:
-                    nested_params[key] = cluster_stack_params[key]
+                    nested_params.setdefault(key, cluster_stack_params[key])
 
         if nodegroup.role == 'master':
             if cluster_stack_params and 'number_of_masters' in cluster_stack_params:
