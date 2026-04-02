@@ -711,6 +711,17 @@ conditions:
       - equals:
           - get_param: is_resize
           - true
+  reconcile_masters:
+    or:
+      - condition: upgrade_or_resize_masters
+      - not:
+          equals:
+            - get_param: ca_rotation_id
+            - ""
+      - not:
+          equals:
+            - get_param: timestamp_upgrade
+            - ""
 resources:
   ######################################################################
   #
@@ -1266,7 +1277,7 @@ resources:
       mountpoint: /dev/vdb
 
   upgrade_kubernetes_config:
-    condition: upgrade_or_resize_masters
+    condition: reconcile_masters
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -1450,6 +1461,7 @@ resources:
                   echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
+            - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
             - get_file: ../../common/templates/kubernetes/fragments/configure-etcd.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
@@ -1458,7 +1470,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
-    condition: upgrade_or_resize_masters
+    condition: reconcile_masters
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
@@ -1468,33 +1480,6 @@ resources:
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
         timestamp_upgrade: { get_param: timestamp_upgrade }
-
-  rotate_ca_certs_config:
-    type: OS::Heat::SoftwareConfig
-    properties:
-      group: script
-      inputs:
-        - name: kube_service_account_key_input
-        - name: kube_service_account_private_key_input
-        - name: ca_rotation_id_input
-        - name: ca_key_input
-        - name: is_upgrade_input
-      config:
-        get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
-
-  rotate_ca_certs_deployment:
-    type: OS::Heat::SoftwareDeployment
-    properties:
-      signal_transport: HEAT_SIGNAL
-      config: { get_resource: rotate_ca_certs_config }
-      server: { get_resource: kube-master }
-      actions: ['CREATE', 'UPDATE']
-      input_values:
-        kube_service_account_key_input: { get_param: kube_service_account_key }
-        kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
-        ca_rotation_id_input: { get_param: ca_rotation_id }
-        ca_key_input: { get_param: ca_key }
-        is_upgrade_input: { get_param: is_upgrade }
 
 outputs:
   OS::stack_id:

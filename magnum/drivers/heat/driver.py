@@ -83,6 +83,9 @@ class HeatDriver(driver.Driver):
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
 
+    def _get_reconcile_timestamp(self):
+        return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
     def _get_ca_rotation_batch_size(self, cluster):
         master_count = getattr(cluster.default_ng_master, 'node_count', 1) or 1
         if master_count <= 1:
@@ -278,6 +281,8 @@ class HeatDriver(driver.Driver):
             pass
 
         scale_params['is_upgrade'] = False
+        scale_params['is_resize'] = False
+        scale_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         nodegroups = None
         if nodegroup and not nodegroup.is_default:
@@ -337,6 +342,7 @@ class HeatDriver(driver.Driver):
 
         scale_params['is_upgrade'] = False
         scale_params['is_resize'] = True
+        scale_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         template_nodegroups = None
         if nodegroup and not nodegroup.is_default:
@@ -409,6 +415,8 @@ class HeatDriver(driver.Driver):
             existing_params['number_of_masters'] = total_master_count
             existing_params['is_upgrade'] = False
             existing_params['is_resize'] = True
+            existing_params['timestamp_upgrade'] = (
+                self._get_reconcile_timestamp())
             
             fields = {
                 **self._get_stack_update_template_fields(context, cluster),
@@ -520,6 +528,7 @@ class KubernetesDriver(HeatDriver):
             'kube_service_account_private_key':
                 heat_params['kube_service_account_private_key'],
             'is_upgrade': False,
+            'timestamp_upgrade': heat_params['timestamp_upgrade'],
         }
 
         if nodegroup.role == 'master':
@@ -544,6 +553,7 @@ class KubernetesDriver(HeatDriver):
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
         heat_params['is_resize'] = False
+        heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
         heat_params['update_max_batch_size'] = (
             self._get_ca_rotation_batch_size(cluster))
 

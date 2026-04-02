@@ -400,6 +400,17 @@ conditions:
     equals:
       - get_param: is_upgrade
       - true
+  reconcile_minions:
+    or:
+      - condition: upgrade_minions
+      - not:
+          equals:
+            - get_param: ca_rotation_id
+            - ""
+      - not:
+          equals:
+            - get_param: timestamp_upgrade
+            - ""
 resources:
   agent_config:
     type: OS::Heat::SoftwareConfig
@@ -599,7 +610,7 @@ resources:
       mountpoint: /dev/vdb
 
   upgrade_kubernetes_config:
-    condition: upgrade_minions
+    condition: reconcile_minions
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
@@ -692,6 +703,7 @@ resources:
                   echo 'stack_id'
                 params:
                   stack_id: { get_param: "OS::stack_id" }
+            - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-worker.sh
             - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
             - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
@@ -699,7 +711,7 @@ resources:
             - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
 
   upgrade_kubernetes_deployment:
-    condition: upgrade_minions
+    condition: reconcile_minions
     type: OS::Heat::SoftwareDeployment
     properties:
       signal_transport: HEAT_SIGNAL
@@ -708,31 +720,7 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
-
-  rotate_ca_certs_config:
-    type: OS::Heat::SoftwareConfig
-    properties:
-      group: script
-      inputs:
-        - name: kube_service_account_key_input
-        - name: kube_service_account_private_key_input
-        - name: ca_rotation_id_input
-        - name: is_upgrade_input
-      config:
-        get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-worker.sh
-
-  rotate_ca_certs_deployment:
-    type: OS::Heat::SoftwareDeployment
-    properties:
-      signal_transport: HEAT_SIGNAL
-      config: { get_resource: rotate_ca_certs_config }
-      server: { get_resource: kube-minion }
-      actions: ['CREATE', 'UPDATE']
-      input_values:
-        kube_service_account_key_input: { get_param: kube_service_account_key }
-        kube_service_account_private_key_input: { get_param: kube_service_account_private_key }
-        ca_rotation_id_input: { get_param: ca_rotation_id }
-        is_upgrade_input: { get_param: is_upgrade }
+        timestamp_upgrade: { get_param: timestamp_upgrade }
 
 outputs:
   kube_minion_ip:

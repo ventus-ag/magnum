@@ -1,16 +1,31 @@
 #!/bin/bash
 
-rotation_id="${ca_rotation_id_input:-}"
-if [ -z "${rotation_id}" ]; then
-    exit 0
-fi
-
-echo "START: rotate CA certs on master"
-
 HEAT_PARAMS=/etc/sysconfig/heat-params
 LOG_FILE=/var/log/magnum-ca-rotate.log
 CURRENT_STEP=init
 rotation_work_dir=""
+rotation_id=""
+run_ca_rotation=false
+
+is_true() {
+    [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
+}
+
+if [ -f "${HEAT_PARAMS}" ]; then
+    set +x
+    . "${HEAT_PARAMS}"
+
+    rotation_id="${ca_rotation_id_input:-${CA_ROTATION_ID:-}}"
+    if [ -n "${rotation_id}" ] && \
+       ! is_true "${IS_UPGRADE:-false}" && \
+       ! is_true "${IS_RESIZE:-false}"; then
+        run_ca_rotation=true
+    fi
+fi
+
+if [ "${run_ca_rotation}" = "true" ]; then
+
+echo "START: rotate CA certs on master"
 
 mkdir -p "$(dirname "${LOG_FILE}")"
 touch "${LOG_FILE}"
@@ -38,14 +53,6 @@ on_exit() {
 
 trap on_exit EXIT
 
-if [ ! -f "${HEAT_PARAMS}" ]; then
-    log "heat-params file is missing, skipping CA rotation"
-    exit 0
-fi
-
-set +x
-. "${HEAT_PARAMS}"
-
 set -eu -o pipefail
 
 # Keep xtrace in the node-local log file instead of Heat deployment
@@ -56,9 +63,9 @@ set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
-service_account_key="${kube_service_account_key_input:-}"
-service_account_private_key="${kube_service_account_private_key_input:-}"
-ca_key="${ca_key_input:-}"
+service_account_key="${kube_service_account_key_input:-${KUBE_SERVICE_ACCOUNT_KEY:-}}"
+service_account_private_key="${kube_service_account_private_key_input:-${KUBE_SERVICE_ACCOUNT_PRIVATE_KEY:-}}"
+ca_key="${ca_key_input:-${CA_KEY:-}}"
 cert_dir=/etc/kubernetes/certs
 etcd_cert_dir=/etc/etcd/certs
 admin_kubeconfig=/etc/kubernetes/admin.conf
@@ -156,11 +163,6 @@ replace_managed_files() {
 
     cp -a "${source_dir}/." "${target_dir}/"
 }
-
-if [ -z "${rotation_id}" ]; then
-    log "No CA rotation requested, skipping"
-    exit 0
-fi
 
 if [ "${rotation_id}" = "${current_rotation_id}" ]; then
     log "CA rotation ${rotation_id} already applied, skipping"
@@ -537,3 +539,4 @@ chmod 600 "${rotation_state_file}"
 log "updated heat params and persisted rotation state"
 
 echo "END: rotate CA certs on master"
+fi
