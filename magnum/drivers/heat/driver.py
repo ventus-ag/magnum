@@ -520,7 +520,8 @@ class KubernetesDriver(HeatDriver):
             'files': tpl_files,
         }
 
-    def _get_nested_ca_rotation_params(self, nodegroup, heat_params):
+    def _get_nested_ca_rotation_params(self, nodegroup, heat_params,
+                                       cluster_stack_params=None):
         nested_params = {
             'ca_rotation_id': heat_params['ca_rotation_id'],
             'kube_service_account_key':
@@ -532,7 +533,17 @@ class KubernetesDriver(HeatDriver):
             'timestamp_upgrade': heat_params['timestamp_upgrade'],
         }
 
+        if cluster_stack_params:
+            for key in ('trustee_user_id', 'trustee_password', 'trust_id',
+                        'auth_url', 'magnum_url', 'verify_ca',
+                        'cluster_uuid', 'tls_disabled'):
+                if key in cluster_stack_params:
+                    nested_params[key] = cluster_stack_params[key]
+
         if nodegroup.role == 'master':
+            if cluster_stack_params and 'number_of_masters' in cluster_stack_params:
+                nested_params['number_of_masters'] = (
+                    cluster_stack_params['number_of_masters'])
             if 'ca_key' in heat_params:
                 nested_params['ca_key'] = heat_params['ca_key']
 
@@ -549,6 +560,7 @@ class KubernetesDriver(HeatDriver):
         osc = clients.OpenStackClients(context)
 
         heat_params = self._get_ca_rotation_params(context, cluster)
+        cluster_stack_params = osc.heat().stacks.get(cluster.stack_id).parameters.copy()
 
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
@@ -601,7 +613,7 @@ class KubernetesDriver(HeatDriver):
                     'parameters': self._get_merged_stack_parameters(
                         osc, stack_id,
                         self._get_nested_ca_rotation_params(
-                            nodegroup, heat_params)),
+                            nodegroup, heat_params, cluster_stack_params)),
                     'timeout_mins': self._get_update_timeout(),
                     'disable_rollback': True
                 }
