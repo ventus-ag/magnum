@@ -6,6 +6,7 @@ echo "START: rotate CA certs on worker"
 HEAT_PARAMS=/etc/sysconfig/heat-params
 LOG_FILE=/var/log/magnum-ca-rotate.log
 CURRENT_STEP=init
+rotation_work_dir=""
 
 mkdir -p "$(dirname "${LOG_FILE}")"
 touch "${LOG_FILE}"
@@ -20,8 +21,14 @@ on_exit() {
     rc=$?
     if [ "${rc}" -eq 0 ]; then
         log "EXIT rc=0 step=${CURRENT_STEP}"
+        if [ -n "${rotation_work_dir}" ] && [ -d "${rotation_work_dir}" ]; then
+            rm -rf "${rotation_work_dir}"
+        fi
     else
         log "EXIT rc=${rc} step=${CURRENT_STEP}"
+        if [ -n "${rotation_work_dir}" ] && [ -d "${rotation_work_dir}" ]; then
+            log "staged rotation data kept at ${rotation_work_dir}"
+        fi
     fi
 }
 
@@ -44,7 +51,6 @@ rotation_id="${ca_rotation_id_input:-}"
 service_account_key="${kube_service_account_key_input:-}"
 service_account_private_key="${kube_service_account_private_key_input:-}"
 cert_dir=/etc/kubernetes/certs
-ca_cert="${cert_dir}/ca.crt"
 rotation_state_file=/var/lib/magnum/last_ca_rotation_id
 
 current_rotation_id=""
@@ -62,14 +68,22 @@ update_heat_param() {
     printf '%s="%s"\n' "${param_key}" "${param_value}" >> "${HEAT_PARAMS}"
 }
 
+assert_file_exists() {
+    file_path="$1"
+
+    if [ ! -s "${file_path}" ]; then
+        log "Expected file missing or empty: ${file_path}"
+        exit 1
+    fi
+}
+
 generate_certificates() {
     cert_name="$1"
     cert_config="$2"
-    cert_path="${cert_dir}/${cert_name}.crt"
-    csr_path="${cert_dir}/${cert_name}.csr"
-    key_path="${cert_dir}/${cert_name}.key"
-
-    rm -f "${cert_path}" "${csr_path}" "${key_path}"
+    target_dir="$3"
+    cert_path="${target_dir}/${cert_name}.crt"
+    csr_path="${target_dir}/${cert_name}.csr"
+    key_path="${target_dir}/${cert_name}.key"
 
     $ssh_cmd openssl genrsa -out "${key_path}" 4096
     chmod 400 "${key_path}"
@@ -88,6 +102,19 @@ generate_certificates() {
         "${MAGNUM_URL}/certificates" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${cert_path}"
 
     rm -f "${csr_path}"
+}
+
+replace_managed_files() {
+    source_dir="$1"
+    target_dir="$2"
+    shift 2
+
+    mkdir -p "${target_dir}"
+    for managed_file in "$@"; do
+        rm -f "${target_dir}/${managed_file}"
+    done
+
+    cp -a "${source_dir}/." "${target_dir}/"
 }
 
 if [ -z "${rotation_id}" ]; then
@@ -110,6 +137,11 @@ if [ "${TLS_DISABLED}" = "True" ]; then
     exit 0
 fi
 
+rotation_root=/var/lib/magnum/ca-rotation
+rotation_work_dir="${rotation_root}/${rotation_id}"
+staged_cert_dir="${rotation_work_dir}/kubernetes-certs"
+staged_ca_cert="${staged_cert_dir}/ca.crt"
+
 CURRENT_STEP=metadata
 if [ "${VERIFY_CA}" = "True" ]; then
     verify_ca_opt=""
@@ -122,9 +154,10 @@ if [ -z "${KUBE_NODE_IP:-}" ]; then
 fi
 
 HOSTNAME=$(cat /etc/hostname | head -1)
-mkdir -p "${cert_dir}"
+rm -rf "${rotation_work_dir}"
+mkdir -p "${staged_cert_dir}"
 mkdir -p "$(dirname "${rotation_state_file}")"
-log "prepared worker certificate directories"
+log "prepared staged worker certificate directories"
 
 CURRENT_STEP=keystone_token
 auth_json=$(cat <<EOF
@@ -166,11 +199,12 @@ CURRENT_STEP=fetch_cluster_ca
 curl ${verify_ca_opt} -s -X GET \
     -H "X-Auth-Token: ${user_token}" \
     -H "OpenStack-API-Version: container-infra latest" \
-    "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${ca_cert}"
+    "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${staged_ca_cert}"
+assert_file_exists "${staged_ca_cert}"
 log "fetched cluster CA certificate"
 
 CURRENT_STEP=write_openssl_configs
-cat > "${cert_dir}/kubelet.conf" <<EOF
+cat > "${staged_cert_dir}/kubelet.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -188,7 +222,7 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth,serverAuth
 EOF
 
-cat > "${cert_dir}/proxy.conf" <<EOF
+cat > "${staged_cert_dir}/proxy.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -207,14 +241,29 @@ EOF
 
 CURRENT_STEP=generate_certificates
 log "generating worker certificates"
-generate_certificates kubelet "${cert_dir}/kubelet.conf"
-generate_certificates proxy "${cert_dir}/proxy.conf"
+generate_certificates kubelet "${staged_cert_dir}/kubelet.conf" "${staged_cert_dir}"
+generate_certificates proxy "${staged_cert_dir}/proxy.conf" "${staged_cert_dir}"
+
+for required_file in \
+    ca.crt kubelet.conf proxy.conf kubelet.crt kubelet.key \
+    proxy.crt proxy.key; do
+    assert_file_exists "${staged_cert_dir}/${required_file}"
+done
 
 CURRENT_STEP=permissions
-chmod 550 "${cert_dir}"
-chmod 440 "${cert_dir}/kubelet.key"
-chmod 440 "${cert_dir}/proxy.key"
-log "updated worker certificate permissions"
+chmod 550 "${staged_cert_dir}"
+chmod 440 "${staged_cert_dir}/kubelet.key"
+chmod 440 "${staged_cert_dir}/proxy.key"
+log "prepared staged worker certificate permissions"
+
+CURRENT_STEP=replace_certificates
+replace_managed_files "${staged_cert_dir}" "${cert_dir}" \
+    ca.crt kubelet.conf kubelet.crt kubelet.key proxy.conf proxy.crt \
+    proxy.key
+$ssh_cmd chmod 550 "${cert_dir}"
+$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
+$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
+log "replaced live worker certificate files from staging"
 
 CURRENT_STEP=restart_services
 for service in kubelet kube-proxy; do

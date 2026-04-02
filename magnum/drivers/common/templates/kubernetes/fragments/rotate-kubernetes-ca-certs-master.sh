@@ -6,6 +6,7 @@ echo "START: rotate CA certs on master"
 HEAT_PARAMS=/etc/sysconfig/heat-params
 LOG_FILE=/var/log/magnum-ca-rotate.log
 CURRENT_STEP=init
+rotation_work_dir=""
 
 mkdir -p "$(dirname "${LOG_FILE}")"
 touch "${LOG_FILE}"
@@ -20,8 +21,14 @@ on_exit() {
     rc=$?
     if [ "${rc}" -eq 0 ]; then
         log "EXIT rc=0 step=${CURRENT_STEP}"
+        if [ -n "${rotation_work_dir}" ] && [ -d "${rotation_work_dir}" ]; then
+            rm -rf "${rotation_work_dir}"
+        fi
     else
         log "EXIT rc=${rc} step=${CURRENT_STEP}"
+        if [ -n "${rotation_work_dir}" ] && [ -d "${rotation_work_dir}" ]; then
+            log "staged rotation data kept at ${rotation_work_dir}"
+        fi
     fi
 }
 
@@ -46,7 +53,6 @@ service_account_private_key="${kube_service_account_private_key_input:-}"
 ca_key="${ca_key_input:-}"
 cert_dir=/etc/kubernetes/certs
 etcd_cert_dir=/etc/etcd/certs
-ca_cert="${cert_dir}/ca.crt"
 admin_kubeconfig=/etc/kubernetes/admin.conf
 rotation_state_file=/var/lib/magnum/last_ca_rotation_id
 
@@ -75,14 +81,22 @@ wait_for_api() {
     return 1
 }
 
+assert_file_exists() {
+    file_path="$1"
+
+    if [ ! -s "${file_path}" ]; then
+        log "Expected file missing or empty: ${file_path}"
+        exit 1
+    fi
+}
+
 generate_certificates() {
     cert_name="$1"
     cert_config="$2"
-    cert_path="${cert_dir}/${cert_name}.crt"
-    csr_path="${cert_dir}/${cert_name}.csr"
-    key_path="${cert_dir}/${cert_name}.key"
-
-    rm -f "${cert_path}" "${csr_path}" "${key_path}"
+    target_dir="$3"
+    cert_path="${target_dir}/${cert_name}.crt"
+    csr_path="${target_dir}/${cert_name}.csr"
+    key_path="${target_dir}/${cert_name}.key"
 
     $ssh_cmd openssl genrsa -out "${key_path}" 4096
     chmod 400 "${key_path}"
@@ -101,6 +115,19 @@ generate_certificates() {
         "${MAGNUM_URL}/certificates" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${cert_path}"
 
     rm -f "${csr_path}"
+}
+
+replace_managed_files() {
+    source_dir="$1"
+    target_dir="$2"
+    shift 2
+
+    mkdir -p "${target_dir}"
+    for managed_file in "$@"; do
+        rm -f "${target_dir}/${managed_file}"
+    done
+
+    cp -a "${source_dir}/." "${target_dir}/"
 }
 
 if [ -z "${rotation_id}" ]; then
@@ -122,6 +149,13 @@ if [ "${TLS_DISABLED}" = "True" ]; then
     log "TLS is disabled, skipping CA rotation"
     exit 0
 fi
+
+rotation_root=/var/lib/magnum/ca-rotation
+rotation_work_dir="${rotation_root}/${rotation_id}"
+staged_cert_dir="${rotation_work_dir}/kubernetes-certs"
+staged_etcd_cert_dir="${rotation_work_dir}/etcd-certs"
+staged_admin_kubeconfig="${rotation_work_dir}/admin.conf"
+staged_ca_cert="${staged_cert_dir}/ca.crt"
 
 CURRENT_STEP=metadata
 if [ "${VERIFY_CA}" = "True" ]; then
@@ -167,9 +201,10 @@ KUBE_SERVICE_IP=$(echo "${PORTAL_NETWORK_CIDR}" | awk 'BEGIN{FS="[./]"; OFS="."}
 sans="${sans},IP:${KUBE_SERVICE_IP}"
 sans="${sans},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.cluster.local"
 
-mkdir -p "${cert_dir}" "${etcd_cert_dir}"
+rm -rf "${rotation_work_dir}"
+mkdir -p "${staged_cert_dir}" "${staged_etcd_cert_dir}"
 mkdir -p "$(dirname "${rotation_state_file}")"
-log "prepared certificate directories"
+log "prepared staged certificate directories"
 
 CURRENT_STEP=keystone_token
 auth_json=$(cat <<EOF
@@ -211,11 +246,12 @@ CURRENT_STEP=fetch_cluster_ca
 curl ${verify_ca_opt} -s -X GET \
     -H "X-Auth-Token: ${user_token}" \
     -H "OpenStack-API-Version: container-infra latest" \
-    "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${ca_cert}"
+    "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${staged_ca_cert}"
+assert_file_exists "${staged_ca_cert}"
 log "fetched cluster CA certificate"
 
 CURRENT_STEP=write_openssl_configs
-cat > "${cert_dir}/server.conf" <<EOF
+cat > "${staged_cert_dir}/server.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -227,7 +263,7 @@ subjectAltName = ${sans}
 extendedKeyUsage = clientAuth,serverAuth
 EOF
 
-cat > "${cert_dir}/proxy.conf" <<EOF
+cat > "${staged_cert_dir}/proxy.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -244,7 +280,7 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth
 EOF
 
-cat > "${cert_dir}/scheduler.conf" <<EOF
+cat > "${staged_cert_dir}/scheduler.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -261,7 +297,7 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth,serverAuth
 EOF
 
-cat > "${cert_dir}/controller.conf" <<EOF
+cat > "${staged_cert_dir}/controller.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -278,7 +314,7 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth,serverAuth
 EOF
 
-cat > "${cert_dir}/kubelet.conf" <<EOF
+cat > "${staged_cert_dir}/kubelet.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -296,7 +332,7 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth,serverAuth
 EOF
 
-cat > "${cert_dir}/admin.conf" <<EOF
+cat > "${staged_cert_dir}/admin.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions     = req_ext
@@ -314,21 +350,30 @@ EOF
 
 CURRENT_STEP=generate_certificates
 log "generating master certificates"
-generate_certificates server "${cert_dir}/server.conf"
-generate_certificates kubelet "${cert_dir}/kubelet.conf"
-generate_certificates admin "${cert_dir}/admin.conf"
-generate_certificates proxy "${cert_dir}/proxy.conf"
-generate_certificates controller "${cert_dir}/controller.conf"
-generate_certificates scheduler "${cert_dir}/scheduler.conf"
+generate_certificates server "${staged_cert_dir}/server.conf" "${staged_cert_dir}"
+generate_certificates kubelet "${staged_cert_dir}/kubelet.conf" "${staged_cert_dir}"
+generate_certificates admin "${staged_cert_dir}/admin.conf" "${staged_cert_dir}"
+generate_certificates proxy "${staged_cert_dir}/proxy.conf" "${staged_cert_dir}"
+generate_certificates controller "${staged_cert_dir}/controller.conf" "${staged_cert_dir}"
+generate_certificates scheduler "${staged_cert_dir}/scheduler.conf" "${staged_cert_dir}"
 
 CURRENT_STEP=write_key_material
-echo -e "${service_account_key}" > "${cert_dir}/service_account.key"
-echo -e "${service_account_private_key}" > "${cert_dir}/service_account_private.key"
+echo -e "${service_account_key}" > "${staged_cert_dir}/service_account.key"
+echo -e "${service_account_private_key}" > "${staged_cert_dir}/service_account_private.key"
 
 if [ -n "${ca_key}" ]; then
-    echo -e "${ca_key}" > "${cert_dir}/ca.key"
-    chmod 400 "${cert_dir}/ca.key"
+    echo -e "${ca_key}" > "${staged_cert_dir}/ca.key"
+    chmod 400 "${staged_cert_dir}/ca.key"
 fi
+
+for required_file in \
+    ca.crt server.conf proxy.conf scheduler.conf controller.conf \
+    kubelet.conf admin.conf server.crt server.key kubelet.crt kubelet.key \
+    admin.crt admin.key proxy.crt proxy.key controller.crt controller.key \
+    scheduler.crt scheduler.key service_account.key \
+    service_account_private.key; do
+    assert_file_exists "${staged_cert_dir}/${required_file}"
+done
 
 CURRENT_STEP=permissions
 if ! $ssh_cmd id etcd >/dev/null 2>&1; then
@@ -342,18 +387,20 @@ fi
 $ssh_cmd groupadd kube_etcd -f
 $ssh_cmd usermod -a -G kube_etcd etcd
 $ssh_cmd usermod -a -G kube_etcd kube
-$ssh_cmd chmod 550 "${cert_dir}"
-$ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
-$ssh_cmd chmod 440 "${cert_dir}/server.key"
-$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
-$ssh_cmd chmod 440 "${cert_dir}/controller.key"
-$ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
-$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
-$ssh_cmd cp "${cert_dir}"/* "${etcd_cert_dir}"
-log "updated certificate permissions and copied etcd certs"
+$ssh_cmd chmod 550 "${staged_cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${staged_cert_dir}"
+$ssh_cmd chmod 440 "${staged_cert_dir}/server.key"
+$ssh_cmd chmod 440 "${staged_cert_dir}/proxy.key"
+$ssh_cmd chmod 440 "${staged_cert_dir}/controller.key"
+$ssh_cmd chmod 440 "${staged_cert_dir}/scheduler.key"
+$ssh_cmd chmod 440 "${staged_cert_dir}/kubelet.key"
+$ssh_cmd cp -a "${staged_cert_dir}/." "${staged_etcd_cert_dir}/"
+$ssh_cmd chmod 550 "${staged_etcd_cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${staged_etcd_cert_dir}"
+log "prepared staged certificate permissions"
 
 CURRENT_STEP=write_kubeconfig
-cat > "${admin_kubeconfig}.tmp" <<EOF
+cat > "${staged_admin_kubeconfig}" <<EOF
 apiVersion: v1
 clusters:
 - cluster:
@@ -374,8 +421,33 @@ users:
     client-certificate: ${cert_dir}/admin.crt
     client-key: ${cert_dir}/admin.key
 EOF
-mv "${admin_kubeconfig}.tmp" "${admin_kubeconfig}"
-chmod 600 "${admin_kubeconfig}"
+chmod 600 "${staged_admin_kubeconfig}"
+
+CURRENT_STEP=replace_certificates
+replace_managed_files "${staged_cert_dir}" "${cert_dir}" \
+    ca.crt ca.key server.conf server.crt server.key proxy.conf proxy.crt \
+    proxy.key scheduler.conf scheduler.crt scheduler.key controller.conf \
+    controller.crt controller.key kubelet.conf kubelet.crt kubelet.key \
+    admin.conf admin.crt admin.key service_account.key \
+    service_account_private.key
+replace_managed_files "${staged_etcd_cert_dir}" "${etcd_cert_dir}" \
+    ca.crt ca.key server.conf server.crt server.key proxy.conf proxy.crt \
+    proxy.key scheduler.conf scheduler.crt scheduler.key controller.conf \
+    controller.crt controller.key kubelet.conf kubelet.crt kubelet.key \
+    admin.conf admin.crt admin.key service_account.key \
+    service_account_private.key
+$ssh_cmd chmod 550 "${cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${cert_dir}"
+$ssh_cmd chmod 440 "${cert_dir}/server.key"
+$ssh_cmd chmod 440 "${cert_dir}/proxy.key"
+$ssh_cmd chmod 440 "${cert_dir}/controller.key"
+$ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
+$ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
+$ssh_cmd chmod 550 "${etcd_cert_dir}"
+$ssh_cmd chown -R kube:kube_etcd "${etcd_cert_dir}"
+mv "${staged_admin_kubeconfig}" "${admin_kubeconfig}"
+$ssh_cmd chmod 600 "${admin_kubeconfig}"
+log "replaced live certificate files from staging"
 
 export KUBECONFIG="${admin_kubeconfig}"
 $ssh_cmd mkdir -p /root/.kube
