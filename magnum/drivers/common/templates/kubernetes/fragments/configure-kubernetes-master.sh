@@ -24,8 +24,7 @@ done
 # Setup network driver
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
     cni_bin_dir="/opt/cni/bin"
-    cni_compat_bin_dir="/usr/libexec/cni"
-    $ssh_cmd mkdir -p "${cni_bin_dir}" "${cni_compat_bin_dir}"
+    $ssh_cmd mkdir -p "${cni_bin_dir}"
     cni_plugin_path="/srv/magnum/kubernetes/cni"
     $ssh_cmd mkdir -p ${cni_plugin_path}
     
@@ -45,7 +44,6 @@ if [ "$NETWORK_DRIVER" = "flannel" ]; then
     # Extract CNI plugins
     $ssh_cmd tar -C "${cni_bin_dir}" -xzf ${cni_tgz}
     $ssh_cmd chmod +x "${cni_bin_dir}"/*
-    $ssh_cmd cp -af "${cni_bin_dir}/." "${cni_compat_bin_dir}/"
 fi
 
 # Configure network settings

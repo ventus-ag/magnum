@@ -9,27 +9,42 @@ set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 cni_bin_dir="/opt/cni/bin"
-cni_compat_bin_dir="/usr/libexec/cni"
 
 is_true() {
     [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
 }
 
-if ! is_true "${IS_UPGRADE:-false}" && ! is_true "${IS_RESIZE:-false}"; then
+is_pure_ca_rotation() {
+    [ -n "${CA_ROTATION_ID:-}" ] && \
+    ! is_true "${IS_UPGRADE:-false}" && \
+    ! is_true "${IS_RESIZE:-false}"
+}
+
+containerd_already_configured() {
+    $ssh_cmd test -f /etc/containerd/config.toml || return 1
+    $ssh_cmd grep -q 'bin_dir = "/opt/cni/bin"' /etc/containerd/config.toml || return 1
+    $ssh_cmd systemctl list-unit-files containerd.service >/dev/null 2>&1 || return 1
+}
+
+if is_pure_ca_rotation; then
     echo "END: install cri"
 else
     if [ "${CONTAINER_RUNTIME}" = "containerd"  ] ; then
-       # $ssh_cmd docker network prune 2>/dev/null
-        $ssh_cmd systemctl stop docker 2>/dev/null
-        $ssh_cmd systemctl disable docker 2>/dev/null
-       # $ssh_cmd ip link delete cni0 2>/dev/null
-        if [ -z "${CONTAINERD_TARBALL_URL}"  ] ; then
-            CONTAINERD_TARBALL_URL="https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
-        fi
+        if ! is_true "${IS_UPGRADE:-false}" && ! is_true "${IS_RESIZE:-false}" && \
+           containerd_already_configured; then
+            echo "containerd already configured, skipping CRI install"
+        else
+           # $ssh_cmd docker network prune 2>/dev/null
+            $ssh_cmd systemctl stop docker 2>/dev/null
+            $ssh_cmd systemctl disable docker 2>/dev/null
+           # $ssh_cmd ip link delete cni0 2>/dev/null
+            if [ -z "${CONTAINERD_TARBALL_URL}"  ] ; then
+                CONTAINERD_TARBALL_URL="https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
+            fi
 
-        $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
-        $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
-        $ssh_cmd mkdir -p /etc/containerd ${cni_bin_dir} ${cni_compat_bin_dir}
+            $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
+            $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
+            $ssh_cmd mkdir -p /etc/containerd ${cni_bin_dir}
 cat << EOF | $ssh_cmd tee /etc/containerd/config.toml >/dev/null
 version = 2
 root = "/var/lib/containerd"
@@ -68,9 +83,10 @@ oom_score = 0
     path = "/var/lib/containerd/opt"
 EOF
 
-        $ssh_cmd systemctl daemon-reload
-        $ssh_cmd systemctl enable containerd
-        $ssh_cmd systemctl start containerd
+            $ssh_cmd systemctl daemon-reload
+            $ssh_cmd systemctl enable containerd
+            $ssh_cmd systemctl start containerd
+        fi
     else
         # CONTAINER_RUNTIME=host-docker
         $ssh_cmd systemctl disable docker

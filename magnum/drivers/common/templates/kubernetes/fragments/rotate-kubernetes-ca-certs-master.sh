@@ -166,18 +166,12 @@ replace_managed_files() {
 
 if [ "${rotation_id}" = "${current_rotation_id}" ]; then
     log "CA rotation ${rotation_id} already applied, skipping"
-    exit 0
-fi
-
-if [ -z "${service_account_key}" ] || [ -z "${service_account_private_key}" ]; then
+elif [ -z "${service_account_key}" ] || [ -z "${service_account_private_key}" ]; then
     log "Missing service account key material for CA rotation"
     exit 1
-fi
-
-if [ "${TLS_DISABLED}" = "True" ]; then
+elif [ "${TLS_DISABLED}" = "True" ]; then
     log "TLS is disabled, skipping CA rotation"
-    exit 0
-fi
+else
 
 rotation_root=/var/lib/magnum/ca-rotation
 rotation_work_dir="${rotation_root}/${rotation_id}"
@@ -539,4 +533,5 @@ chmod 600 "${rotation_state_file}"
 log "updated heat params and persisted rotation state"
 
 echo "END: rotate CA certs on master"
+fi
 fi
