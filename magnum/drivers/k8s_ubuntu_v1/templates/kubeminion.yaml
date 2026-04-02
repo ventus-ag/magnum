@@ -402,7 +402,12 @@ conditions:
       - true
   reconcile_minions:
     or:
-      - condition: upgrade_minions
+      - equals:
+          - get_param: is_upgrade
+          - true
+      - equals:
+          - get_param: is_resize
+          - true
       - not:
           equals:
             - get_param: ca_rotation_id
