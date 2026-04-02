@@ -1,3 +1,5 @@
+#!/bin/bash
+
 echo "START: rotate CA certs on master"
 
 HEAT_PARAMS=/etc/sysconfig/heat-params

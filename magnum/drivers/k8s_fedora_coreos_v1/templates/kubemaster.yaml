@@ -1277,8 +1277,9 @@ resources:
       config:
         list_join:
           - "\n"
-          - - str_replace:
+            - - str_replace:
                 template: |
+                  #!/bin/bash
                   rotation_config_id="__CA_ROTATION_ID__"
                 params:
                   __CA_ROTATION_ID__: { get_param: ca_rotation_id }
