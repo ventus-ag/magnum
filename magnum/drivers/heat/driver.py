@@ -535,9 +535,15 @@ class KubernetesDriver(HeatDriver):
             if not nodegroup.stack_id:
                 continue
 
-            parent_stack_id = (
-                cluster.stack_id if nodegroup.is_default
-                else nodegroup.stack_id)
+            # Default master/worker groups are already updated through the
+            # main cluster stack ResourceGroup. Updating their child stacks
+            # again here duplicates the same CA-rotation rollout and can
+            # leave the parent stack rolling after all node scripts have
+            # already completed.
+            if nodegroup.is_default:
+                continue
+
+            parent_stack_id = nodegroup.stack_id
             stack_ids = self._get_nested_stack_ids(
                 osc, parent_stack_id, nodegroup)
             if not stack_ids:
