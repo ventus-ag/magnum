@@ -25,13 +25,16 @@ if [ ! -z "$NO_PROXY" ]; then
 fi
 
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
-    $ssh_cmd mkdir -p /opt/cni/bin
+    cni_bin_dir="/opt/cni/bin"
+    cni_compat_bin_dir="/usr/libexec/cni"
+    $ssh_cmd mkdir -p "${cni_bin_dir}" "${cni_compat_bin_dir}"
 
     cni_plugin_path="/srv/magnum/kubernetes/cni"
     $ssh_cmd mkdir -p ${cni_plugin_path}
     $ssh_cmd curl --retry 5 --retry-delay 10 -L https://github.com/containernetworking/plugins/releases/download/${FLANNEL_CNI_TAG}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz -o ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
-    $ssh_cmd tar -C /opt/cni/bin -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
-    $ssh_cmd chmod +x /opt/cni/bin/*
+    $ssh_cmd tar -C "${cni_bin_dir}" -xzf ${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz
+    $ssh_cmd chmod +x "${cni_bin_dir}"/*
+    $ssh_cmd cp -af "${cni_bin_dir}/." "${cni_compat_bin_dir}/"
 fi
 
 if [ "$NETWORK_DRIVER" = "calico" ]; then
@@ -95,6 +98,7 @@ ExecStartPre=/bin/mkdir -p /var/lib/calico
 ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
+ExecStartPre=/bin/mkdir -p /usr/libexec/cni
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
     \$KUBE_LOG_LEVEL \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_PORT \$KUBELET_HOSTNAME \$KUBELET_ARGS

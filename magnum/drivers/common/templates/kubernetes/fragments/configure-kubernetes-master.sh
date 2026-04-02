@@ -23,13 +23,16 @@ done
 
 # Setup network driver
 if [ "$NETWORK_DRIVER" = "flannel" ]; then
-    $ssh_cmd mkdir -p /opt/cni/bin
+    cni_bin_dir="/opt/cni/bin"
+    cni_compat_bin_dir="/usr/libexec/cni"
+    $ssh_cmd mkdir -p "${cni_bin_dir}" "${cni_compat_bin_dir}"
     cni_plugin_path="/srv/magnum/kubernetes/cni"
     $ssh_cmd mkdir -p ${cni_plugin_path}
     
     # Download and install CNI plugins if not present or if checksum differs
     cni_tgz="${cni_plugin_path}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz"
-    if [ ! -f "${cni_tgz}" ] || ! $ssh_cmd sha256sum -c "${cni_tgz}.sha256" &>/dev/null; then
+    if ! $ssh_cmd "test -f '${cni_tgz}'" || \
+       ! $ssh_cmd "cd '${cni_plugin_path}' && sha256sum -c 'cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz.sha256' >/dev/null 2>&1"; then
         $ssh_cmd curl --retry 5 --retry-delay 10 -L \
             https://github.com/containernetworking/plugins/releases/download/${FLANNEL_CNI_TAG}/cni-plugins-linux-amd64-${FLANNEL_CNI_TAG}.tgz \
             -o "${cni_tgz}.tmp"
@@ -40,8 +43,9 @@ if [ "$NETWORK_DRIVER" = "flannel" ]; then
     fi
     
     # Extract CNI plugins
-    $ssh_cmd tar -C /opt/cni/bin -xzf ${cni_tgz}
-    $ssh_cmd chmod +x /opt/cni/bin/*
+    $ssh_cmd tar -C "${cni_bin_dir}" -xzf ${cni_tgz}
+    $ssh_cmd chmod +x "${cni_bin_dir}"/*
+    $ssh_cmd cp -af "${cni_bin_dir}/." "${cni_compat_bin_dir}/"
 fi
 
 # Configure network settings
@@ -253,6 +257,7 @@ ExecStartPre=/bin/mkdir -p /var/lib/calico
 ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
+ExecStartPre=/bin/mkdir -p /usr/libexec/cni
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
     \$KUBE_LOG_LEVEL \$KUBE_LOGTOSTDERR \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS

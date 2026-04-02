@@ -8,6 +8,8 @@ echo "START: install cri"
 set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
+cni_bin_dir="/opt/cni/bin"
+cni_compat_bin_dir="/usr/libexec/cni"
 
 is_true() {
     [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
@@ -27,8 +29,8 @@ else
 
         $ssh_cmd curl --retry 5 --retry-delay 10 -L ${CONTAINERD_TARBALL_URL} -o /srv/magnum/cri-containerd-cni.tar.gz
         $ssh_cmd tar xzvf /srv/magnum/cri-containerd-cni.tar.gz -C / --no-same-owner --touch --no-same-permissions --exclude=etc/cni/net.d --exclude=opt/cni/bin --exclude="*.txt" --exclude=opt/containerd/cluster/gce
-        $ssh_cmd mkdir -p /etc/containerd
-cat << EOF > /etc/containerd/config.toml
+        $ssh_cmd mkdir -p /etc/containerd ${cni_bin_dir} ${cni_compat_bin_dir}
+cat << EOF | $ssh_cmd tee /etc/containerd/config.toml >/dev/null
 version = 2
 root = "/var/lib/containerd"
 state = "/run/containerd"
@@ -53,7 +55,7 @@ oom_score = 0
     enable_unprivileged_ports = true
     enable_unprivileged_icmp = true
     [plugins."io.containerd.grpc.v1.cri".cni]
-      bin_dir = "/opt/cni/bin/"
+      bin_dir = "${cni_bin_dir}"
       conf_dir = "/etc/cni/net.d"
     [plugins."io.containerd.grpc.v1.cri".containerd]
       default_runtime_name = "runc"
@@ -74,10 +76,11 @@ EOF
         $ssh_cmd systemctl disable docker
         if $ssh_cmd cat /usr/lib/systemd/system/docker.service | grep 'native.cgroupdriver'; then
                 $ssh_cmd cp /usr/lib/systemd/system/docker.service /etc/systemd/system/
-                sed -i "s/\(native.cgroupdriver=\)\w\+/\1$CGROUP_DRIVER/" \
+                $ssh_cmd sed -i "s/\(native.cgroupdriver=\)\w\+/\1$CGROUP_DRIVER/" \
                         /etc/systemd/system/docker.service
         else
-                cat > /etc/systemd/system/docker.service.d/cgroupdriver.conf << EOF
+                $ssh_cmd mkdir -p /etc/systemd/system/docker.service.d
+                cat << EOF | $ssh_cmd tee /etc/systemd/system/docker.service.d/cgroupdriver.conf >/dev/null
     ExecStart=---exec-opt native.cgroupdriver=$CGROUP_DRIVER
 EOF
         fi
