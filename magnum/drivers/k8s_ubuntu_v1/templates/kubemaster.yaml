@@ -1481,15 +1481,11 @@ resources:
         - name: ca_key_input
         - name: is_upgrade_input
       config:
-        list_join:
-          - "\n"
-          - - str_replace:
-              template: |
-                #!/bin/bash
-                rotation_config_id="__CA_ROTATION_ID__"
-              params:
-                __CA_ROTATION_ID__: { get_param: ca_rotation_id }
-            - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
+        str_replace:
+          template:
+            get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
+          params:
+            __CA_ROTATION_ID__: { get_param: ca_rotation_id }
 
   rotate_ca_certs_deployment:
     type: OS::Heat::SoftwareDeployment

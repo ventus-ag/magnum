@@ -1,4 +1,5 @@
 #!/bin/bash
+rotation_config_id="__CA_ROTATION_ID__"
 
 echo "START: rotate CA certs on worker"
 
