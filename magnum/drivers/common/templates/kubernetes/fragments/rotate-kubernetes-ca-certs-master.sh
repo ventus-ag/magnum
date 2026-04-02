@@ -1,5 +1,9 @@
 #!/bin/bash
-rotation_config_id="__CA_ROTATION_ID__"
+
+rotation_id="${ca_rotation_id_input:-}"
+if [ -z "${rotation_id}" ]; then
+    exit 0
+fi
 
 echo "START: rotate CA certs on master"
 
@@ -52,7 +56,6 @@ set -x
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
-rotation_id="${ca_rotation_id_input:-}"
 service_account_key="${kube_service_account_key_input:-}"
 service_account_private_key="${kube_service_account_private_key_input:-}"
 ca_key="${ca_key_input:-}"

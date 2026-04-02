@@ -279,7 +279,13 @@ class HeatDriver(driver.Driver):
 
         scale_params['is_upgrade'] = False
 
+        nodegroups = None
+        if nodegroup and not nodegroup.is_default:
+            nodegroups = [nodegroup]
+
         fields = {
+            **self._get_stack_update_template_fields(
+                context, cluster, nodegroups=nodegroups),
             'parameters': scale_params,
             'existing': True,
             'disable_rollback': not rollback
@@ -332,7 +338,13 @@ class HeatDriver(driver.Driver):
         scale_params['is_upgrade'] = False
         scale_params['is_resize'] = True
 
+        template_nodegroups = None
+        if nodegroup and not nodegroup.is_default:
+            template_nodegroups = [nodegroup]
+
         fields = {
+            **self._get_stack_update_template_fields(
+                context, cluster, nodegroups=template_nodegroups),
             'parameters': scale_params,
             'existing': True,
             'disable_rollback': not rollback
@@ -399,6 +411,7 @@ class HeatDriver(driver.Driver):
             existing_params['is_resize'] = True
             
             fields = {
+                **self._get_stack_update_template_fields(context, cluster),
                 'parameters': existing_params,
                 'existing': True,
                 'disable_rollback': True  # Use safer rollback setting for supplementary update
