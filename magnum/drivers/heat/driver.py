@@ -80,6 +80,9 @@ class HeatDriver(driver.Driver):
                                              nodegroups=nodegroups,
                                              scale_manager=scale_manager)
 
+    def _get_update_timeout(self):
+        return cfg.CONF.cluster_heat.update_timeout
+
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
         env_abs_paths = [os.path.join(template_dir, f) for f in env_rel_paths]
@@ -527,6 +530,7 @@ class KubernetesDriver(HeatDriver):
             **self._get_stack_update_template_fields(context, cluster),
             'existing': True,
             'parameters': heat_params,
+            'timeout_mins': self._get_update_timeout(),
             'disable_rollback': False
         }
         osc.heat().stacks.update(cluster.stack_id, **fields)
@@ -567,6 +571,7 @@ class KubernetesDriver(HeatDriver):
                         osc, stack_id,
                         self._get_nested_ca_rotation_params(
                             nodegroup, heat_params)),
+                    'timeout_mins': self._get_update_timeout(),
                     'disable_rollback': False
                 }
                 osc.heat().stacks.update(stack_id, **nodegroup_fields)
@@ -773,7 +778,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             'existing': True, 
             'parameters': heat_params,
-            'timeout_mins': 60
+            'timeout_mins': self._get_update_timeout()
         }
 
         # Fetch the current parameters of the stack
@@ -1017,7 +1022,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             'files': tpl_files,
             # 'existing': True, 
             'parameters': heat_params,
-            'timeout_mins': 60,
+            'timeout_mins': self._get_update_timeout(),
         }
 
         # Fetch the current parameters of the stack
