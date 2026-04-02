@@ -81,6 +81,25 @@ wait_for_api() {
     return 1
 }
 
+wait_for_control_plane_services() {
+    for _attempt in $(seq 1 60); do
+        all_active=1
+        for service in \
+            etcd kube-apiserver kube-controller-manager \
+            kube-scheduler kubelet kube-proxy; do
+            if ! $ssh_cmd systemctl is-active --quiet "${service}"; then
+                all_active=0
+                break
+            fi
+        done
+        if [ "${all_active}" -eq 1 ]; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
+
 assert_file_exists() {
     file_path="$1"
 
@@ -460,27 +479,43 @@ for service in etcd kube-apiserver kube-controller-manager kube-scheduler kubele
     $ssh_cmd systemctl restart "${service}"
 done
 
+CURRENT_STEP=wait_for_services
+if ! wait_for_control_plane_services; then
+    log "Control plane services did not become active after CA rotation"
+    exit 1
+fi
+log "control plane services are active after restart"
+
+api_ready=0
 CURRENT_STEP=wait_for_api
-if ! wait_for_api; then
+if wait_for_api; then
+    api_ready=1
+    log "Kubernetes API is ready after restart"
+elif [ "${NUMBER_OF_MASTERS:-1}" -gt 1 ]; then
+    log "Kubernetes API is not ready yet on this HA master; continuing so remaining masters can rotate"
+else
     log "Kubernetes API did not become ready after CA rotation"
     exit 1
 fi
-log "Kubernetes API is ready after restart"
 
 CURRENT_STEP=patch_workloads
-for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
-    for name in $(kubectl get deployments -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
-        kubectl patch deployment -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+if [ "${api_ready}" -eq 1 ]; then
+    for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
+        for name in $(kubectl get deployments -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl patch deployment -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+        done
+        for name in $(kubectl get daemonset -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl patch daemonset -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+        done
     done
-    for name in $(kubectl get daemonset -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
-        kubectl patch daemonset -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
-    done
-done
 
-if kubectl get daemonset -n kube-system calico-node >/dev/null 2>&1; then
-    kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"2"}}}}}'
+    if kubectl get daemonset -n kube-system calico-node >/dev/null 2>&1; then
+        kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"2"}}}}}'
+    fi
+    log "patched workloads to roll pods"
+else
+    log "Skipping workload patching because Kubernetes API is not ready on this master yet"
 fi
-log "patched workloads to roll pods"
 
 CURRENT_STEP=update_state
 update_heat_param KUBE_SERVICE_ACCOUNT_KEY "${service_account_key}"

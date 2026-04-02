@@ -83,6 +83,12 @@ class HeatDriver(driver.Driver):
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
 
+    def _get_ca_rotation_batch_size(self, cluster):
+        master_count = getattr(cluster.default_ng_master, 'node_count', 1) or 1
+        if master_count <= 1:
+            return 1
+        return (master_count // 2) + 1
+
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
         env_abs_paths = [os.path.join(template_dir, f) for f in env_rel_paths]
@@ -525,6 +531,8 @@ class KubernetesDriver(HeatDriver):
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
         heat_params['is_resize'] = False
+        heat_params['update_max_batch_size'] = (
+            self._get_ca_rotation_batch_size(cluster))
 
         fields = {
             **self._get_stack_update_template_fields(context, cluster),
