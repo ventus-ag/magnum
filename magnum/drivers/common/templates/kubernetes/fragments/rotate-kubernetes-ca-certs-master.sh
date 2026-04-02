@@ -504,18 +504,17 @@ fi
 
 CURRENT_STEP=patch_workloads
 if [ "${api_ready}" -eq 1 ]; then
+    rotation_patch=$(printf '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"%s"}}}}}' "${rotation_id}")
+
     for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
         for name in $(kubectl get deployments -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch deployment -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+            kubectl patch deployment -n "${namespace}" "${name}" -p "${rotation_patch}"
         done
         for name in $(kubectl get daemonset -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl patch daemonset -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
+            kubectl patch daemonset -n "${namespace}" "${name}" -p "${rotation_patch}"
         done
     done
 
-    if kubectl get daemonset -n kube-system calico-node >/dev/null 2>&1; then
-        kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"2"}}}}}'
-    fi
     log "patched workloads to roll pods"
 else
     log "Skipping workload patching because Kubernetes API is not ready on this master yet"
