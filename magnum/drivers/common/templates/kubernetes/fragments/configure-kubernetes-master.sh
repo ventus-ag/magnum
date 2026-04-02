@@ -255,7 +255,6 @@ ExecStartPre=/bin/mkdir -p /var/lib/calico
 ExecStartPre=/bin/mkdir -p /var/lib/containerd
 ExecStartPre=/bin/mkdir -p /var/lib/docker
 ExecStartPre=/bin/mkdir -p /var/lib/kubelet/volumeplugins
-ExecStartPre=/bin/mkdir -p /usr/libexec/cni
 ExecStartPre=/bin/mkdir -p /opt/cni/bin
 ExecStart=/usr/local/bin/kubelet \\
     \$KUBE_LOG_LEVEL \$KUBE_LOGTOSTDERR \$KUBELET_API_SERVER \$KUBELET_ADDRESS \$KUBELET_HOSTNAME \$KUBELET_ARGS
