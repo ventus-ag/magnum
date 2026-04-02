@@ -480,24 +480,22 @@ if [ "${IS_RESIZE:-false}" = "True" ]; then
     cleanup_excess_members
     
     echo "Resize operation completed." >&2
-    exit 0
-fi
+else
+    # -------------------------------------------------------
+    # Cluster Join/Creation Logic with Added Membership Check
+    # -------------------------------------------------------
 
-# -------------------------------------------------------
-# Cluster Join/Creation Logic with Added Membership Check
-# -------------------------------------------------------
+    # Flag to track if etcd restart is needed
+    etcd_restart_needed=0
 
-# Flag to track if etcd restart is needed
-etcd_restart_needed=0
+    # Define key endpoints.
+    local_endpoint="$protocol://$myip:2379"
+    lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
 
-# Define key endpoints.
-local_endpoint="$protocol://$myip:2379"
-lb_endpoint="$protocol://$ETCD_LB_VIP:2379"
-
-# Initialize flags.
-discovery_ok=0
-lb_ok=0
-local_ok=0
+    # Initialize flags.
+    discovery_ok=0
+    lb_ok=0
+    local_ok=0
 
 # Check discovery URL.
 if check_discovery_url "$ETCD_DISCOVERY_URL"; then
@@ -607,4 +605,4 @@ else
     # Still reload daemon in case systemd service file changed
     $ssh_cmd systemctl daemon-reload
 fi
-
+fi

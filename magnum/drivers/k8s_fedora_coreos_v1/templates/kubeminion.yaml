@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  is_resize:
+    type: boolean
+    description: Flag indicating if the stack is being resized
+    default: false
+
   timestamp_upgrade:
     type: string
     description: A timestamp value that changes on every stack upgrade
@@ -464,6 +469,7 @@ resources:
                   }
                 params:
                   $INSTANCE_NAME: { get_param: name }
+                  $IS_RESIZE: { get_param: is_resize }
                   $PROMETHEUS_MONITORING: { get_param: prometheus_monitoring }
                   $KUBE_ALLOW_PRIV: { get_param: kube_allow_priv }
                   $KUBE_MASTER_IP: { get_param: kube_master_ip }
@@ -632,6 +638,7 @@ resources:
                 params:
                   $INSTANCE_NAME: { get_param: name }
                   $IS_UPGRADE: { get_param: is_upgrade }
+                  $IS_RESIZE: { get_param: is_resize }
                   $PROMETHEUS_MONITORING: { get_param: prometheus_monitoring }
                   $KUBE_ALLOW_PRIV: { get_param: kube_allow_priv }
                   $KUBE_MASTER_IP: { get_param: kube_master_ip }
