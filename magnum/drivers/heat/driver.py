@@ -449,11 +449,14 @@ class KubernetesDriver(HeatDriver):
             'files': tpl_files,
         }
 
-    def _get_default_nested_stack_ids(self, osc, cluster, nodegroup):
+    def _get_nested_stack_ids(self, osc, parent_stack_id, nodegroup):
         resource_name = (
             'kube_masters' if nodegroup.role == 'master' else 'kube_minions')
-        resource_group = osc.heat().resources.get(cluster.stack_id,
-                                                  resource_name)
+        try:
+            resource_group = osc.heat().resources.get(parent_stack_id,
+                                                      resource_name)
+        except heatexc.HTTPNotFound:
+            return []
         group_stack_id = getattr(resource_group, 'physical_resource_id', None)
         if not group_stack_id:
             return []
@@ -532,20 +535,23 @@ class KubernetesDriver(HeatDriver):
             if not nodegroup.stack_id:
                 continue
 
-            stack_ids = [nodegroup.stack_id]
-            stack_fields = self._get_stack_update_template_fields(
-                context, cluster, nodegroups=[nodegroup])
+            parent_stack_id = (
+                cluster.stack_id if nodegroup.is_default
+                else nodegroup.stack_id)
+            stack_ids = self._get_nested_stack_ids(
+                osc, parent_stack_id, nodegroup)
+            if not stack_ids:
+                LOG.warning('Could not resolve %s member stacks for '
+                            'nodegroup %s in cluster %s during CA rotation',
+                            nodegroup.role, nodegroup.uuid, cluster.uuid)
+                continue
 
-            if nodegroup.is_default:
-                stack_ids = self._get_default_nested_stack_ids(
-                    osc, cluster, nodegroup)
-                stack_fields = self._get_nested_stack_update_template_fields(
-                    nodegroup)
-                if not stack_ids:
-                    LOG.warning('Could not resolve default %s nested stacks '
-                                'for cluster %s during CA rotation',
-                                nodegroup.role, cluster.uuid)
-                    continue
+            # The actual CA rotation deployments live in the per-node child
+            # stacks. Updating those directly avoids broad standalone nodegroup
+            # stack updates while the persisted rotation state still comes
+            # from the main cluster stack parameters.
+            stack_fields = self._get_nested_stack_update_template_fields(
+                nodegroup)
 
             for stack_id in stack_ids:
                 nodegroup_fields = {
