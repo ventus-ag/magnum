@@ -452,11 +452,25 @@ class KubernetesDriver(HeatDriver):
     def _get_default_nested_stack_ids(self, osc, cluster, nodegroup):
         resource_name = (
             'kube_masters' if nodegroup.role == 'master' else 'kube_minions')
-        resource = osc.heat().resources.get(cluster.stack_id, resource_name)
-        refs = resource.attributes.get('refs') or []
-        if isinstance(refs, (list, tuple)):
-            return [stack_id for stack_id in refs if stack_id]
-        return []
+        resource_group = osc.heat().resources.get(cluster.stack_id,
+                                                  resource_name)
+        group_stack_id = getattr(resource_group, 'physical_resource_id', None)
+        if not group_stack_id:
+            return []
+
+        member_stack_ids = []
+        for resource in osc.heat().resources.list(group_stack_id):
+            stack_id = getattr(resource, 'physical_resource_id', None)
+            if not stack_id:
+                continue
+            member_name = (
+                getattr(resource, 'resource_name', None) or
+                getattr(resource, 'logical_resource_id', None) or '')
+            if not six.text_type(member_name).isdigit():
+                continue
+            member_stack_ids.append((int(member_name), stack_id))
+
+        return [stack_id for _, stack_id in sorted(member_stack_ids)]
 
     def _get_nested_stack_update_template_fields(self, nodegroup):
         template_name = (

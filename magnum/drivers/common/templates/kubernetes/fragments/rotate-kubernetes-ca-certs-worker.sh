@@ -1,9 +1,31 @@
 echo "START: rotate CA certs on worker"
 
 HEAT_PARAMS=/etc/sysconfig/heat-params
+LOG_FILE=/var/log/magnum-ca-rotate.log
+CURRENT_STEP=init
+
+mkdir -p "$(dirname "${LOG_FILE}")"
+touch "${LOG_FILE}"
+chmod 600 "${LOG_FILE}"
+
+log() {
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    printf '%s [worker] %s\n' "${timestamp}" "$1" | tee -a "${LOG_FILE}"
+}
+
+on_exit() {
+    rc=$?
+    if [ "${rc}" -eq 0 ]; then
+        log "EXIT rc=0 step=${CURRENT_STEP}"
+    else
+        log "EXIT rc=${rc} step=${CURRENT_STEP}"
+    fi
+}
+
+trap on_exit EXIT
 
 if [ ! -f "${HEAT_PARAMS}" ]; then
-    echo "heat-params file is missing, skipping CA rotation"
+    log "heat-params file is missing, skipping CA rotation"
     exit 0
 fi
 
@@ -26,6 +48,8 @@ current_rotation_id=""
 if [ -f "${rotation_state_file}" ]; then
     current_rotation_id=$(cat "${rotation_state_file}")
 fi
+
+log "loaded heat params rotation_id=${rotation_id:-empty} current_rotation_id=${current_rotation_id:-empty}"
 
 update_heat_param() {
     param_key="$1"
@@ -64,25 +88,26 @@ generate_certificates() {
 }
 
 if [ -z "${rotation_id}" ]; then
-    echo "No CA rotation requested, skipping"
+    log "No CA rotation requested, skipping"
     exit 0
 fi
 
 if [ "${rotation_id}" = "${current_rotation_id}" ]; then
-    echo "CA rotation ${rotation_id} already applied, skipping"
+    log "CA rotation ${rotation_id} already applied, skipping"
     exit 0
 fi
 
 if [ -z "${service_account_key}" ] || [ -z "${service_account_private_key}" ]; then
-    echo "Missing service account key material for CA rotation"
+    log "Missing service account key material for CA rotation"
     exit 1
 fi
 
 if [ "${TLS_DISABLED}" = "True" ]; then
-    echo "TLS is disabled, skipping CA rotation"
+    log "TLS is disabled, skipping CA rotation"
     exit 0
 fi
 
+CURRENT_STEP=metadata
 if [ "${VERIFY_CA}" = "True" ]; then
     verify_ca_opt=""
 else
@@ -96,7 +121,9 @@ fi
 HOSTNAME=$(cat /etc/hostname | head -1)
 mkdir -p "${cert_dir}"
 mkdir -p "$(dirname "${rotation_state_file}")"
+log "prepared worker certificate directories"
 
+CURRENT_STEP=keystone_token
 auth_json=$(cat <<EOF
 {
     "auth": {
@@ -127,15 +154,19 @@ user_token=$(curl ${verify_ca_opt} -s -i -X POST \
     "${AUTH_URL}/auth/tokens" | grep -i X-Subject-Token | awk '{print $2}' | tr -d '[[:space:]]')
 
 if [ -z "${user_token}" ]; then
-    echo "Failed to obtain a Keystone token for CA rotation"
+    log "Failed to obtain a Keystone token for CA rotation"
     exit 1
 fi
+log "obtained Keystone token"
 
+CURRENT_STEP=fetch_cluster_ca
 curl ${verify_ca_opt} -s -X GET \
     -H "X-Auth-Token: ${user_token}" \
     -H "OpenStack-API-Version: container-infra latest" \
     "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${ca_cert}"
+log "fetched cluster CA certificate"
 
+CURRENT_STEP=write_openssl_configs
 cat > "${cert_dir}/kubelet.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
@@ -171,22 +202,29 @@ keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=clientAuth
 EOF
 
+CURRENT_STEP=generate_certificates
+log "generating worker certificates"
 generate_certificates kubelet "${cert_dir}/kubelet.conf"
 generate_certificates proxy "${cert_dir}/proxy.conf"
 
+CURRENT_STEP=permissions
 chmod 550 "${cert_dir}"
 chmod 440 "${cert_dir}/kubelet.key"
 chmod 440 "${cert_dir}/proxy.key"
+log "updated worker certificate permissions"
 
+CURRENT_STEP=restart_services
 for service in kubelet kube-proxy; do
-    echo "restart service ${service}"
+    log "restart service ${service}"
     $ssh_cmd systemctl restart "${service}"
 done
 
+CURRENT_STEP=update_state
 update_heat_param KUBE_SERVICE_ACCOUNT_KEY "${service_account_key}"
 update_heat_param KUBE_SERVICE_ACCOUNT_PRIVATE_KEY "${service_account_private_key}"
 update_heat_param CA_ROTATION_ID "${rotation_id}"
 printf '%s' "${rotation_id}" > "${rotation_state_file}"
 chmod 600 "${rotation_state_file}"
+log "updated heat params and persisted rotation state"
 
 echo "END: rotate CA certs on worker"

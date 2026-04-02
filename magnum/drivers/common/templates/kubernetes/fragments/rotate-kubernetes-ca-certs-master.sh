@@ -1,9 +1,31 @@
 echo "START: rotate CA certs on master"
 
 HEAT_PARAMS=/etc/sysconfig/heat-params
+LOG_FILE=/var/log/magnum-ca-rotate.log
+CURRENT_STEP=init
+
+mkdir -p "$(dirname "${LOG_FILE}")"
+touch "${LOG_FILE}"
+chmod 600 "${LOG_FILE}"
+
+log() {
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    printf '%s [master] %s\n' "${timestamp}" "$1" | tee -a "${LOG_FILE}"
+}
+
+on_exit() {
+    rc=$?
+    if [ "${rc}" -eq 0 ]; then
+        log "EXIT rc=0 step=${CURRENT_STEP}"
+    else
+        log "EXIT rc=${rc} step=${CURRENT_STEP}"
+    fi
+}
+
+trap on_exit EXIT
 
 if [ ! -f "${HEAT_PARAMS}" ]; then
-    echo "heat-params file is missing, skipping CA rotation"
+    log "heat-params file is missing, skipping CA rotation"
     exit 0
 fi
 
@@ -29,6 +51,8 @@ current_rotation_id=""
 if [ -f "${rotation_state_file}" ]; then
     current_rotation_id=$(cat "${rotation_state_file}")
 fi
+
+log "loaded heat params rotation_id=${rotation_id:-empty} current_rotation_id=${current_rotation_id:-empty}"
 
 update_heat_param() {
     param_key="$1"
@@ -77,25 +101,26 @@ generate_certificates() {
 }
 
 if [ -z "${rotation_id}" ]; then
-    echo "No CA rotation requested, skipping"
+    log "No CA rotation requested, skipping"
     exit 0
 fi
 
 if [ "${rotation_id}" = "${current_rotation_id}" ]; then
-    echo "CA rotation ${rotation_id} already applied, skipping"
+    log "CA rotation ${rotation_id} already applied, skipping"
     exit 0
 fi
 
 if [ -z "${service_account_key}" ] || [ -z "${service_account_private_key}" ]; then
-    echo "Missing service account key material for CA rotation"
+    log "Missing service account key material for CA rotation"
     exit 1
 fi
 
 if [ "${TLS_DISABLED}" = "True" ]; then
-    echo "TLS is disabled, skipping CA rotation"
+    log "TLS is disabled, skipping CA rotation"
     exit 0
 fi
 
+CURRENT_STEP=metadata
 if [ "${VERIFY_CA}" = "True" ]; then
     verify_ca_opt=""
 else
@@ -141,7 +166,9 @@ sans="${sans},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,D
 
 mkdir -p "${cert_dir}" "${etcd_cert_dir}"
 mkdir -p "$(dirname "${rotation_state_file}")"
+log "prepared certificate directories"
 
+CURRENT_STEP=keystone_token
 auth_json=$(cat <<EOF
 {
     "auth": {
@@ -172,15 +199,19 @@ user_token=$(curl ${verify_ca_opt} -s -i -X POST \
     "${AUTH_URL}/auth/tokens" | grep -i X-Subject-Token | awk '{print $2}' | tr -d '[[:space:]]')
 
 if [ -z "${user_token}" ]; then
-    echo "Failed to obtain a Keystone token for CA rotation"
+    log "Failed to obtain a Keystone token for CA rotation"
     exit 1
 fi
+log "obtained Keystone token"
 
+CURRENT_STEP=fetch_cluster_ca
 curl ${verify_ca_opt} -s -X GET \
     -H "X-Auth-Token: ${user_token}" \
     -H "OpenStack-API-Version: container-infra latest" \
     "${MAGNUM_URL}/certificates/${CLUSTER_UUID}" | python -c 'import sys, json; print(json.load(sys.stdin)["pem"])' > "${ca_cert}"
+log "fetched cluster CA certificate"
 
+CURRENT_STEP=write_openssl_configs
 cat > "${cert_dir}/server.conf" <<EOF
 [req]
 distinguished_name = req_distinguished_name
@@ -278,6 +309,8 @@ L=Austin
 extendedKeyUsage= clientAuth
 EOF
 
+CURRENT_STEP=generate_certificates
+log "generating master certificates"
 generate_certificates server "${cert_dir}/server.conf"
 generate_certificates kubelet "${cert_dir}/kubelet.conf"
 generate_certificates admin "${cert_dir}/admin.conf"
@@ -285,6 +318,7 @@ generate_certificates proxy "${cert_dir}/proxy.conf"
 generate_certificates controller "${cert_dir}/controller.conf"
 generate_certificates scheduler "${cert_dir}/scheduler.conf"
 
+CURRENT_STEP=write_key_material
 echo -e "${service_account_key}" > "${cert_dir}/service_account.key"
 echo -e "${service_account_private_key}" > "${cert_dir}/service_account_private.key"
 
@@ -293,6 +327,7 @@ if [ -n "${ca_key}" ]; then
     chmod 400 "${cert_dir}/ca.key"
 fi
 
+CURRENT_STEP=permissions
 if ! $ssh_cmd id etcd >/dev/null 2>&1; then
     $ssh_cmd useradd -s "/sbin/nologin" --system etcd
 fi
@@ -312,7 +347,9 @@ $ssh_cmd chmod 440 "${cert_dir}/controller.key"
 $ssh_cmd chmod 440 "${cert_dir}/scheduler.key"
 $ssh_cmd chmod 440 "${cert_dir}/kubelet.key"
 $ssh_cmd cp "${cert_dir}"/* "${etcd_cert_dir}"
+log "updated certificate permissions and copied etcd certs"
 
+CURRENT_STEP=write_kubeconfig
 cat > "${admin_kubeconfig}.tmp" <<EOF
 apiVersion: v1
 clusters:
@@ -340,17 +377,22 @@ chmod 600 "${admin_kubeconfig}"
 export KUBECONFIG="${admin_kubeconfig}"
 $ssh_cmd mkdir -p /root/.kube
 $ssh_cmd cp -f "${admin_kubeconfig}" /root/.kube/config
+log "updated admin kubeconfig"
 
+CURRENT_STEP=restart_services
 for service in etcd kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy; do
-    echo "restart service ${service}"
+    log "restart service ${service}"
     $ssh_cmd systemctl restart "${service}"
 done
 
+CURRENT_STEP=wait_for_api
 if ! wait_for_api; then
-    echo "Kubernetes API did not become ready after CA rotation"
+    log "Kubernetes API did not become ready after CA rotation"
     exit 1
 fi
+log "Kubernetes API is ready after restart"
 
+CURRENT_STEP=patch_workloads
 for namespace in $(kubectl get namespace -o jsonpath='{.items[*].metadata.name}'); do
     for name in $(kubectl get deployments -n "${namespace}" -o jsonpath='{.items[*].metadata.name}'); do
         kubectl patch deployment -n "${namespace}" "${name}" -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"1"}}}}}'
@@ -363,7 +405,9 @@ done
 if kubectl get daemonset -n kube-system calico-node >/dev/null 2>&1; then
     kubectl patch daemonset -n kube-system calico-node -p '{"spec":{"template":{"metadata":{"annotations":{"ca-rotation":"2"}}}}}'
 fi
+log "patched workloads to roll pods"
 
+CURRENT_STEP=update_state
 update_heat_param KUBE_SERVICE_ACCOUNT_KEY "${service_account_key}"
 update_heat_param KUBE_SERVICE_ACCOUNT_PRIVATE_KEY "${service_account_private_key}"
 update_heat_param CA_ROTATION_ID "${rotation_id}"
@@ -372,5 +416,6 @@ if [ -n "${ca_key}" ]; then
 fi
 printf '%s' "${rotation_id}" > "${rotation_state_file}"
 chmod 600 "${rotation_state_file}"
+log "updated heat params and persisted rotation state"
 
 echo "END: rotate CA certs on master"
