@@ -552,7 +552,7 @@ class KubernetesDriver(HeatDriver):
             'existing': True,
             'parameters': heat_params,
             'timeout_mins': self._get_update_timeout(),
-            'disable_rollback': False
+            'disable_rollback': True
         }
         osc.heat().stacks.update(cluster.stack_id, **fields)
 
@@ -593,7 +593,7 @@ class KubernetesDriver(HeatDriver):
                         self._get_nested_ca_rotation_params(
                             nodegroup, heat_params)),
                     'timeout_mins': self._get_update_timeout(),
-                    'disable_rollback': False
+                    'disable_rollback': True
                 }
                 osc.heat().stacks.update(stack_id, **nodegroup_fields)
 
