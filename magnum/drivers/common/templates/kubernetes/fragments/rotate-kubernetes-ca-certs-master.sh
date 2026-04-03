@@ -533,4 +533,9 @@ log "updated heat params and persisted rotation state"
 
 echo "END: rotate CA certs on master"
 fi
+
+# Restore default shell settings so that subsequent fragments in the
+# concatenated upgrade_kubernetes_config script are not affected by the
+# strict -eu -o pipefail that this rotation block enabled.
+set +e +u +o pipefail
 fi

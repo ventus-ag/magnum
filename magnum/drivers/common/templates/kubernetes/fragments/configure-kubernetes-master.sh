@@ -7,6 +7,21 @@ set +x
 . /etc/sysconfig/heat-params
 set -x
 
+is_true() {
+    [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
+}
+
+# During a pure CA rotation the certificates have already been replaced
+# and services restarted by rotate-kubernetes-ca-certs-master.sh.
+# Skip the full kubernetes master reconfiguration to avoid unnecessary
+# downloads, service file rewrites, and potential failures under the
+# strict shell settings inherited from the rotation script.
+if [ -n "${CA_ROTATION_ID:-}" ] && \
+   ! is_true "${IS_UPGRADE:-false}" && \
+   ! is_true "${IS_RESIZE:-false}"; then
+    echo "Pure CA rotation detected – skipping kubernetes master reconfiguration"
+else
+
 echo "configuring kubernetes (master)"
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
@@ -740,3 +755,4 @@ KUBELET_ADDRESS="--node-ip=${KUBE_NODE_IP}"
 KUBELET_HOSTNAME="--hostname-override=${INSTANCE_NAME}"
 KUBELET_ARGS="${KUBELET_ARGS}"
 EOF
+fi

@@ -7,6 +7,21 @@ set -e
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
+is_true() {
+    [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
+}
+
+# During a pure CA rotation the certificates have already been replaced
+# and services restarted by rotate-kubernetes-ca-certs-worker.sh.
+# Skip the full kubernetes minion reconfiguration to avoid unnecessary
+# CNI plugin downloads, service file rewrites, and potential failures
+# under the strict shell settings inherited from the rotation script.
+if [ -n "${CA_ROTATION_ID:-}" ] && \
+   ! is_true "${IS_UPGRADE:-false}" && \
+   ! is_true "${IS_RESIZE:-false}"; then
+    echo "Pure CA rotation detected – skipping kubernetes minion reconfiguration"
+else
+
 echo "configuring kubernetes (minion)"
 
 version_gt() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; }
@@ -331,3 +346,4 @@ EOF
 cat >> /etc/environment <<EOF
 KUBERNETES_MASTER=$KUBE_MASTER_URI
 EOF
+fi

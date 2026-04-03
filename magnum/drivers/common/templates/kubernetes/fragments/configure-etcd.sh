@@ -4,6 +4,22 @@
 
 set -x
 
+is_true() {
+    [ "$(echo "${1:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]
+}
+
+# During a pure CA rotation the certificates have already been replaced
+# and etcd has been restarted by rotate-kubernetes-ca-certs-master.sh.
+# Re-running the full cluster-join / membership logic with mixed old/new
+# certs across the rolling batch can break the etcd cluster (the LB may
+# route to a not-yet-rotated member whose certs no longer verify against
+# the new CA, causing cleanup_etcd to destroy a healthy node).
+if [ -n "${CA_ROTATION_ID:-}" ] && \
+   ! is_true "${IS_UPGRADE:-false}" && \
+   ! is_true "${IS_RESIZE:-false}"; then
+    echo "Pure CA rotation detected – skipping etcd reconfiguration"
+else
+
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
 # Export proxy variables if set
@@ -604,5 +620,6 @@ else
     echo "No configuration changes detected, skipping etcd restart" >&2
     # Still reload daemon in case systemd service file changed
     $ssh_cmd systemctl daemon-reload
+fi
 fi
 fi
