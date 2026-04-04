@@ -88,6 +88,31 @@ parameters:
     description: A timestamp value that changes on every stack upgrade
     default: ""
 
+  reconciler_version:
+    type: string
+    description: version tag of the node reconciler binary
+    default: ""
+
+  reconciler_binary_url:
+    type: string
+    description: download URL for the node reconciler binary
+    default: ""
+
+  reconciler_binary_url_sha256:
+    type: string
+    description: sha256 checksum for the node reconciler binary URL content
+    default: ""
+
+  reconciler_run_interval:
+    type: string
+    description: periodic reconcile timer interval
+    default: "120min"
+
+  reconciler_lock_timeout_seconds:
+    type: string
+    description: lock timeout for synchronous reconcile runs
+    default: "900"
+
   master_role:
     type: string
     default: ""
@@ -1402,82 +1427,13 @@ resources:
           containerd_tarball_sha256: { get_param: containerd_tarball_sha256 }
           post_install_manifest_url: { get_param: post_install_manifest_url }
           metrics_scraper_tag: { get_param: metrics_scraper_tag }
-
-  kube_cluster_config:
-    condition: create_cluster_resources
-    type: OS::Heat::SoftwareConfig
-    properties:
-      group: script
-      config:
-        list_join:
-          - "\n"
-          - - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
-            - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
-            - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
-            - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-flannel-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-occm-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-
-  kube_cluster_upgrade_config:
-    condition: upgrade_cluster_resources
-    type: OS::Heat::SoftwareConfig
-    properties:
-      group: script
-      inputs:
-        - name: OS_STACK_ID
-      config:
-        list_join:
-          - "\n"
-          - - str_replace:
-                template: |
-                  #!/bin/sh
-                  echo 'stack_id'
-                params:
-                  stack_id: { get_param: "OS::stack_id" }
-            - get_file: ../../common/templates/kubernetes/fragments/export-kubeconfig.sh
-            - get_file: ../../common/templates/kubernetes/fragments/cleanup-deprecated.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-helm.sh
-            - get_file: ../../common/templates/kubernetes/fragments/kube-apiserver-to-kubelet-role.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-flannel-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/core-dns-service-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-healing-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-occm-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-auto-scaling-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-metrics-server-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-cinder-csi-plugin.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-manila-csi-plugin.sh
-
-  kube_cluster_deploy:
-    condition: create_cluster_resources
-    type: OS::Heat::SoftwareDeployment
-    properties:
-      actions: ["CREATE"]
-      signal_transport: HEAT_SIGNAL
-      config:
-        get_resource: kube_cluster_config
-      server:
-        get_attr: [kube_masters, resource.0]
-
-  kube_cluster_upgrade:
-    condition: upgrade_cluster_resources
-    type: OS::Heat::SoftwareDeployment
-    properties:
-      actions: ["CREATE", "UPDATE"]
-      signal_transport: HEAT_SIGNAL
-      config:
-        get_resource: kube_cluster_upgrade_config
-      server:
-        get_attr: [kube_masters, resource.0]
-      input_values:
-        OS_STACK_ID: { get_param: "OS::stack_id" }
-        timestamp_upgrade: { get_param: timestamp_upgrade }
+          reconciler_version: { get_param: reconciler_version }
+          reconciler_binary_url: { get_param: reconciler_binary_url }
+          reconciler_binary_url_sha256:
+            { get_param: reconciler_binary_url_sha256 }
+          reconciler_run_interval: { get_param: reconciler_run_interval }
+          reconciler_lock_timeout_seconds:
+            { get_param: reconciler_lock_timeout_seconds }
 
   ######################################################################
   #
@@ -1606,6 +1562,13 @@ resources:
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
           ca_rotation_id: { get_param: ca_rotation_id }
+          reconciler_version: { get_param: reconciler_version }
+          reconciler_binary_url: { get_param: reconciler_binary_url }
+          reconciler_binary_url_sha256:
+            { get_param: reconciler_binary_url_sha256 }
+          reconciler_run_interval: { get_param: reconciler_run_interval }
+          reconciler_lock_timeout_seconds:
+            { get_param: reconciler_lock_timeout_seconds }
 
 outputs:
   api_address:

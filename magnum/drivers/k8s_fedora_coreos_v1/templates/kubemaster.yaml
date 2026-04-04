@@ -24,6 +24,31 @@ parameters:
     description: A timestamp value that changes on every stack upgrade
     default: ""
 
+  reconciler_version:
+    type: string
+    description: version tag of the node reconciler binary
+    default: ""
+
+  reconciler_binary_url:
+    type: string
+    description: download URL for the node reconciler binary
+    default: ""
+
+  reconciler_binary_url_sha256:
+    type: string
+    description: sha256 checksum for the node reconciler binary URL content
+    default: ""
+
+  reconciler_run_interval:
+    type: string
+    description: periodic reconcile timer interval
+    default: "120min"
+
+  reconciler_lock_timeout_seconds:
+    type: string
+    description: lock timeout for synchronous reconcile runs
+    default: "900"
+
   number_of_masters:
     type: number
     description: number of masters in the cluster
@@ -787,7 +812,7 @@ resources:
           - - str_replace:
                 template:
                   {
-                    get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh,
+                    get_file: ../../common/templates/kubernetes/bootstrap/write-heat-params-master.sh,
                   }
                 params:
                   $INSTANCE_NAME: { get_param: name }
@@ -951,23 +976,17 @@ resources:
                   $POST_INSTALL_MANIFEST_URL:
                     { get_param: post_install_manifest_url }
                   $METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
-            - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-clients.sh
-            - get_file: ../../common/templates/kubernetes/fragments/make-cert.sh
-            - str_replace:
-                template:
-                  {
-                    get_file: ../../common/templates/kubernetes/fragments/enable-cert-api-manager.sh,
-                  }
-                params:
-                  "$CA_KEY": { get_param: ca_key }
-            - get_file: ../../common/templates/kubernetes/fragments/configure-etcd.sh
-            - get_file: ../../common/templates/kubernetes/fragments/write-kube-os-config.sh
-            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
-            - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-master.sh
-            - get_file: ../../common/templates/fragments/configure-docker-storage.sh
-            - get_file: ../../common/templates/kubernetes/fragments/enable-services-master.sh
-            - get_file: ../../common/templates/kubernetes/fragments/add-proxy.sh
+                  $RECONCILER_VERSION: { get_param: reconciler_version }
+                  $RECONCILER_BINARY_URL: { get_param: reconciler_binary_url }
+                  $RECONCILER_BINARY_URL_SHA256:
+                    { get_param: reconciler_binary_url_sha256 }
+                  $RECONCILER_RUN_INTERVAL:
+                    { get_param: reconciler_run_interval }
+                  $RECONCILER_LOCK_TIMEOUT_SECONDS:
+                    { get_param: reconciler_lock_timeout_seconds }
+            - get_file: ../../common/templates/kubernetes/bootstrap/install-reconciler-launcher.sh
+            - get_file: ../../common/templates/kubernetes/bootstrap/install-reconciler-systemd.sh
+            - get_file: ../../common/templates/kubernetes/bootstrap/run-reconciler-once.sh
 
   master_config_deployment:
     condition: create_masters
@@ -1088,7 +1107,7 @@ resources:
           - - str_replace:
                 template:
                   {
-                    get_file: ../../common/templates/kubernetes/fragments/write-heat-params-master.sh,
+                    get_file: ../../common/templates/kubernetes/bootstrap/write-heat-params-master.sh,
                   }
                 params:
                   $INSTANCE_NAME: { get_param: name }
@@ -1254,19 +1273,17 @@ resources:
                   $POST_INSTALL_MANIFEST_URL:
                     { get_param: post_install_manifest_url }
                   $METRICS_SCRAPER_TAG: { get_param: metrics_scraper_tag }
-            - str_replace:
-                template: |
-                  #!/bin/sh
-                  echo 'stack_id'
-                params:
-                  stack_id: { get_param: "OS::stack_id" }
-            - get_file: ../../common/templates/kubernetes/fragments/rotate-kubernetes-ca-certs-master.sh
-            - get_file: ../../common/templates/kubernetes/fragments/configure-etcd.sh
-            - get_file: ../../common/templates/kubernetes/fragments/write-admin-kubeconfig.sh
-            - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-stop.sh
-            - get_file: ../../common/templates/kubernetes/fragments/install-cri.sh
-            - get_file: ../../common/templates/kubernetes/fragments/configure-kubernetes-master.sh
-            - get_file: ../../common/templates/kubernetes/fragments/upgrade-kubernetes-start.sh
+                  $RECONCILER_VERSION: { get_param: reconciler_version }
+                  $RECONCILER_BINARY_URL: { get_param: reconciler_binary_url }
+                  $RECONCILER_BINARY_URL_SHA256:
+                    { get_param: reconciler_binary_url_sha256 }
+                  $RECONCILER_RUN_INTERVAL:
+                    { get_param: reconciler_run_interval }
+                  $RECONCILER_LOCK_TIMEOUT_SECONDS:
+                    { get_param: reconciler_lock_timeout_seconds }
+            - get_file: ../../common/templates/kubernetes/bootstrap/install-reconciler-launcher.sh
+            - get_file: ../../common/templates/kubernetes/bootstrap/install-reconciler-systemd.sh
+            - get_file: ../../common/templates/kubernetes/bootstrap/run-reconciler-once.sh
 
   upgrade_kubernetes_deployment:
     condition: reconcile_masters
