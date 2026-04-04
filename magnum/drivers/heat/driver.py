@@ -40,6 +40,7 @@ from magnum.conductor.handlers.common import trust_manager
 from magnum.conductor import utils as conductor_utils
 from magnum.drivers.common import driver
 from magnum.drivers.common import k8s_monitor
+from magnum.drivers.heat import template_def as heat_tdef
 from magnum.i18n import _
 from magnum.objects import fields
 
@@ -413,7 +414,8 @@ class HeatDriver(driver.Driver):
             # Get existing cluster stack parameters
             try:
                 cluster_stack = osc.heat().stacks.get(cluster_stack_id)
-                existing_params = cluster_stack.parameters.copy()
+                existing_params = heat_tdef.omit_masked_heat_parameters(
+                    cluster_stack.parameters.copy())
             except Exception as e:
                 LOG.warning('Could not retrieve existing cluster stack parameters: %s', str(e))
                 existing_params = {}
@@ -546,8 +548,10 @@ class KubernetesDriver(HeatDriver):
                         'cluster_uuid', 'tls_disabled',
                         'kube_service_account_key',
                         'kube_service_account_private_key'):
-                if key in cluster_stack_params:
-                    nested_params.setdefault(key, cluster_stack_params[key])
+                value = heat_tdef.get_unmasked_heat_parameter(
+                    cluster_stack_params, key)
+                if value is not None:
+                    nested_params.setdefault(key, value)
 
         if nodegroup.role == 'master':
             if cluster_stack_params and 'number_of_masters' in cluster_stack_params:
@@ -559,7 +563,8 @@ class KubernetesDriver(HeatDriver):
         return nested_params
 
     def _get_merged_stack_parameters(self, osc, stack_id, updated_params):
-        current_parameters = osc.heat().stacks.get(stack_id).parameters.copy()
+        current_parameters = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(stack_id).parameters.copy())
         for param in ('OS::stack_id', 'OS::project_id', 'OS::stack_name'):
             current_parameters.pop(param, None)
         current_parameters.update(updated_params)
@@ -569,7 +574,8 @@ class KubernetesDriver(HeatDriver):
         osc = clients.OpenStackClients(context)
 
         heat_params = self._get_ca_rotation_params(context, cluster)
-        cluster_stack_params = osc.heat().stacks.get(cluster.stack_id).parameters.copy()
+        cluster_stack_params = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(cluster.stack_id).parameters.copy())
 
         # Ensure upgrade/resize conditional resources don't re-trigger.
         heat_params['is_upgrade'] = False
@@ -819,8 +825,11 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
-        if 'timestamp_upgrade' in osc.heat().stacks.get(stack_id).parameters:
-            heat_params['timestamp_upgrade'] = osc.heat().stacks.get(stack_id).parameters['timestamp_upgrade']
+        existing_stack_params = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(stack_id).parameters.copy())
+        if 'timestamp_upgrade' in existing_stack_params:
+            heat_params['timestamp_upgrade'] = (
+                existing_stack_params['timestamp_upgrade'])
         heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         fields = {
@@ -833,7 +842,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         }
 
         # Fetch the current parameters of the stack
-        current_parameters = osc.heat().stacks.get(stack_id).parameters
+        current_parameters = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(stack_id).parameters.copy())
         # Remove the parameters to be ignored
         parameters_to_ignore = [
             'OS::stack_id',
@@ -1076,7 +1086,8 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         }
 
         # Fetch the current parameters of the stack
-        current_parameters = osc.heat().stacks.get(stack_id).parameters
+        current_parameters = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(stack_id).parameters.copy())
         # Remove the parameters to be ignored
         parameters_to_ignore = [
             'OS::stack_id',

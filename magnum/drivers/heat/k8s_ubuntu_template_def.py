@@ -172,17 +172,31 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
             try:
                 stack = self.get_osc(context).heat().stacks.get(
                     cluster.stack_id)
-                extra_params['ca_rotation_id'] = stack.parameters.get(
+                stack_params = stack.parameters or {}
+                extra_params['ca_rotation_id'] = stack_params.get(
                     'ca_rotation_id', '')
-                service_account_key = stack.parameters.get(
+                service_account_key = template_def.get_unmasked_heat_parameter(
+                    stack_params,
                     'kube_service_account_key')
-                service_account_private_key = stack.parameters.get(
+                service_account_private_key = (
+                    template_def.get_unmasked_heat_parameter(
+                        stack_params,
                     'kube_service_account_private_key')
+                )
                 if service_account_key and service_account_private_key:
                     extra_params['kube_service_account_key'] = (
                         service_account_key)
                     extra_params['kube_service_account_private_key'] = (
                         service_account_private_key)
+                    return
+                if (template_def.is_masked_heat_parameter(
+                        stack_params.get('kube_service_account_key')) or
+                        template_def.is_masked_heat_parameter(
+                            stack_params.get(
+                                'kube_service_account_private_key'))):
+                    LOG.debug('Service account keys for cluster %s are '
+                              'masked in Heat output; preserving existing '
+                              'stack values.', cluster.uuid)
                     return
             except Exception as exc:
                 LOG.debug('Falling back to newly generated service account '

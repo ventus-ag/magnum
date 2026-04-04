@@ -784,6 +784,50 @@ class DummyKubernetesDriver(heat_driver.KubernetesDriver):
 
 class TestHeatDriverResizeFlags(base.TestCase):
 
+    def test_get_merged_stack_parameters_omits_masked_values(self):
+        driver = DummyKubernetesDriver()
+        osc = mock.MagicMock()
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={
+                'number_of_masters': 1,
+                'password': '******',
+                'kube_service_account_private_key': '******',
+                'plain': 'value',
+            })
+
+        merged = driver._get_merged_stack_parameters(
+            osc, 'stack-id', {'number_of_masters': 2})
+
+        self.assertEqual(2, merged['number_of_masters'])
+        self.assertEqual('value', merged['plain'])
+        self.assertNotIn('password', merged)
+        self.assertNotIn('kube_service_account_private_key', merged)
+
+    def test_get_nested_ca_rotation_params_skips_masked_values(self):
+        driver = DummyKubernetesDriver()
+        nodegroup = mock.MagicMock(role='worker')
+
+        nested = driver._get_nested_ca_rotation_params(
+            nodegroup,
+            {
+                'ca_rotation_id': 'rotation-id',
+                'kube_service_account_key': 'public-key',
+                'kube_service_account_private_key': 'private-key',
+                'timestamp_upgrade': '2026-04-04T00:00:00',
+            },
+            {
+                'trustee_user_id': 'trustee-user',
+                'trustee_password': '******',
+                'auth_url': 'https://keystone.example/v3',
+                'kube_service_account_private_key': '******',
+            })
+
+        self.assertEqual('trustee-user', nested['trustee_user_id'])
+        self.assertEqual('https://keystone.example/v3', nested['auth_url'])
+        self.assertEqual('private-key',
+                         nested['kube_service_account_private_key'])
+        self.assertNotIn('trustee_password', nested)
+
     @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
     def test_resize_stack_clears_stale_ca_rotation_id(self, mock_osc_cls):
         driver = DummyKubernetesDriver()
@@ -829,6 +873,8 @@ class TestHeatDriverResizeFlags(base.TestCase):
             parameters={
                 'ca_rotation_id': 'stale-rotation-id',
                 'number_of_masters': 1,
+                'password': '******',
+                'kube_service_account_private_key': '******',
             })
 
         default_master = mock.MagicMock(
@@ -854,3 +900,6 @@ class TestHeatDriverResizeFlags(base.TestCase):
         self.assertEqual(3, update_kwargs['parameters']['number_of_masters'])
         self.assertFalse(update_kwargs['parameters']['is_upgrade'])
         self.assertTrue(update_kwargs['parameters']['is_resize'])
+        self.assertNotIn('password', update_kwargs['parameters'])
+        self.assertNotIn('kube_service_account_private_key',
+                         update_kwargs['parameters'])
