@@ -484,6 +484,20 @@ resources:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
+      outputs:
+        - name: reconcile_status
+          description: Magnum bootstrap reconciler status
+        - name: reconcile_step
+          description: Magnum bootstrap reconciler step
+        - name: reconcile_summary
+          description: Magnum bootstrap reconciler summary
+        - name: reconcile_reason
+          description: Magnum bootstrap reconciler reason
+        - name: reconcile_error_code
+          description: Magnum bootstrap reconciler error code
+        - name: reconcile_failure
+          description: Magnum bootstrap reconciler failure reason
+          error_output: true
       config:
         list_join:
           - "\n"
@@ -651,6 +665,20 @@ resources:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
+      outputs:
+        - name: reconcile_status
+          description: Magnum bootstrap reconciler status
+        - name: reconcile_step
+          description: Magnum bootstrap reconciler step
+        - name: reconcile_summary
+          description: Magnum bootstrap reconciler summary
+        - name: reconcile_reason
+          description: Magnum bootstrap reconciler reason
+        - name: reconcile_error_code
+          description: Magnum bootstrap reconciler error code
+        - name: reconcile_failure
+          description: Magnum bootstrap reconciler failure reason
+          error_output: true
       inputs:
         - name: OS_STACK_ID
       config:

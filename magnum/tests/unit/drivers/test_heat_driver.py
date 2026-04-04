@@ -762,3 +762,95 @@ class TestHeatPoller(base.TestCase):
 
         self.assertIn('worker_ng', cluster.status_reason)
         self.assertIn('master_ng', cluster.status_reason)
+
+
+class DummyKubernetesDriver(heat_driver.KubernetesDriver):
+
+    def __init__(self):
+        super(DummyKubernetesDriver, self).__init__()
+        self.definition = mock.MagicMock()
+
+    def get_template_definition(self):
+        return self.definition
+
+    def get_nodegroup_extra_params(self, cluster, osc):
+        return {}
+
+    def upgrade_cluster(self, context, cluster, cluster_template,
+                        max_batch_size, nodegroup, scale_manager=None,
+                        rollback=False):
+        raise NotImplementedError
+
+
+class TestHeatDriverResizeFlags(base.TestCase):
+
+    @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
+    def test_resize_stack_clears_stale_ca_rotation_id(self, mock_osc_cls):
+        driver = DummyKubernetesDriver()
+        driver.definition.get_scale_params.return_value = {
+            'number_of_minions': 2,
+        }
+        driver._get_stack_update_template_fields = mock.MagicMock(
+            return_value={})
+
+        osc = mock.MagicMock()
+        mock_osc_cls.return_value = osc
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={
+                'ca_rotation_id': 'stale-rotation-id',
+                'number_of_minions': 1,
+            })
+
+        cluster = mock.MagicMock(uuid='cluster-uuid')
+        nodegroup = mock.MagicMock(
+            stack_id='worker-stack-id',
+            role='worker',
+            node_count=2,
+            is_default=True)
+
+        driver._resize_stack(mock.sentinel.ctx, cluster, None, 2, None,
+                             nodegroup=nodegroup, rollback=False)
+
+        _, update_kwargs = osc.heat.return_value.stacks.update.call_args
+        self.assertEqual('', update_kwargs['parameters']['ca_rotation_id'])
+        self.assertFalse(update_kwargs['parameters']['is_upgrade'])
+        self.assertTrue(update_kwargs['parameters']['is_resize'])
+
+    @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
+    def test_master_resize_cluster_update_clears_stale_ca_rotation_id(
+            self, mock_osc_cls):
+        driver = DummyKubernetesDriver()
+        driver._get_stack_update_template_fields = mock.MagicMock(
+            return_value={})
+
+        osc = mock.MagicMock()
+        mock_osc_cls.return_value = osc
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={
+                'ca_rotation_id': 'stale-rotation-id',
+                'number_of_masters': 1,
+            })
+
+        default_master = mock.MagicMock(
+            uuid='default-master',
+            role='master',
+            node_count=1,
+            stack_id='cluster-stack-id')
+        resized_master = mock.MagicMock(
+            uuid='resized-master',
+            role='master',
+            node_count=2,
+            stack_id='nodegroup-stack-id')
+        cluster = mock.MagicMock(
+            uuid='cluster-uuid',
+            nodegroups=[default_master, resized_master],
+            default_ng_master=default_master)
+
+        driver._update_cluster_stack_for_master_resize(
+            mock.sentinel.ctx, cluster, resized_master, {})
+
+        _, update_kwargs = osc.heat.return_value.stacks.update.call_args
+        self.assertEqual('', update_kwargs['parameters']['ca_rotation_id'])
+        self.assertEqual(3, update_kwargs['parameters']['number_of_masters'])
+        self.assertFalse(update_kwargs['parameters']['is_upgrade'])
+        self.assertTrue(update_kwargs['parameters']['is_resize'])

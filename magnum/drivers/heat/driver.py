@@ -86,6 +86,16 @@ class HeatDriver(driver.Driver):
     def _get_reconcile_timestamp(self):
         return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
+    def _set_non_rotation_stack_flags(self, params, is_upgrade=False,
+                                      is_resize=False):
+        # CA rotation is opt-in. When ordinary stack updates omit the
+        # parameter, Heat preserves the previous value and later node
+        # reconciles can incorrectly re-enter CA rotation.
+        params['ca_rotation_id'] = ''
+        params['is_upgrade'] = is_upgrade
+        params['is_resize'] = is_resize
+        return params
+
     def _get_ca_rotation_batch_size(self, cluster):
         master_count = getattr(cluster.default_ng_master, 'node_count', 1) or 1
         if master_count <= 1:
@@ -235,8 +245,7 @@ class HeatDriver(driver.Driver):
             heat_timeout = cfg.CONF.cluster_heat.create_timeout
 
         heat_params['is_cluster_stack'] = nodegroup is None
-        heat_params['is_upgrade'] = False
-        heat_params['is_resize'] = False
+        self._set_non_rotation_stack_flags(heat_params)
 
         if nodegroup:
             # In case we are creating a new stack for a new nodegroup then
@@ -280,8 +289,7 @@ class HeatDriver(driver.Driver):
         except Exception:
             pass
 
-        scale_params['is_upgrade'] = False
-        scale_params['is_resize'] = False
+        self._set_non_rotation_stack_flags(scale_params)
         scale_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         nodegroups = None
@@ -340,8 +348,7 @@ class HeatDriver(driver.Driver):
         except Exception:
             pass
 
-        scale_params['is_upgrade'] = False
-        scale_params['is_resize'] = True
+        self._set_non_rotation_stack_flags(scale_params, is_resize=True)
         scale_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         template_nodegroups = None
@@ -413,8 +420,8 @@ class HeatDriver(driver.Driver):
             
             # Update the total master count parameter
             existing_params['number_of_masters'] = total_master_count
-            existing_params['is_upgrade'] = False
-            existing_params['is_resize'] = True
+            self._set_non_rotation_stack_flags(existing_params,
+                                               is_resize=True)
             existing_params['timestamp_upgrade'] = (
                 self._get_reconcile_timestamp())
             
@@ -811,8 +818,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
                                                         env_files)
         tpl_files.update(env_map)
 
-        heat_params['is_upgrade'] = True
-        heat_params['is_resize'] = False
+        self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
         if 'timestamp_upgrade' in osc.heat().stacks.get(stack_id).parameters:
             heat_params['timestamp_upgrade'] = osc.heat().stacks.get(stack_id).parameters['timestamp_upgrade']
         heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1057,8 +1063,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
 
         # Convert datetime to string
         now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
-        heat_params['is_upgrade'] = True
-        heat_params['is_resize'] = False
+        self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
         heat_params['timestamp_upgrade'] = now_str
 
         fields = {
