@@ -27,11 +27,14 @@ else
     LEAD_NODE_ROLE_NAME="master"
 fi
 
-# Source reconciler defaults for version/url/sha256 if not set by Heat.
-BOOTSTRAP_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "${BOOTSTRAP_DIR}/reconciler-defaults.sh" ]; then
-    . "${BOOTSTRAP_DIR}/reconciler-defaults.sh"
-fi
+# Reconciler defaults — applied when Heat template does not set explicit values.
+# CI updates the version on each release. SHA256 is downloaded automatically
+# from the release alongside the binary.
+RECONCILER_DEFAULT_VERSION="v1.0.0"
+RECONCILER_DEFAULT_REPOSITORY="https://github.com/ventus-ag/magnum-bootstrap"
+RECONCILER_DEFAULT_BINARY_URL="${RECONCILER_DEFAULT_REPOSITORY}/releases/download/${RECONCILER_DEFAULT_VERSION}/bootstrap"
+RECONCILER_VERSION="${RECONCILER_VERSION:-${RECONCILER_DEFAULT_VERSION}}"
+RECONCILER_BINARY_URL="${RECONCILER_BINARY_URL:-${RECONCILER_DEFAULT_BINARY_URL}}"
 
 HEAT_PARAMS=/etc/sysconfig/heat-params
 

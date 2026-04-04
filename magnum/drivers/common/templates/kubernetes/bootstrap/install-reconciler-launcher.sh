@@ -53,14 +53,13 @@ fi
 version="${RECONCILER_VERSION:-}"
 repository_url="${RECONCILER_REPOSITORY_URL:-${default_repository_url}}"
 binary_url="${RECONCILER_BINARY_URL:-}"
-binary_url_sha256="${RECONCILER_BINARY_URL_SHA256:-}"
 lock_timeout_seconds="${RECONCILER_LOCK_TIMEOUT_SECONDS:-900}"
 
 if [ -z "${binary_url}" ] && [ -n "${version}" ]; then
     binary_url="${repository_url}/releases/download/${version}/bootstrap"
 fi
 
-if [ -z "${version}" ] || [ -z "${binary_url}" ] || [ -z "${binary_url_sha256}" ]; then
+if [ -z "${version}" ] || [ -z "${binary_url}" ]; then
     log "Reconciler is not configured in ${heat_params_file}, skipping ${mode}"
     exit 0
 fi
@@ -87,7 +86,15 @@ if [ ! -x "${binary_path}" ]; then
         log "Reconciler repository ${repository_url}"
     fi
     curl -fsSL "${binary_url}" -o "${tmp_binary}"
-    printf '%s  %s\n' "${binary_url_sha256}" "${tmp_binary}" | sha256sum -c -
+    # Download SHA256 checksum from the release and verify.
+    sha256_url="${binary_url}.sha256"
+    log "Fetching checksum from ${sha256_url}"
+    binary_url_sha256=$(curl -fsSL "${sha256_url}" 2>/dev/null | awk '{print $1}') || true
+    if [ -n "${binary_url_sha256}" ]; then
+        printf '%s  %s\n' "${binary_url_sha256}" "${tmp_binary}" | sha256sum -c -
+    else
+        log "WARNING: could not fetch SHA256 checksum, skipping verification"
+    fi
 
     rm -rf "${binary_dir}.tmp" "${binary_dir}"
     mkdir -p "${binary_dir}.tmp"

@@ -1,18 +1,12 @@
 #!/bin/sh
-# Default reconciler configuration.
-# These values are used when the Heat template does not provide explicit
-# reconciler settings. On each release, CI updates the version, URL, and
-# checksum below.
+# Reference file — NOT sourced at runtime.
+# The actual defaults are inlined in write-heat-params-master.sh and
+# write-heat-params.sh. SHA256 checksum is downloaded automatically from
+# the GitHub release (bootstrap.sha256 alongside the binary).
 #
-# To pin a specific version, set these in the Heat template parameters:
-#   reconciler_version, reconciler_binary_url, reconciler_binary_url_sha256
-
-RECONCILER_DEFAULT_REPOSITORY="https://github.com/ventus-ag/magnum-bootstrap"
+# CI updates RECONCILER_DEFAULT_VERSION in both write-heat-params scripts
+# on each release.
+#
+# Current defaults:
 RECONCILER_DEFAULT_VERSION="v1.0.0"
-RECONCILER_DEFAULT_BINARY_URL="${RECONCILER_DEFAULT_REPOSITORY}/releases/download/${RECONCILER_DEFAULT_VERSION}/bootstrap"
-RECONCILER_DEFAULT_BINARY_URL_SHA256=""
-
-# Apply defaults if not set by Heat template.
-RECONCILER_VERSION="${RECONCILER_VERSION:-${RECONCILER_DEFAULT_VERSION}}"
-RECONCILER_BINARY_URL="${RECONCILER_BINARY_URL:-${RECONCILER_DEFAULT_BINARY_URL}}"
-RECONCILER_BINARY_URL_SHA256="${RECONCILER_BINARY_URL_SHA256:-${RECONCILER_DEFAULT_BINARY_URL_SHA256}}"
+RECONCILER_DEFAULT_REPOSITORY="https://github.com/ventus-ag/magnum-bootstrap"
