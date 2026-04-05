@@ -88,6 +88,31 @@ parameters:
     description: A timestamp value that changes on every stack upgrade
     default: ""
 
+  reconciler_version:
+    type: string
+    description: version tag of the node reconciler binary
+    default: ""
+
+  reconciler_binary_url:
+    type: string
+    description: download URL for the node reconciler binary
+    default: ""
+
+  reconciler_binary_url_sha256:
+    type: string
+    description: sha256 checksum for the node reconciler binary URL content
+    default: ""
+
+  reconciler_run_interval:
+    type: string
+    description: periodic reconcile timer interval
+    default: "120min"
+
+  reconciler_lock_timeout_seconds:
+    type: string
+    description: lock timeout for synchronous reconcile runs
+    default: "900"
+
   master_role:
     type: string
     default: ""
@@ -705,6 +730,7 @@ parameters:
   kube_service_account_key:
     type: string
     hidden: true
+    default: ""
     description: >
       The signed cert will be used to verify the k8s service account tokens
       during authentication.
@@ -712,6 +738,7 @@ parameters:
   kube_service_account_private_key:
     type: string
     hidden: true
+    default: ""
     description: >
       The private key will be used to sign generated k8s service account
       tokens.
@@ -1402,6 +1429,13 @@ resources:
           containerd_tarball_sha256: { get_param: containerd_tarball_sha256 }
           post_install_manifest_url: { get_param: post_install_manifest_url }
           metrics_scraper_tag: { get_param: metrics_scraper_tag }
+          reconciler_version: { get_param: reconciler_version }
+          reconciler_binary_url: { get_param: reconciler_binary_url }
+          reconciler_binary_url_sha256:
+            { get_param: reconciler_binary_url_sha256 }
+          reconciler_run_interval: { get_param: reconciler_run_interval }
+          reconciler_lock_timeout_seconds:
+            { get_param: reconciler_lock_timeout_seconds }
 
   kube_cluster_config:
     condition: create_cluster_resources
@@ -1606,6 +1640,13 @@ resources:
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
           ca_rotation_id: { get_param: ca_rotation_id }
+          reconciler_version: { get_param: reconciler_version }
+          reconciler_binary_url: { get_param: reconciler_binary_url }
+          reconciler_binary_url_sha256:
+            { get_param: reconciler_binary_url_sha256 }
+          reconciler_run_interval: { get_param: reconciler_run_interval }
+          reconciler_lock_timeout_seconds:
+            { get_param: reconciler_lock_timeout_seconds }
 
 outputs:
   api_address:
