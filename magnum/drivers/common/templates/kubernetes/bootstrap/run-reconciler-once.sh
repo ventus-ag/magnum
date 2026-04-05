@@ -52,14 +52,32 @@ $ssh_cmd systemctl enable magnum-reconcile.timer 2>&1 || true
 $ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 
 echo "Starting synchronous reconcile run" >&2
-$ssh_cmd rm -f "${result_file}"
 
-# Clear any previous failed state so systemctl start always re-runs the
-# oneshot service, regardless of systemd version.
-$ssh_cmd systemctl reset-failed magnum-reconcile.service 2>/dev/null || true
+# Run the reconciler with one automatic retry.  During initial create or
+# CA rotation the first attempt may fail due to transient issues (etcd
+# quorum forming, API server stabilising).  A second attempt usually
+# succeeds because the first run already applied most of the changes.
+max_attempts=2
+attempt=1
+rc=1
+while [ "${attempt}" -le "${max_attempts}" ]; do
+    $ssh_cmd rm -f "${result_file}"
+    $ssh_cmd systemctl reset-failed magnum-reconcile.service 2>/dev/null || true
 
-$ssh_cmd systemctl start --wait magnum-reconcile.service
-rc=$?
+    echo "Reconcile attempt ${attempt}/${max_attempts}" >&2
+    $ssh_cmd systemctl start --wait magnum-reconcile.service
+    rc=$?
+
+    if [ "${rc}" -eq 0 ]; then
+        break
+    fi
+
+    if [ "${attempt}" -lt "${max_attempts}" ]; then
+        echo "Reconcile attempt ${attempt} failed (rc=${rc}), retrying in 15s" >&2
+        sleep 15
+    fi
+    attempt=$((attempt + 1))
+done
 
 if $ssh_cmd test -s "${result_file}"; then
     result_json="$($ssh_cmd cat "${result_file}")"
