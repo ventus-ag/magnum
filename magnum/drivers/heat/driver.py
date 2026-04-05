@@ -98,12 +98,18 @@ class HeatDriver(driver.Driver):
         return params
 
     def _get_ca_rotation_batch_size(self, cluster):
-        master_count = getattr(cluster.default_ng_master, 'node_count', 1) or 1
-        if master_count <= 1:
-            return 1
-        # Update at most minority of masters at a time so etcd quorum
-        # (majority) is never lost during certificate restarts.
-        return master_count // 2
+        # CA rotation performs a hard certificate swap — a node with new
+        # certs cannot communicate with nodes still using the old CA.
+        # All members of each resource group must rotate in a single
+        # batch.  Since kube_masters and kube_minions share one
+        # update_max_batch_size parameter, use the largest group size
+        # so both groups fit in one batch.
+        max_count = 1
+        for ng in cluster.nodegroups:
+            if ng.is_default:
+                count = getattr(ng, 'node_count', 1) or 1
+                max_count = max(max_count, count)
+        return max_count
 
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
