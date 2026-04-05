@@ -101,7 +101,9 @@ class HeatDriver(driver.Driver):
         master_count = getattr(cluster.default_ng_master, 'node_count', 1) or 1
         if master_count <= 1:
             return 1
-        return (master_count // 2) + 1
+        # Update at most minority of masters at a time so etcd quorum
+        # (majority) is never lost during certificate restarts.
+        return master_count // 2
 
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
