@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eu
+set -u
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 result_file="/var/lib/magnum/reconciler-last-run.json"
@@ -44,16 +44,22 @@ print(payload.get("status", ""))
 '
 }
 
+# Enable and restart the periodic timer.  Use restart so a changed interval
+# takes effect immediately.  Failures here must not prevent the synchronous
+# reconcile run, so errors are logged but not fatal.
 echo "Enabling reconciler timer" >&2
-$ssh_cmd systemctl enable --now magnum-reconcile.timer
+$ssh_cmd systemctl enable magnum-reconcile.timer 2>&1 || true
+$ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 
 echo "Starting synchronous reconcile run" >&2
 $ssh_cmd rm -f "${result_file}"
 
-set +e
+# Clear any previous failed state so systemctl start always re-runs the
+# oneshot service, regardless of systemd version.
+$ssh_cmd systemctl reset-failed magnum-reconcile.service 2>/dev/null || true
+
 $ssh_cmd systemctl start --wait magnum-reconcile.service
 rc=$?
-set -e
 
 if $ssh_cmd test -s "${result_file}"; then
     result_json="$($ssh_cmd cat "${result_file}")"
