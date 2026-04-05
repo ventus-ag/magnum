@@ -347,18 +347,19 @@ class HeatDriver(driver.Driver):
             resize_manager,
             nodes_to_remove=nodes_to_remove,
             nodegroup=nodegroup)
-        
-        # Get existing stack parameters if available
-        try:
-            osc = clients.OpenStackClients(context)
-            stack = osc.heat().stacks.get(nodegroup.stack_id)
-            if 'timestamp_upgrade' in stack.parameters:
-                scale_params['timestamp_upgrade'] = stack.parameters['timestamp_upgrade']
-        except Exception:
-            pass
 
-        self._set_non_rotation_stack_flags(scale_params, is_resize=True)
-        scale_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
+        # Resize only changes the node count.  Do NOT pass ca_rotation_id,
+        # is_resize, is_upgrade, or timestamp_upgrade here.  Those parameters
+        # are embedded in the SoftwareConfig script via str_replace (or in
+        # the SoftwareDeployment input_values).  Changing them forces Heat to
+        # replace the immutable SoftwareConfig on existing nodes, which can
+        # fail with "Software config not found" when the old config is
+        # deleted before the deployment references the new one.
+        #
+        # With ``existing: True`` Heat preserves all parameters that are not
+        # explicitly passed, so existing nodes see zero changes and their
+        # deployments are not re-triggered.  New nodes are created fresh and
+        # their CREATE deployment fires normally.
 
         template_nodegroups = None
         if nodegroup and not nodegroup.is_default:
@@ -428,18 +429,20 @@ class HeatDriver(driver.Driver):
                 LOG.warning('Could not retrieve existing cluster stack parameters: %s', str(e))
                 existing_params = {}
             
-            # Update the total master count parameter
-            existing_params['number_of_masters'] = total_master_count
-            self._set_non_rotation_stack_flags(existing_params,
-                                               is_resize=True)
-            existing_params['timestamp_upgrade'] = (
-                self._get_reconcile_timestamp())
-            
+            # Only change the master count.  Same rationale as
+            # _resize_stack: do not alter ca_rotation_id, is_resize,
+            # is_upgrade, or timestamp_upgrade — those change the
+            # SoftwareConfig content on existing nodes and can trigger
+            # "Software config not found" failures.
+            cluster_params = {
+                'number_of_masters': total_master_count,
+            }
+
             fields = {
                 **self._get_stack_update_template_fields(context, cluster),
-                'parameters': existing_params,
+                'parameters': cluster_params,
                 'existing': True,
-                'disable_rollback': True  # Use safer rollback setting for supplementary update
+                'disable_rollback': True,
             }
             
             LOG.info('Updating cluster stack %s with total master count %s for master resize coordination',
