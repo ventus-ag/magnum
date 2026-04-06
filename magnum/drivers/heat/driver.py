@@ -854,12 +854,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
-        existing_stack_params = heat_tdef.omit_masked_heat_parameters(
-            osc.heat().stacks.get(stack_id).parameters.copy())
-        if 'timestamp_upgrade' in existing_stack_params:
-            heat_params['timestamp_upgrade'] = (
-                existing_stack_params['timestamp_upgrade'])
-        heat_params['timestamp_upgrade'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        heat_params['update_max_batch_size'] = max_batch_size
+        heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         fields = {
             'template': template,
@@ -1097,13 +1093,9 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         environment_files, env_map = self._get_env_files(template_path,
                                                         env_files)
         tpl_files.update(env_map)
-        # Get current datetime
-        now = datetime.datetime.now()
-
-        # Convert datetime to string
-        now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
-        heat_params['timestamp_upgrade'] = now_str
+        heat_params['update_max_batch_size'] = max_batch_size
+        heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         fields = {
             'template': template,
