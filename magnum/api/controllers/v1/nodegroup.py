@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
+
 import pecan
 import six
 import uuid
@@ -62,6 +64,48 @@ def _validate_node_count(ng):
         raise exception.NodeGroupInvalidInput(attr='min_node_count',
                                               nodegroup=ng.name,
                                               expl=expl)
+
+
+def _parse_kube_minor(tag):
+    """Extract the minor version number from a kube_tag like 'v1.29.14'."""
+    if not tag:
+        return None
+    m = re.match(r'v?(\d+)\.(\d+)', tag)
+    if m:
+        return int(m.group(1)) * 1000 + int(m.group(2))
+    return None
+
+
+def _validate_version_skew(cluster, nodegroup_labels):
+    """Reject nodegroups whose kube_tag is more than ±1 minor from the cluster."""
+    ng_labels = nodegroup_labels or {}
+    ng_tag = ng_labels.get('kube_tag')
+    # If the nodegroup uses a different cluster template, resolve its kube_tag
+    if not ng_tag and 'cluster_template_id' in ng_labels:
+        context = pecan.request.context
+        try:
+            ct = api_utils.get_resource('ClusterTemplate',
+                                        ng_labels['cluster_template_id'])
+            ng_tag = (ct.labels or {}).get('kube_tag')
+        except Exception:
+            pass
+    cluster_tag = (cluster.labels or {}).get('kube_tag')
+    if not cluster_tag:
+        cluster_tag = (cluster.cluster_template.labels or {}).get('kube_tag')
+    if not ng_tag or not cluster_tag:
+        return
+    ng_minor = _parse_kube_minor(ng_tag)
+    cluster_minor = _parse_kube_minor(cluster_tag)
+    if ng_minor is None or cluster_minor is None:
+        return
+    diff = abs(ng_minor - cluster_minor)
+    if diff > 1:
+        raise exception.NodeGroupInvalidInput(
+            attr='kube_tag',
+            nodegroup='-',
+            expl=("Kubernetes version skew between the cluster (%s) "
+                  "and the nodegroup (%s) exceeds the supported "
+                  "range of +/-1 minor version" % (cluster_tag, ng_tag)))
 
 
 class NodeGroup(base.APIBase):
@@ -348,6 +392,8 @@ class NodeGroupController(base.Controller):
                 labels = cluster.labels
                 labels.update(nodegroup.labels)
                 nodegroup.labels = labels
+
+        _validate_version_skew(cluster, nodegroup.labels)
 
         nodegroup_dict = nodegroup.as_dict()
         nodegroup_dict['cluster_id'] = cluster.uuid
