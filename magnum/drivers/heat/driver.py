@@ -525,13 +525,31 @@ class KubernetesDriver(HeatDriver):
 
         return [stack_id for _, stack_id in sorted(member_stack_ids)]
 
-    def _get_nested_stack_update_template_fields(self, nodegroup):
+    def _get_nested_stack_update_template_fields(self, context, nodegroup):
+        """Return Heat template fields for a nodegroup's child stack.
+
+        Non-default nodegroups may have been created by a different driver
+        (e.g. an Ubuntu nodepool on a Fedora CoreOS cluster via the
+        ``cluster_template_id`` label override).  Resolve the correct
+        driver from the nodegroup's labels so the right child template
+        is used.
+        """
+        ng_labels = nodegroup.labels or {}
+        if 'cluster_template_id' in ng_labels:
+            ct = conductor_utils.retrieve_ct_by_name_or_uuid(
+                context, ng_labels['cluster_template_id'])
+            ng_driver = driver.Driver.get_driver(
+                ct.server_type, ct.cluster_distro, ct.coe)
+            template_dir = os.path.dirname(
+                ng_driver.get_template_definition().template_path)
+        else:
+            template_dir = os.path.dirname(
+                self.get_template_definition().template_path)
+
         template_name = (
             'kubemaster.yaml' if nodegroup.role == 'master'
             else 'kubeminion.yaml')
-        template_path = os.path.join(
-            os.path.dirname(self.get_template_definition().template_path),
-            template_name)
+        template_path = os.path.join(template_dir, template_name)
         tpl_files, template = template_utils.get_template_contents(
             template_path)
         return {
@@ -625,12 +643,12 @@ class KubernetesDriver(HeatDriver):
                             nodegroup.role, nodegroup.uuid, cluster.uuid)
                 continue
 
-            # The actual CA rotation deployments live in the per-node child
-            # stacks. Updating those directly avoids broad standalone nodegroup
-            # stack updates while the persisted rotation state still comes
-            # from the main cluster stack parameters.
+            # Resolve the correct child template for this nodegroup.
+            # Non-default nodegroups may have been created by a different
+            # driver (e.g. an Ubuntu nodepool on a Fedora CoreOS cluster
+            # via the cluster_template_id label override).
             stack_fields = self._get_nested_stack_update_template_fields(
-                nodegroup)
+                context, nodegroup)
 
             for stack_id in stack_ids:
                 nodegroup_fields = {
