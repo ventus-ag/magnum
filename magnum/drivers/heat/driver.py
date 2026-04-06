@@ -108,55 +108,52 @@ class HeatDriver(driver.Driver):
             context, cluster_template, cluster,
             nodegroups=[nodegroup])
 
-    def _update_stack_with_template(self, osc, stack_id, fields,
-                                     max_retries=2, poll_interval=15,
-                                     poll_timeout=600):
-        """Update a Heat stack, retrying on 'Software config not found'.
+    def _mark_config_unhealthy_in_child_stacks(self, osc, parent_stack_id,
+                                                group_name, config_name):
+        """Mark a SoftwareConfig resource unhealthy in all child stacks
+        of a ResourceGroup so Heat recreates it instead of reading the
+        (possibly deleted) old config."""
+        try:
+            group = osc.heat().resources.get(parent_stack_id, group_name)
+        except Exception:
+            return
+        try:
+            members = osc.heat().resources.list(
+                group.physical_resource_id)
+        except Exception:
+            return
+        for member in members:
+            child_stack_id = member.physical_resource_id
+            if not child_stack_id:
+                continue
+            try:
+                osc.heat().resources.mark_unhealthy(
+                    child_stack_id, config_name, True,
+                    'pre-template-migration: avoid stale '
+                    'SoftwareConfig reference')
+                LOG.debug('Marked %s in %s as unhealthy',
+                          config_name, child_stack_id)
+            except Exception as exc:
+                LOG.debug('Could not mark %s unhealthy in %s: %s',
+                          config_name, child_stack_id, exc)
 
-        When a stack template changes the SoftwareConfig content (e.g.
-        migrating from str_replace to input_values), Heat may delete the
-        old config before the SoftwareDeployment releases its reference.
-        The first attempt fails, but a retry succeeds because the config
-        replacement is already complete.
+    def _prepare_stack_for_template_update(self, osc, stack_id):
+        """Mark SoftwareConfig resources unhealthy before a template update.
 
-        This method polls the stack status after each attempt and retries
-        automatically on transient SoftwareConfig errors.
+        When the template changes SoftwareConfig content (e.g. migrating
+        from str_replace to input_values), Heat tries to read the old
+        config during evaluation, which can fail with "Software config
+        not found" if a previous operation already deleted it.
+
+        Marking the config resources as unhealthy tells Heat they need
+        full recreation rather than an in-place comparison against the
+        old state.  Works for both cluster stacks (with kube_masters
+        and kube_minions) and standalone nodegroup stacks.
         """
-        for attempt in range(1, max_retries + 1):
-            osc.heat().stacks.update(stack_id, **fields)
-
-            # Poll until the update settles.
-            elapsed = 0
-            while elapsed < poll_timeout:
-                import time
-                time.sleep(poll_interval)
-                elapsed += poll_interval
-                try:
-                    stack = osc.heat().stacks.get(stack_id)
-                except Exception:
-                    continue
-                status = stack.stack_status
-                reason = stack.stack_status_reason or ''
-
-                if status == 'UPDATE_COMPLETE':
-                    return
-                if status.endswith('_FAILED'):
-                    if ('Software config' in reason and
-                            'not found' in reason and
-                            attempt < max_retries):
-                        LOG.warning(
-                            'Stack %s hit transient SoftwareConfig error '
-                            '(attempt %d/%d), retrying: %s',
-                            stack_id, attempt, max_retries, reason)
-                        break  # break inner poll loop → retry
-                    # Non-retryable failure or last attempt — let the
-                    # normal Magnum poller handle it.
-                    return
-                # Still in progress — keep polling.
-            else:
-                # Poll timeout reached without completion — hand off to
-                # the normal async poller.
-                return
+        for group_name, config_name in (('kube_masters', 'master_config'),
+                                        ('kube_minions', 'node_config')):
+            self._mark_config_unhealthy_in_child_stacks(
+                osc, stack_id, group_name, config_name)
 
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
@@ -454,6 +451,9 @@ class HeatDriver(driver.Driver):
             template_path, env_files)
         tpl_files.update(env_map)
 
+        # Mark SoftwareConfig resources unhealthy before template update.
+        self._prepare_stack_for_template_update(osc, nodegroup.stack_id)
+
         fields = {
             'template': template,
             'environment_files': environment_files,
@@ -693,10 +693,10 @@ class KubernetesDriver(HeatDriver):
             self._get_ca_rotation_batch_size(cluster))
 
         # Send the full template so old clusters are automatically
-        # migrated to the new bootstrap structure.  Use the retry helper
-        # to handle the transient "Software config not found" error that
-        # can occur when Heat replaces the SoftwareConfig during the
-        # one-time migration from str_replace to input_values templates.
+        # migrated to the new bootstrap structure.  Mark SoftwareConfig
+        # resources unhealthy first so Heat recreates them cleanly
+        # instead of failing on stale config references.
+        self._prepare_stack_for_template_update(osc, cluster.stack_id)
         fields = {
             **self._get_stack_update_template_fields(context, cluster),
             'existing': True,
@@ -704,8 +704,7 @@ class KubernetesDriver(HeatDriver):
             'timeout_mins': self._get_update_timeout(),
             'disable_rollback': True
         }
-        self._update_stack_with_template(
-            osc, cluster.stack_id, fields)
+        osc.heat().stacks.update(cluster.stack_id, **fields)
 
         for nodegroup in cluster.nodegroups:
             if not nodegroup.stack_id:
@@ -735,7 +734,17 @@ class KubernetesDriver(HeatDriver):
             stack_fields = self._get_nested_stack_update_template_fields(
                 context, nodegroup)
 
+            config_name = ('master_config' if nodegroup.role == 'master'
+                           else 'node_config')
             for stack_id in stack_ids:
+                # Mark the SoftwareConfig unhealthy so Heat recreates
+                # it instead of failing on a stale reference.
+                try:
+                    osc.heat().resources.mark_unhealthy(
+                        stack_id, config_name, True,
+                        'pre-template-migration')
+                except Exception:
+                    pass
                 nodegroup_fields = {
                     **stack_fields,
                     'existing': True,
@@ -1000,9 +1009,11 @@ class FedoraKubernetesDriver(KubernetesDriver):
         # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
-        # Use the retry helper to handle transient "Software config not
-        # found" errors during one-time template migration.
-        self._update_stack_with_template(osc, stack_id, fields)
+        # Mark SoftwareConfig resources unhealthy before pushing the
+        # template so Heat recreates them instead of failing on stale
+        # config references during template migration.
+        self._prepare_stack_for_template_update(osc, stack_id)
+        osc.heat().stacks.update(stack_id, **fields)
 
         # save the nodegroup and cluster
         nodegroup.save()
@@ -1227,9 +1238,11 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
-        # Use the retry helper to handle transient "Software config not
-        # found" errors during one-time template migration.
-        self._update_stack_with_template(osc, stack_id, fields)
+        # Mark SoftwareConfig resources unhealthy before pushing the
+        # template so Heat recreates them instead of failing on stale
+        # config references during template migration.
+        self._prepare_stack_for_template_update(osc, stack_id)
+        osc.heat().stacks.update(stack_id, **fields)
 
         # save the nodegroup and cluster
         nodegroup.save()
