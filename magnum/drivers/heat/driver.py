@@ -694,17 +694,12 @@ class KubernetesDriver(HeatDriver):
         heat_params['update_max_batch_size'] = (
             self._get_ca_rotation_batch_size(cluster))
 
-        # Do NOT pass ca_rotation_id or timestamp_upgrade to the cluster
-        # stack — those propagate to ResourceGroup members and trigger
-        # a rolling update that conflicts with our direct child-stack
-        # updates below.  A no-op update (empty params) puts the stack
-        # in UPDATE_IN_PROGRESS so the Magnum poller tracks the operation.
-        osc.heat().stacks.update(cluster.stack_id, **{
-            'existing': True,
-            'parameters': {},
-            'timeout_mins': self._get_update_timeout(),
-            'disable_rollback': True
-        })
+        # Do NOT update the cluster stack — even a parameter-only update
+        # propagates to ResourceGroup members and triggers a rolling
+        # update that conflicts with our direct child-stack updates
+        # below.  The ca_rotation_id is cleared to '' on the next
+        # operation anyway, and the service account keys are hidden
+        # (masked) so they can't be read back from the cluster stack.
 
         # Update ALL nodegroups' child stacks directly so masters and
         # workers rotate simultaneously instead of sequentially through
