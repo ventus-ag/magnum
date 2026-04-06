@@ -81,6 +81,33 @@ class HeatDriver(driver.Driver):
                                              nodegroups=nodegroups,
                                              scale_manager=scale_manager)
 
+    def _get_driver_for_nodegroup(self, context, nodegroup):
+        """Return the driver that owns a nodegroup's templates.
+
+        Non-default nodegroups may carry a ``cluster_template_id`` label
+        that points to a different cluster template (and therefore a
+        different driver) than the cluster itself.  Returns ``self`` when
+        no override is present.
+        """
+        ng_labels = nodegroup.labels or {}
+        ct_id = ng_labels.get('cluster_template_id')
+        if ct_id:
+            ct = conductor_utils.retrieve_ct_by_name_or_uuid(context, ct_id)
+            return driver.Driver.get_driver(
+                ct.server_type, ct.cluster_distro, ct.coe)
+        return self
+
+    def _extract_template_definition_for_nodegroup(
+            self, context, cluster, nodegroup):
+        """Like _extract_template_definition but uses the nodegroup's driver."""
+        ng_driver = self._get_driver_for_nodegroup(context, nodegroup)
+        cluster_template = conductor_utils.retrieve_cluster_template(
+            context, cluster)
+        definition = ng_driver.get_template_definition()
+        return definition.extract_definition(
+            context, cluster_template, cluster,
+            nodegroups=[nodegroup])
+
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
 
@@ -361,13 +388,26 @@ class HeatDriver(driver.Driver):
         # deployments are not re-triggered.  New nodes are created fresh and
         # their CREATE deployment fires normally.
 
-        template_nodegroups = None
+        # Use the nodegroup's own driver for non-default nodegroups so
+        # cross-OS nodepools get the correct template.
         if nodegroup and not nodegroup.is_default:
-            template_nodegroups = [nodegroup]
+            template_path, _, env_files = (
+                self._extract_template_definition_for_nodegroup(
+                    context, cluster, nodegroup))
+        else:
+            template_path, _, env_files = (
+                self._extract_template_definition(context, cluster))
+
+        tpl_files, template = template_utils.get_template_contents(
+            template_path)
+        environment_files, env_map = self._get_env_files(
+            template_path, env_files)
+        tpl_files.update(env_map)
 
         fields = {
-            **self._get_stack_update_template_fields(
-                context, cluster, nodegroups=template_nodegroups),
+            'template': template,
+            'environment_files': environment_files,
+            'files': tpl_files,
             'parameters': scale_params,
             'existing': True,
             'disable_rollback': not rollback
@@ -528,24 +568,13 @@ class KubernetesDriver(HeatDriver):
     def _get_nested_stack_update_template_fields(self, context, nodegroup):
         """Return Heat template fields for a nodegroup's child stack.
 
-        Non-default nodegroups may have been created by a different driver
-        (e.g. an Ubuntu nodepool on a Fedora CoreOS cluster via the
-        ``cluster_template_id`` label override).  Resolve the correct
-        driver from the nodegroup's labels so the right child template
-        is used.
+        Uses ``_get_driver_for_nodegroup`` so cross-OS nodegroups (e.g.
+        an Ubuntu nodepool on a Fedora CoreOS cluster) get their own
+        driver's child template, not the cluster driver's.
         """
-        ng_labels = nodegroup.labels or {}
-        if 'cluster_template_id' in ng_labels:
-            ct = conductor_utils.retrieve_ct_by_name_or_uuid(
-                context, ng_labels['cluster_template_id'])
-            ng_driver = driver.Driver.get_driver(
-                ct.server_type, ct.cluster_distro, ct.coe)
-            template_dir = os.path.dirname(
-                ng_driver.get_template_definition().template_path)
-        else:
-            template_dir = os.path.dirname(
-                self.get_template_definition().template_path)
-
+        ng_driver = self._get_driver_for_nodegroup(context, nodegroup)
+        template_dir = os.path.dirname(
+            ng_driver.get_template_definition().template_path)
         template_name = (
             'kubemaster.yaml' if nodegroup.role == 'master'
             else 'kubeminion.yaml')
@@ -840,11 +869,16 @@ class FedoraKubernetesDriver(KubernetesDriver):
             new_labels['cluster_template_id'] = cluster_template.uuid
             nodegroup.labels = new_labels
 
-        # New code for applying heat template
-        nodegroups = [nodegroup] if nodegroup else None
-        template_path, heat_params, env_files = (
-            self._extract_template_definition(context, cluster,
-                                              nodegroups=nodegroups))
+        # Use the nodegroup's own driver for non-default nodegroups so
+        # cross-OS nodepools (e.g. Ubuntu on Fedora cluster) get the
+        # correct template.
+        if nodegroup and not nodegroup.is_default:
+            template_path, heat_params, env_files = (
+                self._extract_template_definition_for_nodegroup(
+                    context, cluster, nodegroup))
+        else:
+            template_path, heat_params, env_files = (
+                self._extract_template_definition(context, cluster))
 
         tpl_files, template = template_utils.get_template_contents(
             template_path)
@@ -1081,11 +1115,15 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             new_labels['cluster_template_id'] = cluster_template.uuid
             nodegroup.labels = new_labels
 
-        # New code for applying heat template
-        nodegroups = [nodegroup] if nodegroup else None
-        template_path, heat_params, env_files = (
-            self._extract_template_definition(context, cluster,
-                                              nodegroups=nodegroups))
+        # Use the nodegroup's own driver for non-default nodegroups so
+        # cross-OS nodepools get the correct template.
+        if nodegroup and not nodegroup.is_default:
+            template_path, heat_params, env_files = (
+                self._extract_template_definition_for_nodegroup(
+                    context, cluster, nodegroup))
+        else:
+            template_path, heat_params, env_files = (
+                self._extract_template_definition(context, cluster))
 
         tpl_files, template = template_utils.get_template_contents(
             template_path)
