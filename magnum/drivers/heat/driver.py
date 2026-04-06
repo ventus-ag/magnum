@@ -694,17 +694,12 @@ class KubernetesDriver(HeatDriver):
         heat_params['update_max_batch_size'] = (
             self._get_ca_rotation_batch_size(cluster))
 
-        # Update the cluster stack parameters (no template) so the
-        # cluster-level state (ca_rotation_id, etc.) is persisted.
-        # Do NOT send the template here — that would trigger sequential
-        # ResourceGroup rolling updates (masters then workers).
-        cluster_fields = {
-            'existing': True,
-            'parameters': heat_params,
-            'timeout_mins': self._get_update_timeout(),
-            'disable_rollback': True
-        }
-        osc.heat().stacks.update(cluster.stack_id, **cluster_fields)
+        # Do NOT update the cluster stack — even a parameter-only update
+        # propagates to ResourceGroup members and triggers a rolling
+        # update that conflicts with our direct child-stack updates
+        # below.  The ca_rotation_id is cleared to '' on the next
+        # operation anyway, and the service account keys are hidden
+        # (masked) so they can't be read back from the cluster stack.
 
         # Update ALL nodegroups' child stacks directly so masters and
         # workers rotate simultaneously instead of sequentially through
