@@ -952,7 +952,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
-        heat_params['update_max_batch_size'] = max_batch_size
+        heat_params['update_max_batch_size'] = max_batch_size or 1
         heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         fields = {
@@ -1199,7 +1199,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         tpl_files.update(env_map)
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
-        heat_params['update_max_batch_size'] = max_batch_size
+        heat_params['update_max_batch_size'] = max_batch_size or 1
         heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
 
         fields = {

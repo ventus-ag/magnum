@@ -109,8 +109,8 @@ class ClusterUpgradeRequest(base.APIBase):
     This class enforces type checking and value constraints.
     """
 
-    max_batch_size = wtypes.IntegerType(minimum=1)
-    """Max batch size of nodes to be upraded in parallel"""
+    max_batch_size = wsme.wsattr(wtypes.IntegerType(minimum=1), default=1)
+    """Max batch size of nodes to be upgraded in parallel"""
 
     nodegroup = wtypes.StringType(min_length=1, max_length=255)
     """Group of nodes to be uprgaded (master or node)"""
