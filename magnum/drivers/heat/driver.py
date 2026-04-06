@@ -110,9 +110,9 @@ class HeatDriver(driver.Driver):
 
     def _mark_config_unhealthy_in_child_stacks(self, osc, parent_stack_id,
                                                 group_name, config_name):
-        """Mark a SoftwareConfig resource unhealthy in all child stacks
-        of a ResourceGroup so Heat recreates it instead of reading the
-        (possibly deleted) old config."""
+        """Mark SoftwareConfig and its deployment unhealthy in all child
+        stacks of a ResourceGroup so Heat recreates them instead of
+        reading the (possibly deleted) old config."""
         try:
             group = osc.heat().resources.get(parent_stack_id, group_name)
         except Exception:
@@ -122,20 +122,22 @@ class HeatDriver(driver.Driver):
                 group.physical_resource_id)
         except Exception:
             return
+        deploy_name = config_name + '_deployment'
         for member in members:
             child_stack_id = member.physical_resource_id
             if not child_stack_id:
                 continue
-            try:
-                osc.heat().resources.mark_unhealthy(
-                    child_stack_id, config_name, True,
-                    'pre-template-migration: avoid stale '
-                    'SoftwareConfig reference')
-                LOG.debug('Marked %s in %s as unhealthy',
-                          config_name, child_stack_id)
-            except Exception as exc:
-                LOG.debug('Could not mark %s unhealthy in %s: %s',
-                          config_name, child_stack_id, exc)
+            for resource_name in (config_name, deploy_name):
+                try:
+                    osc.heat().resources.mark_unhealthy(
+                        child_stack_id, resource_name, True,
+                        'pre-template-migration: avoid stale '
+                        'SoftwareConfig reference')
+                    LOG.debug('Marked %s in %s as unhealthy',
+                              resource_name, child_stack_id)
+                except Exception as exc:
+                    LOG.debug('Could not mark %s unhealthy in %s: %s',
+                              resource_name, child_stack_id, exc)
 
     def _prepare_stack_for_template_update(self, osc, stack_id):
         """Mark SoftwareConfig resources unhealthy before a template update.
@@ -739,12 +741,14 @@ class KubernetesDriver(HeatDriver):
             for stack_id in stack_ids:
                 # Mark the SoftwareConfig unhealthy so Heat recreates
                 # it instead of failing on a stale reference.
-                try:
-                    osc.heat().resources.mark_unhealthy(
-                        stack_id, config_name, True,
-                        'pre-template-migration')
-                except Exception:
-                    pass
+                deploy_name = config_name + '_deployment'
+                for rn in (config_name, deploy_name):
+                    try:
+                        osc.heat().resources.mark_unhealthy(
+                            stack_id, rn, True,
+                            'pre-template-migration')
+                    except Exception:
+                        pass
                 nodegroup_fields = {
                     **stack_fields,
                     'existing': True,
