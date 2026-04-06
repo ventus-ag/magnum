@@ -1199,8 +1199,6 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             'parameters': heat_params,
             'timeout_mins': self._get_update_timeout(),
         }
-            fields['environment_files'] = environment_files
-            fields['files'] = tpl_files
 
         # Fetch the current parameters of the stack
         current_parameters = heat_tdef.omit_masked_heat_parameters(
