@@ -108,6 +108,56 @@ class HeatDriver(driver.Driver):
             context, cluster_template, cluster,
             nodegroups=[nodegroup])
 
+    def _update_stack_with_template(self, osc, stack_id, fields,
+                                     max_retries=2, poll_interval=15,
+                                     poll_timeout=600):
+        """Update a Heat stack, retrying on 'Software config not found'.
+
+        When a stack template changes the SoftwareConfig content (e.g.
+        migrating from str_replace to input_values), Heat may delete the
+        old config before the SoftwareDeployment releases its reference.
+        The first attempt fails, but a retry succeeds because the config
+        replacement is already complete.
+
+        This method polls the stack status after each attempt and retries
+        automatically on transient SoftwareConfig errors.
+        """
+        for attempt in range(1, max_retries + 1):
+            osc.heat().stacks.update(stack_id, **fields)
+
+            # Poll until the update settles.
+            elapsed = 0
+            while elapsed < poll_timeout:
+                import time
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+                try:
+                    stack = osc.heat().stacks.get(stack_id)
+                except Exception:
+                    continue
+                status = stack.stack_status
+                reason = stack.stack_status_reason or ''
+
+                if status == 'UPDATE_COMPLETE':
+                    return
+                if status.endswith('_FAILED'):
+                    if ('Software config' in reason and
+                            'not found' in reason and
+                            attempt < max_retries):
+                        LOG.warning(
+                            'Stack %s hit transient SoftwareConfig error '
+                            '(attempt %d/%d), retrying: %s',
+                            stack_id, attempt, max_retries, reason)
+                        break  # break inner poll loop → retry
+                    # Non-retryable failure or last attempt — let the
+                    # normal Magnum poller handle it.
+                    return
+                # Still in progress — keep polling.
+            else:
+                # Poll timeout reached without completion — hand off to
+                # the normal async poller.
+                return
+
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
 
@@ -642,6 +692,11 @@ class KubernetesDriver(HeatDriver):
         heat_params['update_max_batch_size'] = (
             self._get_ca_rotation_batch_size(cluster))
 
+        # Send the full template so old clusters are automatically
+        # migrated to the new bootstrap structure.  Use the retry helper
+        # to handle the transient "Software config not found" error that
+        # can occur when Heat replaces the SoftwareConfig during the
+        # one-time migration from str_replace to input_values templates.
         fields = {
             **self._get_stack_update_template_fields(context, cluster),
             'existing': True,
@@ -649,7 +704,8 @@ class KubernetesDriver(HeatDriver):
             'timeout_mins': self._get_update_timeout(),
             'disable_rollback': True
         }
-        osc.heat().stacks.update(cluster.stack_id, **fields)
+        self._update_stack_with_template(
+            osc, cluster.stack_id, fields)
 
         for nodegroup in cluster.nodegroups:
             if not nodegroup.stack_id:
@@ -869,9 +925,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
             new_labels['cluster_template_id'] = cluster_template.uuid
             nodegroup.labels = new_labels
 
-        # Use the nodegroup's own driver for non-default nodegroups so
-        # cross-OS nodepools (e.g. Ubuntu on Fedora cluster) get the
-        # correct template.
+        # Always send the full template so old clusters are automatically
+        # migrated to the new bootstrap structure.  Use the correct driver
+        # for non-default nodegroups (cross-OS nodepool support).
         if nodegroup and not nodegroup.is_default:
             template_path, heat_params, env_files = (
                 self._extract_template_definition_for_nodegroup(
@@ -882,9 +938,8 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         tpl_files, template = template_utils.get_template_contents(
             template_path)
-
-        environment_files, env_map = self._get_env_files(template_path,
-                                                        env_files)
+        environment_files, env_map = self._get_env_files(
+            template_path, env_files)
         tpl_files.update(env_map)
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
@@ -895,7 +950,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
-            'existing': True, 
+            'existing': True,
             'parameters': heat_params,
             'timeout_mins': self._get_update_timeout()
         }
@@ -945,8 +1000,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
         # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
-        # Update the Heat stack
-        osc.heat().stacks.update(stack_id, **fields)
+        # Use the retry helper to handle transient "Software config not
+        # found" errors during one-time template migration.
+        self._update_stack_with_template(osc, stack_id, fields)
 
         # save the nodegroup and cluster
         nodegroup.save()
@@ -1115,8 +1171,8 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             new_labels['cluster_template_id'] = cluster_template.uuid
             nodegroup.labels = new_labels
 
-        # Use the nodegroup's own driver for non-default nodegroups so
-        # cross-OS nodepools get the correct template.
+        # Always send the full template so old clusters are automatically
+        # migrated to the new bootstrap structure.
         if nodegroup and not nodegroup.is_default:
             template_path, heat_params, env_files = (
                 self._extract_template_definition_for_nodegroup(
@@ -1127,10 +1183,10 @@ class UbuntuKubernetesDriver(KubernetesDriver):
 
         tpl_files, template = template_utils.get_template_contents(
             template_path)
-
-        environment_files, env_map = self._get_env_files(template_path,
-                                                        env_files)
+        environment_files, env_map = self._get_env_files(
+            template_path, env_files)
         tpl_files.update(env_map)
+
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
         heat_params['update_max_batch_size'] = max_batch_size
         heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
@@ -1139,10 +1195,12 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             'template': template,
             'environment_files': environment_files,
             'files': tpl_files,
-            # 'existing': True, 
+            'existing': True,
             'parameters': heat_params,
             'timeout_mins': self._get_update_timeout(),
         }
+            fields['environment_files'] = environment_files
+            fields['files'] = tpl_files
 
         # Fetch the current parameters of the stack
         current_parameters = heat_tdef.omit_masked_heat_parameters(
@@ -1171,8 +1229,9 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
-        # Update the Heat stack
-        osc.heat().stacks.update(stack_id, **fields)
+        # Use the retry helper to handle transient "Software config not
+        # found" errors during one-time template migration.
+        self._update_stack_with_template(osc, stack_id, fields)
 
         # save the nodegroup and cluster
         nodegroup.save()
