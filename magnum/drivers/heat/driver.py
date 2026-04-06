@@ -694,33 +694,33 @@ class KubernetesDriver(HeatDriver):
         heat_params['update_max_batch_size'] = (
             self._get_ca_rotation_batch_size(cluster))
 
-        # Send the full template so old clusters are automatically
-        # migrated to the new bootstrap structure.  Mark SoftwareConfig
-        # resources unhealthy first so Heat recreates them cleanly
-        # instead of failing on stale config references.
-        self._prepare_stack_for_template_update(osc, cluster.stack_id)
-        fields = {
-            **self._get_stack_update_template_fields(context, cluster),
+        # Update the cluster stack parameters (no template) so the
+        # cluster-level state (ca_rotation_id, etc.) is persisted.
+        # Do NOT send the template here — that would trigger sequential
+        # ResourceGroup rolling updates (masters then workers).
+        cluster_fields = {
             'existing': True,
             'parameters': heat_params,
             'timeout_mins': self._get_update_timeout(),
             'disable_rollback': True
         }
-        osc.heat().stacks.update(cluster.stack_id, **fields)
+        osc.heat().stacks.update(cluster.stack_id, **cluster_fields)
 
+        # Update ALL nodegroups' child stacks directly so masters and
+        # workers rotate simultaneously instead of sequentially through
+        # the cluster stack's ResourceGroup rolling update.
         for nodegroup in cluster.nodegroups:
             if not nodegroup.stack_id:
                 continue
 
-            # Default master/worker groups are already updated through the
-            # main cluster stack ResourceGroup. Updating their child stacks
-            # again here duplicates the same CA-rotation rollout and can
-            # leave the parent stack rolling after all node scripts have
-            # already completed.
+            # For default nodegroups, child stacks live inside the
+            # cluster stack.  For non-default, they're in the
+            # nodegroup's own stack.
             if nodegroup.is_default:
-                continue
+                parent_stack_id = cluster.stack_id
+            else:
+                parent_stack_id = nodegroup.stack_id
 
-            parent_stack_id = nodegroup.stack_id
             stack_ids = self._get_nested_stack_ids(
                 osc, parent_stack_id, nodegroup)
             if not stack_ids:
@@ -729,19 +729,15 @@ class KubernetesDriver(HeatDriver):
                             nodegroup.role, nodegroup.uuid, cluster.uuid)
                 continue
 
-            # Resolve the correct child template for this nodegroup.
-            # Non-default nodegroups may have been created by a different
-            # driver (e.g. an Ubuntu nodepool on a Fedora CoreOS cluster
-            # via the cluster_template_id label override).
+            # Resolve the correct child template.  Non-default nodegroups
+            # may use a different driver (cross-OS nodepool support).
             stack_fields = self._get_nested_stack_update_template_fields(
                 context, nodegroup)
 
             config_name = ('master_config' if nodegroup.role == 'master'
                            else 'node_config')
+            deploy_name = config_name + '_deployment'
             for stack_id in stack_ids:
-                # Mark the SoftwareConfig unhealthy so Heat recreates
-                # it instead of failing on a stale reference.
-                deploy_name = config_name + '_deployment'
                 for rn in (config_name, deploy_name):
                     try:
                         osc.heat().resources.mark_unhealthy(
