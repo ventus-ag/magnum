@@ -824,6 +824,7 @@ resources:
         - name: INSTANCE_NAME
         - name: IS_UPGRADE
         - name: IS_RESIZE
+        - name: TIMESTAMP_UPGRADE
         - name: HEAPSTER_ENABLED
         - name: METRICS_SERVER_ENABLED
         - name: METRICS_SERVER_CHART_TAG
@@ -976,7 +977,7 @@ resources:
       actions: ["CREATE", "UPDATE"]
       input_values:
         OS_STACK_ID: { get_param: "OS::stack_id" }
-        timestamp_upgrade: { get_param: timestamp_upgrade }
+        TIMESTAMP_UPGRADE: { get_param: timestamp_upgrade }
         INSTANCE_NAME: { get_param: name }
         IS_UPGRADE: { get_param: is_upgrade }
         IS_RESIZE: { get_param: is_resize }
