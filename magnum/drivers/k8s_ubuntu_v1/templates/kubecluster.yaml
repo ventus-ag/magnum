@@ -542,7 +542,7 @@ parameters:
     type: string
     description: tag of the k8scloudprovider/openstack-cloud-controller-manager
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.22.0
+    default: v1.24.6
 
   occm_chart_tag:
     type: string
