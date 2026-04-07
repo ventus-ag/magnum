@@ -544,6 +544,11 @@ parameters:
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
     default: v1.22.0
 
+  occm_chart_tag:
+    type: string
+    description: Helm chart version for openstack-cloud-controller-manager
+    default: "2.27.1"
+
   cloud_provider_enabled:
     type: boolean
     description: Enable or disable the openstack kubernetes cloud provider
@@ -557,6 +562,11 @@ parameters:
     type: string
     description: tag for coredns
     default: v1.10.1
+
+  coredns_chart_tag:
+    type: string
+    description: Helm chart version for coredns
+    default: "1.22.0"
 
   flannel_tag:
     type: string
@@ -887,6 +897,21 @@ parameters:
       https://hub.docker.com/r/k8scloudprovider/cinder-csi-plugin/tags/
     default: v1.20.0
 
+  cinder_csi_chart_tag:
+    type: string
+    description: Helm chart version for openstack-cinder-csi
+    default: "2.27.1"
+
+  manila_csi_chart_tag:
+    type: string
+    description: Helm chart version for openstack-manila-csi
+    default: "2.27.1"
+
+  nfs_csi_chart_tag:
+    type: string
+    description: Helm chart version for csi-driver-nfs
+    default: "4.5.0"
+
   csi_attacher_tag:
     type: string
     description: tag of csi attacher
@@ -939,6 +964,11 @@ parameters:
       registry.k8s.io/autoscaling/cluster-autoscaler
     default: v1.27.0
 
+  autoscaler_chart_tag:
+    type: string
+    description: Helm chart version for cluster-autoscaler
+    default: "9.29.1"
+
   min_node_count:
     type: number
     description: >
@@ -961,6 +991,11 @@ parameters:
     description: >
       true if the npd service should be launched
     default: true
+
+  npd_chart_tag:
+    type: string
+    description: Helm chart version for node-problem-detector
+    default: "2.3.4"
 
   ostree_remote:
     type: string
@@ -1328,10 +1363,12 @@ resources:
           kubernetes_tarball_sha512: { get_param: kubernetes_tarball_sha512 }
           kubernetes_tarball_url: { get_param: kubernetes_tarball_url }
           cloud_provider_tag: { get_param: cloud_provider_tag }
+          occm_chart_tag: { get_param: occm_chart_tag }
           cloud_provider_enabled: { get_param: cloud_provider_enabled }
           kube_version: { get_param: kube_version }
           etcd_tag: { get_param: etcd_tag }
           coredns_tag: { get_param: coredns_tag }
+          coredns_chart_tag: { get_param: coredns_chart_tag }
           flannel_tag: { get_param: flannel_tag }
           flannel_cni_tag: { get_param: flannel_cni_tag }
           kube_dashboard_version: { get_param: kube_dashboard_version }
@@ -1399,9 +1436,12 @@ resources:
           magnum_auto_healer_tag: { get_param: magnum_auto_healer_tag }
           auto_scaling_enabled: { get_param: auto_scaling_enabled }
           manila_csi_plugin_enabled: { get_param: manila_csi_plugin_enabled }
+          manila_csi_chart_tag: { get_param: manila_csi_chart_tag }
+          nfs_csi_chart_tag: { get_param: nfs_csi_chart_tag }
           cinder_csi_plugin_enabled: { get_param: cinder_csi_plugin_enabled }
           cinder_csi_enabled: { get_param: cinder_csi_enabled }
           cinder_csi_plugin_tag: { get_param: cinder_csi_plugin_tag }
+          cinder_csi_chart_tag: { get_param: cinder_csi_chart_tag }
           csi_attacher_tag: { get_param: csi_attacher_tag }
           csi_provisioner_tag: { get_param: csi_provisioner_tag }
           csi_snapshotter_tag: { get_param: csi_snapshotter_tag }
@@ -1410,9 +1450,11 @@ resources:
             { get_param: csi_node_driver_registrar_tag }
           draino_tag: { get_param: draino_tag }
           autoscaler_tag: { get_param: autoscaler_tag }
+          autoscaler_chart_tag: { get_param: autoscaler_chart_tag }
           min_node_count: { get_param: min_node_count }
           max_node_count: { get_param: max_node_count }
           npd_enabled: { get_param: npd_enabled }
+          npd_chart_tag: { get_param: npd_chart_tag }
           ostree_remote: { get_param: ostree_remote }
           ostree_commit: { get_param: ostree_commit }
           use_podman: { get_param: use_podman }

@@ -311,6 +311,11 @@ parameters:
     description: tag of the kubernetes/cloud-provider-openstack
       https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
 
+  occm_chart_tag:
+    type: string
+    description: Helm chart version for openstack-cloud-controller-manager
+    default: ""
+
   cloud_provider_enabled:
     type: boolean
     description: Enable or disable the openstack kubernetes cloud provider
@@ -322,6 +327,11 @@ parameters:
   coredns_tag:
     type: string
     description: tag of the coredns container
+
+  coredns_chart_tag:
+    type: string
+    description: Helm chart version for coredns
+    default: ""
 
   flannel_tag:
     type: string
@@ -588,6 +598,16 @@ parameters:
     description: >
       true if the manila csi plugin feature should be enabled
 
+  manila_csi_chart_tag:
+    type: string
+    description: Helm chart version for openstack-manila-csi
+    default: ""
+
+  nfs_csi_chart_tag:
+    type: string
+    description: Helm chart version for csi-driver-nfs
+    default: ""
+
   cinder_csi_plugin_enabled:
     type: boolean
     description: >
@@ -601,6 +621,11 @@ parameters:
   cinder_csi_plugin_tag:
     type: string
     description: tag of cinder csi plugin
+
+  cinder_csi_chart_tag:
+    type: string
+    description: Helm chart version for openstack-cinder-csi
+    default: ""
 
   csi_attacher_tag:
     type: string
@@ -642,6 +667,11 @@ parameters:
     type: string
     description: tag of the autoscaler container
 
+  autoscaler_chart_tag:
+    type: string
+    description: Helm chart version for cluster-autoscaler
+    default: ""
+
   min_node_count:
     type: number
     description: >
@@ -657,6 +687,11 @@ parameters:
     description: >
       true if the npd service should be launched
     default: true
+
+  npd_chart_tag:
+    type: string
+    description: Helm chart version for node-problem-detector
+    default: ""
 
   ostree_remote:
     type: string
@@ -993,9 +1028,11 @@ resources:
         KUBERNETES_TARBALL_SHA512: { get_param: kubernetes_tarball_sha512 }
         KUBERNETES_TARBALL_URL: { get_param: kubernetes_tarball_url }
         CLOUD_PROVIDER_TAG: { get_param: cloud_provider_tag }
+        OCCM_CHART_TAG: { get_param: occm_chart_tag }
         CLOUD_PROVIDER_ENABLED: { get_param: cloud_provider_enabled }
         ETCD_TAG: { get_param: etcd_tag }
         COREDNS_TAG: { get_param: coredns_tag }
+        COREDNS_CHART_TAG: { get_param: coredns_chart_tag }
         FLANNEL_TAG: { get_param: flannel_tag }
         NUMBER_OF_MASTERS: { get_param: number_of_masters }
         FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }
@@ -1054,9 +1091,12 @@ resources:
         MAGNUM_AUTO_HEALER_TAG: { get_param: magnum_auto_healer_tag }
         AUTO_SCALING_ENABLED: { get_param: auto_scaling_enabled }
         MANILA_CSI_PLUGIN_ENABLED: { get_param: manila_csi_plugin_enabled }
+        MANILA_CSI_CHART_TAG: { get_param: manila_csi_chart_tag }
+        NFS_CSI_CHART_TAG: { get_param: nfs_csi_chart_tag }
         CINDER_CSI_PLUGIN_ENABLED: { get_param: cinder_csi_plugin_enabled }
         CINDER_CSI_ENABLED: { get_param: cinder_csi_enabled }
         CINDER_CSI_PLUGIN_TAG: { get_param: cinder_csi_plugin_tag }
+        CINDER_CSI_CHART_TAG: { get_param: cinder_csi_chart_tag }
         CSI_ATTACHER_TAG: { get_param: csi_attacher_tag }
         CSI_PROVISIONER_TAG: { get_param: csi_provisioner_tag }
         CSI_SNAPSHOTTER_TAG: { get_param: csi_snapshotter_tag }
@@ -1064,9 +1104,11 @@ resources:
         CSI_NODE_DRIVER_REGISTRAR_TAG: { get_param: csi_node_driver_registrar_tag }
         DRAINO_TAG: { get_param: draino_tag }
         AUTOSCALER_TAG: { get_param: autoscaler_tag }
+        AUTOSCALER_CHART_TAG: { get_param: autoscaler_chart_tag }
         MIN_NODE_COUNT: { get_param: min_node_count }
         MAX_NODE_COUNT: { get_param: max_node_count }
         NPD_ENABLED: { get_param: npd_enabled }
+        NPD_CHART_TAG: { get_param: npd_chart_tag }
         NODEGROUP_ROLE: { get_param: nodegroup_role }
         NODEGROUP_NAME: { get_param: nodegroup_name }
         USE_PODMAN: { get_param: use_podman }
