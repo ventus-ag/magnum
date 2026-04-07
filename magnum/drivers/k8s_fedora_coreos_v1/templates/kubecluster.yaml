@@ -872,6 +872,12 @@ parameters:
       true if the auto scaling feature should be enabled
     default: false
 
+  os_autoupgrade_enabled:
+    type: boolean
+    description: >
+      true if the OS auto-upgrade service (Zincati) should be enabled
+    default: false
+
   manila_csi_plugin_enabled:
     type: boolean
     description: >
@@ -1435,6 +1441,7 @@ resources:
           auto_healing_controller: { get_param: auto_healing_controller }
           magnum_auto_healer_tag: { get_param: magnum_auto_healer_tag }
           auto_scaling_enabled: { get_param: auto_scaling_enabled }
+          os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
           manila_csi_plugin_enabled: { get_param: manila_csi_plugin_enabled }
           manila_csi_chart_tag: { get_param: manila_csi_chart_tag }
           nfs_csi_chart_tag: { get_param: nfs_csi_chart_tag }
@@ -1585,6 +1592,7 @@ resources:
           octavia_enabled: { get_param: octavia_enabled }
           heat_container_agent_tag: { get_param: heat_container_agent_tag }
           auto_healing_enabled: { get_param: auto_healing_enabled }
+          os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
           npd_enabled: { get_param: npd_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
           ostree_remote: { get_param: ostree_remote }

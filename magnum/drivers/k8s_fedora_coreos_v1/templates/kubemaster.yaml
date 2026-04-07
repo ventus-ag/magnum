@@ -593,6 +593,12 @@ parameters:
     description: >
       true if the auto scaling feature should be enabled
 
+  os_autoupgrade_enabled:
+    type: boolean
+    description: >
+      true if the OS auto-upgrade service (Zincati) should be enabled
+    default: false
+
   manila_csi_plugin_enabled:
     type: boolean
     description: >
@@ -1091,6 +1097,7 @@ resources:
         AUTO_HEALING_CONTROLLER: { get_param: auto_healing_controller }
         MAGNUM_AUTO_HEALER_TAG: { get_param: magnum_auto_healer_tag }
         AUTO_SCALING_ENABLED: { get_param: auto_scaling_enabled }
+        OS_AUTOUPGRADE_ENABLED: { get_param: os_autoupgrade_enabled }
         MANILA_CSI_PLUGIN_ENABLED: { get_param: manila_csi_plugin_enabled }
         MANILA_CSI_CHART_TAG: { get_param: manila_csi_chart_tag }
         NFS_CSI_CHART_TAG: { get_param: nfs_csi_chart_tag }
