@@ -72,7 +72,14 @@ if [ "${mode}" = "run-periodic" ]; then
         exit 0
     fi
 else
-    flock -w "${lock_timeout_seconds}" 9
+    if ! flock -n 9; then
+        log "Reconcile lock is busy (another run is active), waiting up to ${lock_timeout_seconds}s..."
+        if ! flock -w "${lock_timeout_seconds}" 9; then
+            log "ERROR: Timed out waiting for reconcile lock after ${lock_timeout_seconds}s"
+            exit 1
+        fi
+        log "Lock acquired after wait"
+    fi
 fi
 
 binary_dir="${cache_root}/${version}"
