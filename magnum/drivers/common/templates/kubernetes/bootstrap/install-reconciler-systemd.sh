@@ -33,6 +33,11 @@ Type=oneshot
 ExecStart=/usr/local/bin/magnum-reconcile-launcher run-periodic
 User=root
 Group=root
+
+# Limit CPU impact on cluster workloads during periodic drift checks.
+Nice=15
+CPUWeight=20
+CPUQuota=50%
 EOF
 
 cat <<EOF | $ssh_cmd "cat > /etc/systemd/system/magnum-reconcile.timer.tmp"
