@@ -3,14 +3,6 @@
 set -eu
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
-heat_params_file="/etc/sysconfig/heat-params"
-run_interval="${RECONCILER_RUN_INTERVAL:-}"
-
-if [ -z "${run_interval}" ]; then
-    run_interval="$($ssh_cmd "if [ -f '${heat_params_file}' ]; then set -a; . '${heat_params_file}'; set +a; fi; printf '%s' \"\${RECONCILER_RUN_INTERVAL:-}\"" 2>/dev/null || true)"
-fi
-
-run_interval="${run_interval:-120min}"
 
 echo "Installing reconciler systemd units"
 
@@ -48,8 +40,8 @@ cat <<EOF | $ssh_cmd "cat > /etc/systemd/system/magnum-reconcile.timer.tmp"
 Description=Run Magnum Reconcile Periodically
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=${run_interval}
+OnActiveSec=5min
+OnCalendar=*-*-* 00:00:00
 Unit=magnum-reconcile-periodic.service
 Persistent=true
 

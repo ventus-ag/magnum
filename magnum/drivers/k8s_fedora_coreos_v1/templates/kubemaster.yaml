@@ -39,11 +39,6 @@ parameters:
     description: sha256 checksum for the node reconciler binary URL content
     default: ""
 
-  reconciler_run_interval:
-    type: string
-    description: periodic reconcile timer interval
-    default: "120min"
-
   reconciler_lock_timeout_seconds:
     type: string
     description: lock timeout for synchronous reconcile runs
@@ -928,7 +923,6 @@ resources:
         - name: RECONCILER_VERSION
         - name: RECONCILER_BINARY_URL
         - name: RECONCILER_BINARY_URL_SHA256
-        - name: RECONCILER_RUN_INTERVAL
         - name: RECONCILER_LOCK_TIMEOUT_SECONDS
       config:
         list_join:
@@ -1086,7 +1080,6 @@ resources:
         RECONCILER_VERSION: { get_param: reconciler_version }
         RECONCILER_BINARY_URL: { get_param: reconciler_binary_url }
         RECONCILER_BINARY_URL_SHA256: { get_param: reconciler_binary_url_sha256 }
-        RECONCILER_RUN_INTERVAL: { get_param: reconciler_run_interval }
         RECONCILER_LOCK_TIMEOUT_SECONDS: { get_param: reconciler_lock_timeout_seconds }
 
   ######################################################################

@@ -44,12 +44,12 @@ print(payload.get("status", ""))
 '
 }
 
-# Enable and restart the periodic timer.  Use restart so a changed interval
-# takes effect immediately.  Failures here must not prevent the synchronous
-# reconcile run, so errors are logged but not fatal.
-echo "Enabling reconciler timer" >&2
+# Enable the periodic timer without starting it yet.  Starting it here
+# would reset OnBootSec causing an immediate timer-triggered run that
+# races with the synchronous run below (double execution via flock
+# serialisation).  The timer is started AFTER the synchronous run.
+echo "Enabling reconciler timer (deferred start)" >&2
 $ssh_cmd systemctl enable magnum-reconcile.timer 2>&1 || true
-$ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 
 echo "Starting synchronous reconcile run" >&2
 
@@ -104,6 +104,12 @@ else
     result_json="${result_json}}"
     printf '%b\n' "${result_json}" | $ssh_cmd "cat > '${result_file}.tmp' && mv '${result_file}.tmp' '${result_file}'"
 fi
+
+# Now that the synchronous run is complete, start the periodic timer.
+# Use restart so a changed interval takes effect.  This is safe because
+# the synchronous run already finished — no race with the timer's first tick.
+echo "Starting reconciler timer" >&2
+$ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 
 printf '%b\n' "${result_json}"
 if result_status="$(emit_heat_outputs "${result_json}")"; then
