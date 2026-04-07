@@ -13,6 +13,7 @@ cat <<'EOF' | $ssh_cmd "cat > '${launcher_path}.tmp'"
 set -euo pipefail
 
 mode="${1:-run-once}"
+shift || true
 
 heat_params_file="/etc/sysconfig/heat-params"
 cache_root="/opt/magnum-reconciler"
@@ -124,7 +125,7 @@ export MAGNUM_PULUMI_BACKEND_URL="file://${pulumi_state_root}"
 export MAGNUM_PULUMI_BACKUP_DIR="${pulumi_backup_dir}"
 
 log "Starting reconciler binary=${binary_path} mode=${mode}"
-"${binary_path}" "${mode}"
+"${binary_path}" "${mode}" "$@"
 rc=$?
 
 log "Reconciler finished rc=${rc} mode=${mode}"
