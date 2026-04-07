@@ -99,7 +99,8 @@ class Handler(object):
         return cluster
 
     def cluster_update(self, context, cluster, node_count,
-                       health_status, health_status_reason, rollback=False):
+                       health_status, health_status_reason, rollback=False,
+                       labels_changed=False):
         LOG.debug('cluster_heat cluster_update')
 
         osc = clients.OpenStackClients(context)
@@ -124,48 +125,63 @@ class Handler(object):
         # Updates will be only reflected to the default worker
         # nodegroup.
         worker_ng = cluster.default_ng_worker
-        if (worker_ng.node_count == node_count and
-                cluster.health_status == health_status and
-                cluster.health_status_reason == health_status_reason):
+        node_count_changed = worker_ng.node_count != node_count
+        health_changed = (cluster.health_status != health_status or
+                          cluster.health_status_reason != health_status_reason)
+
+        if not node_count_changed and not health_changed and not labels_changed:
             return
 
         cluster.health_status = health_status
         cluster.health_status_reason = health_status_reason
 
-        # It's not necessary to trigger driver's cluster update if it's
-        # only health status update
-        if worker_ng.node_count == node_count:
+        # If only health status changed, save and return — no stack update.
+        if not node_count_changed and not labels_changed:
             cluster.save()
             return cluster
-
-        # Backup the old node count so that we can restore it
-        # in case of an exception.
-        old_node_count = worker_ng.node_count
-
-        manager = scale_manager.get_scale_manager(context, osc, cluster)
 
         # Get driver
         ct = conductor_utils.retrieve_cluster_template(context, cluster)
         cluster_driver = driver.Driver.get_driver(ct.server_type,
                                                   ct.cluster_distro,
                                                   ct.coe)
-        # Update cluster
+
+        # Backup the old node count so that we can restore it
+        # in case of an exception.
+        old_node_count = worker_ng.node_count
+
         try:
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_PENDING,
                 cluster)
-            worker_ng.node_count = node_count
-            worker_ng.save()
-            cluster_driver.update_cluster(context, cluster, manager, rollback)
+
+            if labels_changed and not node_count_changed:
+                # Labels-only update: re-extract template definition with
+                # new labels and push to all nodegroups. This triggers the
+                # reconciler on each node to converge to the new desired
+                # state (enable/disable addons, change chart versions, etc.)
+                LOG.info('Updating cluster %s labels (reconfigure)',
+                         cluster.uuid)
+                cluster_driver.reconfigure_cluster(context, cluster)
+            else:
+                # Node count change (scaling) — original behavior.
+                manager = scale_manager.get_scale_manager(
+                    context, osc, cluster)
+                worker_ng.node_count = node_count
+                worker_ng.save()
+                cluster_driver.update_cluster(
+                    context, cluster, manager, rollback)
+
             cluster.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
             cluster.status_reason = None
         except Exception as e:
             cluster.status = fields.ClusterStatus.UPDATE_FAILED
             cluster.status_reason = six.text_type(e)
             cluster.save()
-            # Restore the node_count
-            worker_ng.node_count = old_node_count
-            worker_ng.save()
+            if node_count_changed:
+                # Restore the node_count
+                worker_ng.node_count = old_node_count
+                worker_ng.save()
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_FAILURE,
                 cluster)

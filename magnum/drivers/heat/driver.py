@@ -255,6 +255,71 @@ class HeatDriver(driver.Driver):
                        rollback=False):
         self._update_stack(context, cluster, scale_manager, rollback)
 
+    def reconfigure_cluster(self, context, cluster):
+        """Re-extract template params from cluster labels and push directly
+        to each node's child stack. Used for label-only updates (enable/disable
+        addons, change chart versions) without a full Kubernetes upgrade.
+
+        Uses the same direct child-stack update pattern as rotate_ca_certificate
+        to update all nodes simultaneously instead of going through the
+        ResourceGroup rolling update.
+
+        Does NOT set is_upgrade=True, so the reconciler treats it as a normal
+        reconcile run — no drain/uncordon, no service restarts unless configs
+        actually changed.
+        """
+        osc = clients.OpenStackClients(context)
+
+        # Re-extract full template definition with updated labels.
+        # This picks up all label changes (addon flags, chart versions, etc.)
+        _, heat_params, _ = (
+            self._extract_template_definition(context, cluster))
+
+        heat_params['is_upgrade'] = 'false'
+        heat_params['is_resize'] = 'false'
+        heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
+
+        # Only update master nodegroup child stacks. Cluster addons
+        # (Helm releases, RBAC, etc.) only run on master-0, so there's
+        # no need to trigger workers for addon reconfiguration.
+        master_ng = cluster.default_ng_master
+        if not master_ng or not master_ng.stack_id:
+            LOG.warning('No master nodegroup stack found for cluster %s',
+                        cluster.uuid)
+            return
+
+        stack_ids = self._get_nested_stack_ids(
+            osc, cluster.stack_id, master_ng)
+        if not stack_ids:
+            LOG.warning('Could not resolve master member stacks for '
+                        'cluster %s during reconfigure', cluster.uuid)
+            return
+
+        stack_fields = self._get_nested_stack_update_template_fields(
+            context, master_ng)
+
+        for stack_id in stack_ids:
+            for rn in ('master_config', 'master_config_deployment'):
+                try:
+                    osc.heat().resources.mark_unhealthy(
+                        stack_id, rn, True, 'pre-reconfigure')
+                except Exception:
+                    pass
+
+            merged_params = self._get_merged_stack_parameters(
+                osc, stack_id, heat_params)
+
+            nodegroup_fields = {
+                **stack_fields,
+                'existing': True,
+                'parameters': merged_params,
+                'timeout_mins': self._get_update_timeout(),
+                'disable_rollback': True,
+            }
+            LOG.info('Reconfiguring cluster %s master stack %s',
+                     cluster.uuid, stack_id)
+            osc.heat().stacks.update(stack_id, **nodegroup_fields)
+
     def create_nodegroup(self, context, cluster, nodegroup):
         stack = self._create_stack(context, clients.OpenStackClients(context),
                                    cluster, cluster.create_timeout,

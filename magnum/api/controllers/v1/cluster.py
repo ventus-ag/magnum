@@ -603,11 +603,13 @@ class ClustersController(base.Controller):
         """
         (cluster, node_count,
          health_status,
-         health_status_reason) = self._patch(cluster_ident, patch)
+         health_status_reason,
+         labels_changed) = self._patch(cluster_ident, patch)
         pecan.request.rpcapi.cluster_update_async(cluster, node_count,
                                                   health_status,
                                                   health_status_reason,
-                                                  rollback)
+                                                  rollback,
+                                                  labels_changed)
         return ClusterID(cluster.uuid)
 
     def _patch(self, cluster_ident, patch):
@@ -649,8 +651,11 @@ class ClustersController(base.Controller):
             if p['path'] == '/node_count':
                 node_count = p.get('value') or new_cluster.node_count
 
+        labels_changed = 'labels' in delta
+
         return (cluster, node_count,
-                new_cluster.health_status, new_cluster.health_status_reason)
+                new_cluster.health_status, new_cluster.health_status_reason,
+                labels_changed)
 
     @expose.expose(None, types.uuid_or_name, status_code=204)
     def delete(self, cluster_ident):
