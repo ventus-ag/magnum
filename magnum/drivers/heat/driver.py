@@ -275,6 +275,14 @@ class HeatDriver(driver.Driver):
         _, heat_params, _ = (
             self._extract_template_definition(context, cluster))
 
+        # Filter out None values — these are params not set in cluster
+        # labels/template (e.g. etcd_volume_size comes from the cluster
+        # template, not labels, so labels.get() returns None).  We must
+        # not overwrite existing child stack values with None, or Heat
+        # will reject the update with "Parameter was not provided".
+        heat_params = {k: v for k, v in heat_params.items()
+                       if v is not None}
+
         heat_params['is_upgrade'] = 'false'
         heat_params['is_resize'] = 'false'
         heat_params['timestamp_upgrade'] = self._get_reconcile_timestamp()
