@@ -652,6 +652,8 @@ class ClustersController(base.Controller):
                 node_count = p.get('value') or new_cluster.node_count
 
         labels_changed = 'labels' in delta
+        if labels_changed:
+            cluster.labels = new_cluster.labels
 
         return (cluster, node_count,
                 new_cluster.health_status, new_cluster.health_status_reason,
