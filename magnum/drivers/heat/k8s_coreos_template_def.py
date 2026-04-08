@@ -37,7 +37,6 @@ class CoreOSK8sTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
     def get_params(self, context, cluster_template, cluster, **kwargs):
         extra_params = kwargs.pop('extra_params', {})
 
-        extra_params['username'] = context.user_name
         osc = self.get_osc(context)
         extra_params['region_name'] = osc.cinder_region_name()
 

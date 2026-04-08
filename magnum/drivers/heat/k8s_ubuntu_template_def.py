@@ -41,7 +41,6 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
     def get_params(self, context, cluster_template, cluster, **kwargs):
         extra_params = kwargs.pop('extra_params', {})
 
-        extra_params['username'] = context.user_name
         osc = self.get_osc(context)
         extra_params['region_name'] = osc.cinder_region_name()
 
@@ -121,6 +120,7 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
 
         self._set_cert_manager_params(context, cluster, extra_params)
         self._get_keystone_auth_default_policy(extra_params)
+        extra_params.pop('project_id', None)
         self._set_volumes(context, cluster, extra_params)
 
         return super(K8sUbuntuTemplateDefinition,
