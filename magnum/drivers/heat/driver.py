@@ -759,7 +759,10 @@ class KubernetesDriver(HeatDriver):
         entries so old clusters migrate cleanly without a hardcoded
         deprecation list.
         """
-        parsed = yaml.safe_load(template)
+        if isinstance(template, dict):
+            parsed = template
+        else:
+            parsed = yaml.safe_load(template)
         template_params = set(parsed.get('parameters', {}).keys())
         filtered = {}
         for k, v in current_parameters.items():
