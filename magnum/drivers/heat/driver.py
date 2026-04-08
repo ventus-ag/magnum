@@ -17,6 +17,7 @@ from pbr.version import SemanticVersion as SV
 import six
 import json
 import datetime
+import yaml
 
 from string import ascii_letters
 from string import digits
@@ -315,7 +316,8 @@ class HeatDriver(driver.Driver):
                     pass
 
             merged_params = self._get_merged_stack_parameters(
-                osc, stack_id, heat_params)
+                osc, stack_id, heat_params,
+                template=stack_fields['template'])
 
             nodegroup_fields = {
                 **stack_fields,
@@ -745,11 +747,37 @@ class KubernetesDriver(HeatDriver):
 
         return nested_params
 
-    def _get_merged_stack_parameters(self, osc, stack_id, updated_params):
+    @staticmethod
+    def _filter_params_for_template(current_parameters, template):
+        """Drop stack parameters not declared in the new template.
+
+        When updating a stack with ``existing: True``, Heat preserves
+        every parameter from the old stack.  If the new template no
+        longer declares some of them the update fails with
+        "Unknown parameter".  This method dynamically compares the old
+        parameter set against the new template and removes obsolete
+        entries so old clusters migrate cleanly without a hardcoded
+        deprecation list.
+        """
+        parsed = yaml.safe_load(template)
+        template_params = set(parsed.get('parameters', {}).keys())
+        filtered = {}
+        for k, v in current_parameters.items():
+            if k in template_params:
+                filtered[k] = v
+            else:
+                LOG.debug('Dropping obsolete stack parameter: %s', k)
+        return filtered
+
+    def _get_merged_stack_parameters(self, osc, stack_id, updated_params,
+                                     template=None):
         current_parameters = heat_tdef.omit_masked_heat_parameters(
             osc.heat().stacks.get(stack_id).parameters.copy())
         for param in ('OS::stack_id', 'OS::project_id', 'OS::stack_name'):
             current_parameters.pop(param, None)
+        if template:
+            current_parameters = self._filter_params_for_template(
+                current_parameters, template)
         current_parameters.update(updated_params)
         return current_parameters
 
@@ -819,7 +847,8 @@ class KubernetesDriver(HeatDriver):
                     'parameters': self._get_merged_stack_parameters(
                         osc, stack_id,
                         self._get_nested_ca_rotation_params(
-                            nodegroup, heat_params, cluster_stack_params)),
+                            nodegroup, heat_params, cluster_stack_params),
+                        template=stack_fields['template']),
                     'timeout_mins': self._get_update_timeout(),
                     'disable_rollback': True
                 }
@@ -1032,49 +1061,17 @@ class FedoraKubernetesDriver(KubernetesDriver):
             'timeout_mins': self._get_update_timeout()
         }
 
-        # Fetch the current parameters of the stack
+        # Fetch the current stack parameters and drop any that are not
+        # declared in the new template.  This handles removed, renamed,
+        # or deprecated parameters automatically — old clusters are
+        # migrated cleanly without a hardcoded deprecation list.
         current_parameters = heat_tdef.omit_masked_heat_parameters(
             osc.heat().stacks.get(stack_id).parameters.copy())
-        # Remove the parameters to be ignored
-        parameters_to_ignore = [
-            'OS::stack_id',
-            'OS::project_id',
-            'OS::stack_name',
-            'container_runtime',
-            'containerd_version'
-            ]
-        for param in parameters_to_ignore:
-            current_parameters.pop(param, None)
+        current_parameters = self._filter_params_for_template(
+            current_parameters, template)
 
-
-        # old parameters what was removed from template
-        parameters_to_clear = [
-            'timestamp_upgrade'
-            ]
-
-        params_to_clear = []
-        for param in parameters_to_clear:
-            if param in current_parameters:
-                params_to_clear.append(param)
-
-        if params_to_clear:
-            fields['clear_parameter'] = params_to_clear
-
-        # Remove the cleared parameters from current_parameters
-        for param in params_to_clear:
-            current_parameters.pop(param, None)
-
-        # Remove parameters ending with '_tag' or '_sha256'
-        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
-        for k in keys_to_remove:
-            current_parameters.pop(k, None)
-
-        # Merge current parameters with new parameters. 
-        # Note that this will overwrite any old parameters with new ones if they have the same name.
-        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        # Merge: new parameters win over old stack values.
         current_parameters.update(fields['parameters'])
-
-        # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
         # Mark SoftwareConfig resources unhealthy before pushing the
@@ -1279,31 +1276,17 @@ class UbuntuKubernetesDriver(KubernetesDriver):
             'timeout_mins': self._get_update_timeout(),
         }
 
-        # Fetch the current parameters of the stack
+        # Fetch the current stack parameters and drop any that are not
+        # declared in the new template.  This handles removed, renamed,
+        # or deprecated parameters automatically — old clusters are
+        # migrated cleanly without a hardcoded deprecation list.
         current_parameters = heat_tdef.omit_masked_heat_parameters(
             osc.heat().stacks.get(stack_id).parameters.copy())
-        # Remove the parameters to be ignored
-        parameters_to_ignore = [
-            'OS::stack_id',
-            'OS::project_id',
-            'OS::stack_name',
-            'container_runtime',
-            'containerd_version'
-            ]
-        for param in parameters_to_ignore:
-            current_parameters.pop(param, None)
+        current_parameters = self._filter_params_for_template(
+            current_parameters, template)
 
-        # Remove parameters ending with '_tag' or '_sha256'
-        keys_to_remove = [k for k in current_parameters if k.endswith('_tag') or k.endswith('_sha256')]
-        for k in keys_to_remove:
-            current_parameters.pop(k, None)
-
-        # Merge current parameters with new parameters. 
-        # Note that this will overwrite any old parameters with new ones if they have the same name.
-        # If you want to keep old parameters when they have the same name, you can switch the order of the dictionaries in the update function.
+        # Merge: new parameters win over old stack values.
         current_parameters.update(fields['parameters'])
-
-        # Replace the old parameters in fields with the merged parameters
         fields['parameters'] = current_parameters
 
         # Mark SoftwareConfig resources unhealthy before pushing the
