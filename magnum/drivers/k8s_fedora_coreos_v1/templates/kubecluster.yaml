@@ -58,12 +58,6 @@ conditions:
       - create_cluster_resources
       - is_worker
 
-  calico_v3_3:
-    yaql:
-      expression: $.data.calico_tag.startsWith("v3.3.")
-      data:
-        calico_tag: { get_param: calico_tag }
-
 parameters:
   # needs to become a list if we want to join master nodes?
   existing_master_private_ip:
@@ -177,11 +171,6 @@ parameters:
     default: ""
     description: the name of the nodegroup where the node belongs
 
-  heapster_enabled:
-    type: boolean
-    description: enable/disable the use of heapster
-    default: false
-
   metrics_server_enabled:
     type: boolean
     description: enable/disable the use of metrics-server
@@ -196,12 +185,6 @@ parameters:
     type: string
     default: m1.small
     description: flavor to use when booting the server for minions
-
-  prometheus_monitoring:
-    type: boolean
-    default: false
-    description: >
-      whether or not to have the grafana-prometheus-cadvisor monitoring setup
 
   grafana_admin_passwd:
     type: string
@@ -246,11 +229,6 @@ parameters:
     description: network range for flannel overlay network
     default: 10.100.0.0/16
 
-  flannel_network_subnetlen:
-    type: number
-    description: size of subnet assigned to each minion
-    default: 24
-
   flannel_backend:
     type: string
     description: >
@@ -258,20 +236,6 @@ parameters:
     default: "vxlan"
     constraints:
       - allowed_values: ["udp", "vxlan", "host-gw"]
-
-  system_pods_initial_delay:
-    type: number
-    description: >
-      health check, time to wait for system pods (podmaster, scheduler) to boot
-      (in seconds)
-    default: 30
-
-  system_pods_timeout:
-    type: number
-    description: >
-      health check, timeout for system pods (podmaster, scheduler) to answer.
-      (in seconds)
-    default: 5
 
   admission_control_list:
     type: string
@@ -334,11 +298,6 @@ parameters:
       cgroup driver name that kubelet should use, ideally the same as
       the docker cgroup driver.
     default: "cgroupfs"
-
-  traefik_ingress_controller_tag:
-    type: string
-    description: tag of the traefik containers to be used.
-    default: v1.7.19
 
   wait_condition_timeout:
     type: number
@@ -412,19 +371,6 @@ parameters:
     type: string
     description: A logically separate section of the cluster
 
-  username:
-    type: string
-    description: >
-      user account
-
-  password:
-    type: string
-    description: >
-      user password, not set in current implementation, only used to
-      fill in for Kubernetes config file
-    default: ChangeMe
-    hidden: true
-
   loadbalancing_protocol:
     type: string
     description: >
@@ -442,11 +388,6 @@ parameters:
   kube_dashboard_enabled:
     type: boolean
     description: whether or not to enable kubernetes dashboard
-    default: False
-
-  influx_grafana_dashboard_enabled:
-    type: boolean
-    description: Enable influxdb with grafana dashboard for data from heapster
     default: False
 
   verify_ca:
@@ -516,14 +457,6 @@ parameters:
       https://github.com/kubernetes/kubernetes/releases
     default: v1.18.2
 
-  kubernetes_tarball_sha512:
-    type: string
-    default: ""
-
-  kubernetes_tarball_url:
-    type: string
-    default: ""
-
   master_kube_tag:
     type: string
     description:
@@ -588,12 +521,6 @@ parameters:
     description: version of kubernetes dashboard used for kubernetes cluster
     default: v2.0.0
 
-  metrics_scraper_tag:
-    type: string
-    description: >
-      Tag of metrics-scraper for kubernetes dashboard.
-    default: v1.0.4
-
   insecure_registry_url:
     type: string
     description: insecure registry url
@@ -651,50 +578,9 @@ parameters:
     default: ""
     hidden: true
 
-  calico_tag:
-    type: string
-    description: tag of the calico containers used to provision the calico node
-    default: v3.13.1
-
-  calico_kube_controllers_tag:
-    type: string
-    description: tag of the kube_controllers used to provision the calico node
-    default: v1.0.3
-
-  calico_ipv4pool:
-    type: string
-    description: Configure the IP pool from which Pod IPs will be chosen
-    default: "10.100.0.0/16"
-
-  calico_ipv4pool_ipip:
-    type: string
-    description: IPIP Mode to use for the IPv4 POOL created at start up
-    default: "Off"
-    constraints:
-      - allowed_values: ["Always", "CrossSubnet", "Never", "Off"]
-
   pods_network_cidr:
     type: string
     description: Configure the IP pool/range from which pod IPs will be chosen
-
-  ingress_controller:
-    type: string
-    description: >
-      ingress controller backend to use
-    default: ""
-
-  ingress_controller_role:
-    type: string
-    description: >
-      node role where the ingress controller backend should run
-    default: "ingress"
-
-  octavia_ingress_controller_tag:
-    type: string
-    description: Octavia ingress controller docker image tag.
-      tag of the k8scloudprovider/octavia-ingress-controller container
-      https://hub.docker.com/r/k8scloudprovider/octavia-ingress-controller/tags/
-    default: v1.18.0
 
   kubelet_options:
     type: string
@@ -718,12 +604,6 @@ parameters:
     type: string
     description: >
       additional options to be passed to the kube proxy
-    default: ""
-
-  kubescheduler_options:
-    type: string
-    description: >
-      additional options to be passed to the scheduler
     default: ""
 
   octavia_enabled:
@@ -754,21 +634,6 @@ parameters:
     description: >
       Explicit token used to trigger CA rotation on existing nodes.
 
-  prometheus_tag:
-    type: string
-    description: tag of the prometheus container
-    default: v1.8.2
-
-  grafana_tag:
-    type: string
-    description: tag of grafana container
-    default: 5.1.5
-
-  heat_container_agent_tag:
-    type: string
-    description: tag of the heat_container_agent system container
-    default: ussuri-stable-1
-
   keystone_auth_enabled:
     type: boolean
     description: >
@@ -779,57 +644,6 @@ parameters:
     type: string
     description: Json read from /etc/magnum/keystone_auth_default_policy.json
     default: ""
-
-  k8s_keystone_auth_tag:
-    type: string
-    description: tag of the k8scloudprovider/k8s-keystone-auth container
-      https://hub.docker.com/r/k8scloudprovider/k8s-keystone-auth/tags/
-    default: v1.20.0
-
-  monitoring_enabled:
-    type: boolean
-    description: Enable or disable prometheus-operator monitoring solution.
-    default: false
-
-  prometheus_operator_chart_tag:
-    type: string
-    description: The stable/prometheus-operator chart version to use.
-    default: v8.12.13
-
-  prometheus_adapter_enabled:
-    type: boolean
-    description: Enable or disable prometheus-adapter custom metrics.
-    default: true
-
-  prometheus_adapter_chart_tag:
-    type: string
-    description: The stable/prometheus-adapter chart version to use.
-    default: 1.4.0
-
-  prometheus_adapter_configmap:
-    type: string
-    description: The prometheus adapter rules ConfigMap name to use as overwrite.
-    default: ""
-
-  project_id:
-    type: string
-    description: >
-      project id of current project
-
-  tiller_enabled:
-    type: boolean
-    description: Choose whether to install tiller or not.
-    default: false
-
-  tiller_tag:
-    type: string
-    description: tag of tiller container
-    default: "v2.16.7"
-
-  tiller_namespace:
-    type: string
-    description: namespace where tiller will be installed.
-    default: "magnum-tiller"
 
   helm_client_url:
     type: string
@@ -862,9 +676,8 @@ parameters:
 
   magnum_auto_healer_tag:
     type: string
-    description: tag of the k8scloudprovider/magnum-auto-healer container
-      https://hub.docker.com/r/k8scloudprovider/magnum-auto-healer/tags/
-    default: v1.20.0
+    description: tag of the magnum-auto-healer container image
+    default: "v1.27.1"
 
   auto_scaling_enabled:
     type: boolean
@@ -878,30 +691,17 @@ parameters:
       true if the OS auto-upgrade service (Zincati) should be enabled
     default: false
 
-  manila_csi_plugin_enabled:
+  manila_csi_enabled:
     type: boolean
     description: >
       true if the manila csi plugin feature should be enabled
     default: false
 
-  cinder_csi_plugin_enabled:
+  cinder_csi_enabled:
     type: boolean
     description: >
       true if the cinder csi plugin feature should be enabled
     default: false
-
-  cinder_csi_enabled:
-    type: boolean
-    description: >
-      true if the cinder csi feature should be enabled
-    default: false
-
-  cinder_csi_plugin_tag:
-    type: string
-    description: tag of cinder csi plugin
-      tag of the k8scloudprovider/cinder-csi-plugin container
-      https://hub.docker.com/r/k8scloudprovider/cinder-csi-plugin/tags/
-    default: v1.20.0
 
   cinder_csi_chart_tag:
     type: string
@@ -917,58 +717,6 @@ parameters:
     type: string
     description: Helm chart version for csi-driver-nfs
     default: "4.5.0"
-
-  csi_attacher_tag:
-    type: string
-    description: tag of csi attacher
-    default: v2.2.1
-
-  csi_provisioner_tag:
-    type: string
-    description: tag of csi provisioner
-    default: v1.6.1
-
-  csi_snapshotter_tag:
-    type: string
-    description: tag of csi snapshotter
-    default: v3.0.3
-
-  csi_resizer_tag:
-    type: string
-    description: tag of csi resizer
-    default: v0.4.0
-
-  csi_node_driver_registrar_tag:
-    type: string
-    description: tag of csi node driver registrar
-    default: v2.1.0
-
-  node_problem_detector_tag:
-    type: string
-    description: tag of the node problem detector container
-    default: v0.6.2
-
-  nginx_ingress_controller_tag:
-    type: string
-    description: nginx ingress controller docker image tag
-    default: 0.32.0
-
-  nginx_ingress_controller_chart_tag:
-    type: string
-    description: nginx ingress controller helm chart tag
-    default: v1.36.3
-
-  draino_tag:
-    type: string
-    description: tag of the draino container
-    default: abf028a
-
-  autoscaler_tag:
-    type: string
-    description: tag of the autoscaler container
-      tag of the autoscaling/cluster-autoscaler container
-      registry.k8s.io/autoscaling/cluster-autoscaler
-    default: v1.27.0
 
   autoscaler_chart_tag:
     type: string
@@ -992,26 +740,10 @@ parameters:
       max batch size when doing rolling upgrade
     default: 1
 
-  npd_enabled:
-    type: boolean
-    description: >
-      true if the npd service should be launched
-    default: true
-
   npd_chart_tag:
     type: string
     description: Helm chart version for node-problem-detector
     default: "2.3.4"
-
-  ostree_remote:
-    type: string
-    description: This parameter is ignored for k8s_fedora_coreos.
-    default: ""
-
-  ostree_commit:
-    type: string
-    description: This parameter is ignored for k8s_fedora_coreos.
-    default: ""
 
   use_podman:
     type: boolean
@@ -1020,6 +752,10 @@ parameters:
     default: true
     constraints:
       - allowed_values: [true]
+
+  heat_container_agent_tag:
+    type: string
+    description: tag of the heat_container_agent system container
 
   selinux_mode:
     type: string
@@ -1049,11 +785,6 @@ parameters:
     type: string
     description: Url location of the containerd tarball.
     default: ""
-
-  containerd_tarball_sha256:
-    type: string
-    description: sha256 of the target containerd tarball.
-    default: "1f2f0fb928179df90492a83c326a194b8e9d992538498efb44cbb6ef15465627"
 
   post_install_manifest_url:
     type: string
@@ -1313,10 +1044,8 @@ resources:
           is_upgrade: { get_param: is_upgrade }
           is_resize: { get_param: is_resize }
           timestamp_upgrade: { get_param: timestamp_upgrade }
-          heapster_enabled: { get_param: heapster_enabled }
           metrics_server_enabled: { get_param: metrics_server_enabled }
           metrics_server_chart_tag: { get_param: metrics_server_chart_tag }
-          prometheus_monitoring: { get_param: prometheus_monitoring }
           api_public_address: { get_attr: [api_lb, floating_address] }
           api_private_address: { get_attr: [api_lb, address] }
           ssh_key_name: { get_param: ssh_key_name }
@@ -1335,17 +1064,12 @@ resources:
           cgroup_driver: { get_param: cgroup_driver }
           network_driver: { get_param: network_driver }
           flannel_network_cidr: { get_param: flannel_network_cidr }
-          flannel_network_subnetlen: { get_param: flannel_network_subnetlen }
           flannel_backend: { get_param: flannel_backend }
-          system_pods_initial_delay: { get_param: system_pods_initial_delay }
-          system_pods_timeout: { get_param: system_pods_timeout }
           portal_network_cidr: { get_param: portal_network_cidr }
           admission_control_list: { get_param: admission_control_list }
           discovery_url: { get_param: discovery_url }
           cluster_uuid: { get_param: cluster_uuid }
           magnum_url: { get_param: magnum_url }
-          traefik_ingress_controller_tag:
-            { get_param: traefik_ingress_controller_tag }
           volume_driver: { get_param: volume_driver }
           region_name: { get_param: region_name }
           fixed_network: { get_attr: [network, fixed_network] }
@@ -1353,21 +1077,15 @@ resources:
           fixed_subnet: { get_attr: [network, fixed_subnet] }
           api_pool_id: { get_attr: [api_lb, pool_id] }
           etcd_pool_id: { get_attr: [etcd_lb, pool_id] }
-          username: { get_param: username }
-          password: { get_param: password }
           kubernetes_port: { get_param: kubernetes_port }
           tls_disabled: { get_param: tls_disabled }
           kube_dashboard_enabled: { get_param: kube_dashboard_enabled }
-          influx_grafana_dashboard_enabled:
-            { get_param: influx_grafana_dashboard_enabled }
           verify_ca: { get_param: verify_ca }
           secgroup_kube_master_id: { get_resource: secgroup_kube_master }
           http_proxy: { get_param: http_proxy }
           https_proxy: { get_param: https_proxy }
           no_proxy: { get_param: no_proxy }
           kube_tag: { get_param: master_kube_tag }
-          kubernetes_tarball_sha512: { get_param: kubernetes_tarball_sha512 }
-          kubernetes_tarball_url: { get_param: kubernetes_tarball_url }
           cloud_provider_tag: { get_param: cloud_provider_tag }
           occm_chart_tag: { get_param: occm_chart_tag }
           cloud_provider_enabled: { get_param: cloud_provider_enabled }
@@ -1392,87 +1110,42 @@ resources:
           availability_zone: { get_param: availability_zone }
           ca_key: { get_param: ca_key }
           cert_manager_api: { get_param: cert_manager_api }
-          calico_tag: { get_param: calico_tag }
-          calico_kube_controllers_tag:
-            { get_param: calico_kube_controllers_tag }
-          calico_ipv4pool: { get_param: calico_ipv4pool }
-          calico_ipv4pool_ipip: { get_param: calico_ipv4pool_ipip }
           pods_network_cidr: { get_param: pods_network_cidr }
-          ingress_controller: { get_param: ingress_controller }
-          ingress_controller_role: { get_param: ingress_controller_role }
-          octavia_ingress_controller_tag:
-            { get_param: octavia_ingress_controller_tag }
           kubelet_options: { get_param: kubelet_options }
           kubeapi_options: { get_param: kubeapi_options }
           kubeproxy_options: { get_param: kubeproxy_options }
           kubecontroller_options: { get_param: kubecontroller_options }
-          kubescheduler_options: { get_param: kubescheduler_options }
           octavia_enabled: { get_param: octavia_enabled }
           kube_service_account_key: { get_param: kube_service_account_key }
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
           ca_rotation_id: { get_param: ca_rotation_id }
-          prometheus_tag: { get_param: prometheus_tag }
-          grafana_tag: { get_param: grafana_tag }
-          heat_container_agent_tag: { get_param: heat_container_agent_tag }
           keystone_auth_enabled: { get_param: keystone_auth_enabled }
-          k8s_keystone_auth_tag: { get_param: k8s_keystone_auth_tag }
-          monitoring_enabled: { get_param: monitoring_enabled }
-          prometheus_operator_chart_tag:
-            { get_param: prometheus_operator_chart_tag }
-          prometheus_adapter_enabled: { get_param: prometheus_adapter_enabled }
-          prometheus_adapter_chart_tag:
-            { get_param: prometheus_adapter_chart_tag }
-          prometheus_adapter_configmap:
-            { get_param: prometheus_adapter_configmap }
-          project_id: { get_param: project_id }
-          tiller_enabled: { get_param: tiller_enabled }
-          tiller_tag: { get_param: tiller_tag }
-          tiller_namespace: { get_param: tiller_namespace }
           helm_client_url: { get_param: helm_client_url }
           helm_client_sha256: { get_param: helm_client_sha256 }
           helm_client_tag: { get_param: helm_client_tag }
-          node_problem_detector_tag: { get_param: node_problem_detector_tag }
-          nginx_ingress_controller_tag:
-            { get_param: nginx_ingress_controller_tag }
-          nginx_ingress_controller_chart_tag:
-            { get_param: nginx_ingress_controller_chart_tag }
           auto_healing_enabled: { get_param: auto_healing_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
           magnum_auto_healer_tag: { get_param: magnum_auto_healer_tag }
           auto_scaling_enabled: { get_param: auto_scaling_enabled }
           os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
-          manila_csi_plugin_enabled: { get_param: manila_csi_plugin_enabled }
+          manila_csi_enabled: { get_param: manila_csi_enabled }
           manila_csi_chart_tag: { get_param: manila_csi_chart_tag }
           nfs_csi_chart_tag: { get_param: nfs_csi_chart_tag }
-          cinder_csi_plugin_enabled: { get_param: cinder_csi_plugin_enabled }
           cinder_csi_enabled: { get_param: cinder_csi_enabled }
-          cinder_csi_plugin_tag: { get_param: cinder_csi_plugin_tag }
           cinder_csi_chart_tag: { get_param: cinder_csi_chart_tag }
-          csi_attacher_tag: { get_param: csi_attacher_tag }
-          csi_provisioner_tag: { get_param: csi_provisioner_tag }
-          csi_snapshotter_tag: { get_param: csi_snapshotter_tag }
-          csi_resizer_tag: { get_param: csi_resizer_tag }
-          csi_node_driver_registrar_tag:
-            { get_param: csi_node_driver_registrar_tag }
-          draino_tag: { get_param: draino_tag }
-          autoscaler_tag: { get_param: autoscaler_tag }
           autoscaler_chart_tag: { get_param: autoscaler_chart_tag }
           min_node_count: { get_param: min_node_count }
           max_node_count: { get_param: max_node_count }
-          npd_enabled: { get_param: npd_enabled }
           npd_chart_tag: { get_param: npd_chart_tag }
-          ostree_remote: { get_param: ostree_remote }
-          ostree_commit: { get_param: ostree_commit }
           use_podman: { get_param: use_podman }
+          heat_container_agent_tag: { get_param: heat_container_agent_tag }
           selinux_mode: { get_param: selinux_mode }
           kube_image_digest: { get_param: kube_image_digest }
           container_runtime: { get_param: container_runtime }
           containerd_version: { get_param: containerd_version }
           containerd_tarball_url: { get_param: containerd_tarball_url }
-          containerd_tarball_sha256: { get_param: containerd_tarball_sha256 }
           post_install_manifest_url: { get_param: post_install_manifest_url }
-          metrics_scraper_tag: { get_param: metrics_scraper_tag }
           reconciler_version: { get_param: reconciler_version }
           reconciler_binary_url: { get_param: reconciler_binary_url }
           reconciler_binary_url_sha256:
@@ -1504,7 +1177,6 @@ resources:
             list_join:
               - "-"
               - [{ get_param: "OS::stack_name" }, "node", "%index%"]
-          prometheus_monitoring: { get_param: prometheus_monitoring }
           nodegroup_role: { get_param: worker_role }
           nodegroup_name: { get_param: worker_nodegroup_name }
           is_upgrade: { get_param: is_upgrade }
@@ -1556,8 +1228,6 @@ resources:
           volume_driver: { get_param: volume_driver }
           region_name: { get_param: region_name }
           auth_url: { get_param: auth_url }
-          username: { get_param: username }
-          password: { get_param: password }
           kubernetes_port: { get_param: kubernetes_port }
           tls_disabled: { get_param: tls_disabled }
           verify_ca: { get_param: verify_ca }
@@ -1570,8 +1240,6 @@ resources:
           https_proxy: { get_param: https_proxy }
           no_proxy: { get_param: no_proxy }
           kube_tag: { get_param: minion_kube_tag }
-          kubernetes_tarball_sha512: { get_param: kubernetes_tarball_sha512 }
-          kubernetes_tarball_url: { get_param: kubernetes_tarball_url }
           kube_version: { get_param: kube_version }
           trustee_user_id: { get_param: trustee_user_id }
           trustee_username: { get_param: trustee_username }
@@ -1590,20 +1258,16 @@ resources:
           kubelet_options: { get_param: kubelet_options }
           kubeproxy_options: { get_param: kubeproxy_options }
           octavia_enabled: { get_param: octavia_enabled }
-          heat_container_agent_tag: { get_param: heat_container_agent_tag }
           auto_healing_enabled: { get_param: auto_healing_enabled }
           os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
-          npd_enabled: { get_param: npd_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
-          ostree_remote: { get_param: ostree_remote }
-          ostree_commit: { get_param: ostree_commit }
           use_podman: { get_param: use_podman }
           flannel_cni_tag: { get_param: flannel_cni_tag }
+          heat_container_agent_tag: { get_param: heat_container_agent_tag }
           selinux_mode: { get_param: selinux_mode }
           container_runtime: { get_param: container_runtime }
           containerd_version: { get_param: containerd_version }
           containerd_tarball_url: { get_param: containerd_tarball_url }
-          containerd_tarball_sha256: { get_param: containerd_tarball_sha256 }
           kube_service_account_key: { get_param: kube_service_account_key }
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }
