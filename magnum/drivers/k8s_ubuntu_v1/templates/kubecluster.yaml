@@ -547,7 +547,7 @@ parameters:
   occm_chart_tag:
     type: string
     description: Helm chart version for openstack-cloud-controller-manager
-    default: "2.27.1"
+    default: "2.35.0"
 
   cloud_provider_enabled:
     type: boolean
@@ -910,7 +910,7 @@ parameters:
   cinder_csi_chart_tag:
     type: string
     description: Helm chart version for openstack-cinder-csi
-    default: "2.27.1"
+    default: "2.35.0"
 
   csi_attacher_tag:
     type: string
