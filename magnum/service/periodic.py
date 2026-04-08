@@ -131,6 +131,8 @@ class ClusterHealthUpdateJob(object):
             self.cluster.health_status = monitor.data.get('health_status')
             self.cluster.health_status_reason = monitor.data.get(
                 'health_status_reason')
+            if monitor.data.get('coe_version'):
+                self.cluster.coe_version = monitor.data.get('coe_version')
             self.cluster.save()
 
     def update_health_status(self):
