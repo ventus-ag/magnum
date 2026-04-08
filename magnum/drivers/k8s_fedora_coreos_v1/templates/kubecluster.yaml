@@ -701,7 +701,7 @@ parameters:
     type: boolean
     description: >
       true if the cinder csi plugin feature should be enabled
-    default: false
+    default: true
 
   cinder_csi_chart_tag:
     type: string
