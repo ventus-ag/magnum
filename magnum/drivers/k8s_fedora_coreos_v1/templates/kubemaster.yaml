@@ -513,6 +513,7 @@ parameters:
   heat_container_agent_tag:
     type: string
     description: tag of the heat_container_agent system container
+    default: victoria-stable-1
 
   selinux_mode:
     type: string
