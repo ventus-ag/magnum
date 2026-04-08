@@ -108,7 +108,7 @@ class Cluster(base.APIBase):
     node_count = wsme.wsattr(wtypes.IntegerType(minimum=0), default=1)
     """The node count for this cluster. Default to 1 if not set"""
 
-    master_count = wsme.wsattr(wtypes.IntegerType(minimum=1), default=1)
+    master_count = wsme.wsattr(wtypes.IntegerType(minimum=0), default=1)
     """The number of master nodes for this cluster. Default to 1 if not set"""
 
     docker_volume_size = wtypes.IntegerType(minimum=1)
@@ -230,7 +230,8 @@ class Cluster(base.APIBase):
                                          'labels', 'node_count', 'status',
                                          'master_flavor_id', 'flavor_id',
                                          'create_timeout', 'master_count',
-                                         'stack_id', 'health_status'])
+                                         'stack_id', 'health_status',
+                                         'coe_version'])
         else:
             overridden, added, skipped = api_utils.get_labels_diff(
                 parent_labels, cluster.labels)
