@@ -85,7 +85,21 @@ fi
 binary_dir="${cache_root}/${version}"
 binary_path="${binary_dir}/${binary_name}"
 
+# Re-download if the binary is missing OR if the previous run failed
+# (binary might be corrupt or incomplete).
+need_download=false
 if [ ! -x "${binary_path}" ]; then
+    need_download=true
+elif [ -f "${result_file}" ]; then
+    last_status=$(grep -o '"status":"[^"]*"' "${result_file}" 2>/dev/null | head -1 | cut -d'"' -f4) || true
+    if [ "${last_status}" = "failed" ]; then
+        log "Previous run failed, re-downloading binary"
+        rm -rf "${binary_dir}"
+        need_download=true
+    fi
+fi
+
+if [ "${need_download}" = "true" ]; then
     tmp_binary="$(mktemp)"
     trap 'rm -f "${tmp_binary}"' EXIT
 

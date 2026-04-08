@@ -18,6 +18,13 @@ ExecStart=/usr/local/bin/magnum-reconcile-launcher run-once
 User=root
 Group=root
 
+# Retry up to 3 times with 30s delay on failure (e.g. transient network
+# issues during binary download or Pulumi provider install).
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -33,6 +40,12 @@ Type=oneshot
 ExecStart=/usr/local/bin/magnum-reconcile-launcher run-periodic
 User=root
 Group=root
+
+# Retry up to 3 times with 60s delay on failure.
+Restart=on-failure
+RestartSec=60
+StartLimitIntervalSec=600
+StartLimitBurst=3
 
 # Limit CPU impact on cluster workloads during periodic drift checks.
 Nice=15
