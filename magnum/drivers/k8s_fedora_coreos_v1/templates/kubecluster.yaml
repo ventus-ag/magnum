@@ -518,8 +518,8 @@ parameters:
 
   kube_dashboard_version:
     type: string
-    description: version of kubernetes dashboard used for kubernetes cluster
-    default: v2.0.0
+    description: version of kubernetes dashboard helm chart
+    default: "7.14.0"
 
   insecure_registry_url:
     type: string
