@@ -162,8 +162,18 @@ class HeatDriver(driver.Driver):
                         stack_id, e)
             return
 
+        # Only Octavia resources have the datetime comparison bug.
+        lb_resource_types = (
+            'Magnum::Optional::Neutron::LBaaS::LoadBalancer',
+            'Magnum::Optional::Neutron::LBaaS::Listener',
+            'Magnum::Optional::Neutron::LBaaS::Pool',
+            'Magnum::Optional::Neutron::LBaaS::HealthMonitor',
+            'Magnum::Optional::Neutron::LBaaS::FloatingIP',
+        )
         for res in resources:
             if not res.resource_status or 'FAILED' not in res.resource_status:
+                continue
+            if res.resource_type not in lb_resource_types:
                 continue
             try:
                 stack_link = [l for l in res.links
