@@ -716,7 +716,7 @@ parameters:
   cinder_csi_chart_tag:
     type: string
     description: Helm chart version for openstack-cinder-csi
-    default: "2.35.0"
+    default: "2.30.0"
 
   autoscaler_chart_tag:
     type: string

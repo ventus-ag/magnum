@@ -162,6 +162,16 @@ class Handler(object):
                 # state (enable/disable addons, change chart versions, etc.)
                 LOG.info('Updating cluster %s labels (reconfigure)',
                          cluster.uuid)
+
+                # Sync patched cluster labels to default nodegroups so
+                # that a later upgrade (which reads nodegroup.labels via
+                # get_new_labels) does not revert user changes.
+                for ng in [cluster.default_ng_master,
+                           cluster.default_ng_worker]:
+                    if ng is not None:
+                        ng.labels = cluster.labels.copy()
+                        ng.save()
+
                 cluster_driver.reconfigure_cluster(context, cluster)
             else:
                 # Node count change (scaling) — original behavior.
