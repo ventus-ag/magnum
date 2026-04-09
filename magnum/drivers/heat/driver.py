@@ -154,7 +154,9 @@ class HeatDriver(driver.Driver):
             resources = osc.heat().resources.list(
                 stack_id, nested_depth=2,
                 filters={'status': 'FAILED'})
-        except Exception:
+        except Exception as e:
+            LOG.warning("Could not list failed resources for stack %s: %s",
+                        stack_id, e)
             return
 
         for res in resources:
@@ -522,8 +524,8 @@ class HeatDriver(driver.Driver):
             nodes_to_remove=None)
         
         # Get existing stack parameters if available
+        osc = self._get_cluster_osc(context, cluster)
         try:
-            osc = clients.OpenStackClients(context)
             stack = osc.heat().stacks.get(nodegroup.stack_id)
             existing_params = stack.parameters
             if 'timestamp_upgrade' in existing_params:
@@ -548,7 +550,6 @@ class HeatDriver(driver.Driver):
 
         LOG.info('Updating cluster %s stack %s with these params: %s',
                  cluster.uuid, nodegroup.stack_id, json.dumps(scale_params))
-        osc = clients.OpenStackClients(context)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
 
     def _resize_stack(self, context, cluster, resize_manager,
@@ -1083,7 +1084,7 @@ class FedoraKubernetesDriver(KubernetesDriver):
     def upgrade_cluster(self, context, cluster, cluster_template,  # noqa: C901
                         max_batch_size, nodegroup, scale_manager=None,
                         rollback=False):
-        osc = clients.OpenStackClients(context)
+        osc = self._get_cluster_osc(context, cluster)
 
 
         # List of unsupported Kubernetes versions
@@ -1299,7 +1300,7 @@ class UbuntuKubernetesDriver(KubernetesDriver):
     def upgrade_cluster(self, context, cluster, cluster_template,  # noqa: C901
                         max_batch_size, nodegroup, scale_manager=None,
                         rollback=False):
-        osc = clients.OpenStackClients(context)
+        osc = self._get_cluster_osc(context, cluster)
 
 
         # List of unsupported Kubernetes versions
