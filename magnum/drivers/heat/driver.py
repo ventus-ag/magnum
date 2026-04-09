@@ -33,6 +33,7 @@ from magnum.common import clients
 from magnum.common import context as mag_ctx
 from magnum.common import exception
 from magnum.common.x509 import operations as x509
+from magnum.common import cinder_cleanup
 from magnum.common import keystone
 from magnum.common import octavia
 from magnum.common import short_id
@@ -700,6 +701,15 @@ class KubernetesDriver(HeatDriver):
             LOG.info("Starting to delete loadbalancers for cluster %s",
                      cluster.uuid)
             octavia.delete_loadbalancers(context, cluster)
+
+        LOG.info("Starting to clean up volumes for cluster %s",
+                 cluster.uuid)
+        try:
+            cinder_cleanup.delete_volumes(context, cluster)
+        except Exception as e:
+            LOG.warning("Volume cleanup failed for cluster %s, "
+                        "continuing with stack deletion: %s",
+                        cluster.uuid, e)
 
     def _get_stack_update_template_fields(self, context, cluster,
                                           nodegroups=None):
