@@ -696,11 +696,23 @@ class KubernetesDriver(HeatDriver):
         return None
 
     def pre_delete_cluster(self, context, cluster):
-        """Delete cloud resources before deleting the cluster."""
+        """Delete cloud resources before deleting the cluster.
+
+        Both LB and volume cleanup are best-effort: if they fail or
+        time out (e.g. dead amphora, stuck volumes), we log a warning
+        and let Heat proceed with stack deletion.  Heat will mark
+        the individual resources as DELETE_FAILED, giving the user
+        actionable info without blocking the entire cluster delete.
+        """
         if keystone.is_octavia_enabled():
             LOG.info("Starting to delete loadbalancers for cluster %s",
                      cluster.uuid)
-            octavia.delete_loadbalancers(context, cluster)
+            try:
+                octavia.delete_loadbalancers(context, cluster)
+            except Exception as e:
+                LOG.warning("LB cleanup failed for cluster %s, "
+                            "continuing with stack deletion: %s",
+                            cluster.uuid, e)
 
         LOG.info("Starting to clean up volumes for cluster %s",
                  cluster.uuid)

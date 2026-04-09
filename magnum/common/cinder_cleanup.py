@@ -28,27 +28,58 @@ VOLUME_RESOURCE_TYPES = [
 ]
 
 
-def _wait_for_volumes_deleted(cinder_client, volume_ids, timeout=120):
-    """Wait for volumes to be fully deleted."""
+def _wait_for_volumes_deleted(cinder_client, volume_ids, timeout=120,
+                              max_error_retries=3):
+    """Wait for volumes to be fully deleted.
+
+    If a volume reverts to 'error' or 'error_deleting' after a delete
+    attempt, reset its state and retry up to max_error_retries times
+    before giving up on that volume.
+    """
     start_time = time.time()
     remaining = set(volume_ids)
+    error_counts = {}
 
     while remaining:
         if (time.time() - start_time) > timeout:
             LOG.warning("Timed out waiting for volumes %s to be deleted",
                         remaining)
             return
-        still_alive = set()
+
+        still_pending = set()
         for vol_id in remaining:
             try:
                 vol = cinder_client.volumes.get(vol_id)
-                if vol.status != 'deleting':
-                    still_alive.add(vol_id)
-                else:
-                    still_alive.add(vol_id)
             except cinder_exc.NotFound:
-                pass
-        remaining = still_alive
+                # Gone — success
+                continue
+
+            if vol.status in ('error', 'error_deleting'):
+                error_counts[vol_id] = error_counts.get(vol_id, 0) + 1
+                if error_counts[vol_id] > max_error_retries:
+                    LOG.error("Volume %s stuck in %s after %d retries, "
+                              "giving up", vol_id, vol.status,
+                              max_error_retries)
+                    continue
+                LOG.warning("Volume %s in %s state (attempt %d/%d), "
+                            "resetting and retrying delete",
+                            vol_id, vol.status,
+                            error_counts[vol_id], max_error_retries)
+                try:
+                    cinder_client.volumes.reset_state(vol_id,
+                                                      state='available')
+                    cinder_client.volumes.delete(vol_id)
+                except Exception as e:
+                    LOG.warning("Retry delete for volume %s failed: %s",
+                                vol_id, e)
+                    try:
+                        cinder_client.volumes.force_delete(vol_id)
+                    except Exception:
+                        pass
+
+            still_pending.add(vol_id)
+
+        remaining = still_pending
         if remaining:
             time.sleep(2)
 

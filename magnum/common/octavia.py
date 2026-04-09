@@ -28,28 +28,56 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-def wait_for_lb_deleted(octavia_client, deleted_lbs):
+def wait_for_lb_deleted(octavia_client, deleted_lbs, max_error_retries=3):
     """Wait for the loadbalancers to be deleted.
 
     Load balancer deletion API in Octavia is asynchronous so that the called
     needs to wait if it wants to guarantee the load balancer to be deleted.
     The timeout is necessary to avoid waiting infinitely.
+
+    If an LB reverts to ERROR after a delete attempt (e.g. dead amphora),
+    re-issue the delete up to max_error_retries times before giving up
+    on that LB.
     """
     timeout = CONF.cluster.pre_delete_lb_timeout
     start_time = time.time()
+    error_counts = {}
 
     while True:
         lbs = octavia_client.load_balancer_list().get("loadbalancers", [])
-        lbIDs = set(
-            [lb["id"]
-             for lb in lbs if lb["provisioning_status"] != "DELETED"]
-        )
-        if not (deleted_lbs & lbIDs):
+        lb_map = {lb["id"]: lb for lb in lbs}
+
+        still_pending = set()
+        for lb_id in deleted_lbs:
+            if lb_id not in lb_map:
+                continue
+            lb = lb_map[lb_id]
+            status = lb["provisioning_status"]
+            if status == "DELETED":
+                continue
+            if status == "ERROR":
+                error_counts[lb_id] = error_counts.get(lb_id, 0) + 1
+                if error_counts[lb_id] > max_error_retries:
+                    LOG.error("Load balancer %s stuck in ERROR after %d "
+                              "delete retries, giving up",
+                              lb_id, max_error_retries)
+                    continue
+                LOG.warning("Load balancer %s reverted to ERROR after "
+                            "delete (attempt %d/%d), retrying",
+                            lb_id, error_counts[lb_id], max_error_retries)
+                try:
+                    octavia_client.load_balancer_delete(lb_id, cascade=True)
+                except Exception as e:
+                    LOG.warning("Retry delete for LB %s failed: %s",
+                                lb_id, e)
+            still_pending.add(lb_id)
+
+        if not still_pending:
             break
 
         if (time.time() - start_time) > timeout:
             raise Exception("Timeout waiting for the load balancers "
-                            "%s to be deleted." % deleted_lbs)
+                            "%s to be deleted." % still_pending)
 
         time.sleep(1)
 
