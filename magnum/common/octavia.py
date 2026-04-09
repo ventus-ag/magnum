@@ -28,7 +28,56 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-def wait_for_lb_deleted(octavia_client, deleted_lbs, max_error_retries=3):
+def _failover_and_delete(octavia_client, lb_id, max_failover_retries=2):
+    """Failover a stuck LB to replace its dead amphora, then delete it.
+
+    When an LB is stuck in ERROR because its amphora is dead, a normal
+    delete keeps failing.  Failover spins up a new amphora, bringing
+    the LB back to ACTIVE, after which delete succeeds.
+
+    If the failover itself gets stuck in PENDING_UPDATE (e.g. no amphora
+    capacity), retry up to max_failover_retries times.
+    """
+    for attempt in range(1, max_failover_retries + 1):
+        LOG.info("Attempting failover for stuck load balancer %s "
+                 "(attempt %d/%d)", lb_id, attempt, max_failover_retries)
+        try:
+            octavia_client.load_balancer_failover(lb_id)
+        except Exception as e:
+            LOG.warning("Failover for LB %s failed: %s", lb_id, e)
+            # If LB is in PENDING_* state (stuck from prior failover),
+            # wait for it to settle before retrying.
+            lb = _wait_for_lb_ready(octavia_client, lb_id, timeout=120)
+            if lb is None:
+                return True
+            continue
+
+        lb = _wait_for_lb_ready(octavia_client, lb_id, timeout=120)
+        if lb is None:
+            return True
+
+        status = lb["provisioning_status"]
+        if status == "ACTIVE":
+            LOG.info("Failover succeeded for LB %s, issuing delete", lb_id)
+            try:
+                octavia_client.load_balancer_delete(lb_id, cascade=True)
+                return True
+            except Exception as e:
+                LOG.warning("Delete after failover failed for LB %s: %s",
+                            lb_id, e)
+                return False
+        elif status == "ERROR":
+            LOG.warning("LB %s back in ERROR after failover attempt %d",
+                        lb_id, attempt)
+            continue
+        else:
+            LOG.warning("LB %s in unexpected state %s after failover",
+                        lb_id, status)
+
+    return False
+
+
+def wait_for_lb_deleted(octavia_client, deleted_lbs, max_error_retries=2):
     """Wait for the loadbalancers to be deleted.
 
     Load balancer deletion API in Octavia is asynchronous so that the called
@@ -36,12 +85,13 @@ def wait_for_lb_deleted(octavia_client, deleted_lbs, max_error_retries=3):
     The timeout is necessary to avoid waiting infinitely.
 
     If an LB reverts to ERROR after a delete attempt (e.g. dead amphora),
-    re-issue the delete up to max_error_retries times before giving up
-    on that LB.
+    re-issue the delete up to max_error_retries times.  If still stuck,
+    attempt a failover (replaces the dead amphora) then delete.
     """
     timeout = CONF.cluster.pre_delete_lb_timeout
     start_time = time.time()
     error_counts = {}
+    failover_attempted = set()
 
     while True:
         lbs = octavia_client.load_balancer_list().get("loadbalancers", [])
@@ -58,8 +108,14 @@ def wait_for_lb_deleted(octavia_client, deleted_lbs, max_error_retries=3):
             if status == "ERROR":
                 error_counts[lb_id] = error_counts.get(lb_id, 0) + 1
                 if error_counts[lb_id] > max_error_retries:
+                    # Normal deletes keep failing — try failover once
+                    if lb_id not in failover_attempted:
+                        failover_attempted.add(lb_id)
+                        if _failover_and_delete(octavia_client, lb_id):
+                            still_pending.add(lb_id)
+                            continue
                     LOG.error("Load balancer %s stuck in ERROR after %d "
-                              "delete retries, giving up",
+                              "retries and failover, giving up",
                               lb_id, max_error_retries)
                     continue
                 LOG.warning("Load balancer %s reverted to ERROR after "
