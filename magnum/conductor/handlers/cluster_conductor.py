@@ -119,9 +119,17 @@ class Handler(object):
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_FAILURE,
                 cluster)
-            operation = _('Updating a cluster when status is '
-                          '"%s"') % cluster.status
-            raise exception.NotSupported(operation=operation)
+            reason = _('Updating a cluster when status is '
+                       '"%s"') % cluster.status
+            failed_details = self._collect_heat_failed_resources(
+                context, cluster)
+            if failed_details:
+                reason = _('%(reason)s. Failed stack resources: '
+                           '%(details)s. Delete and recreate the cluster, '
+                           'or resolve the failed resources manually before '
+                           'retrying.') % {'reason': reason,
+                                           'details': failed_details}
+            raise exception.NotSupported(operation=reason)
 
         # Updates will be only reflected to the default worker
         # nodegroup.
@@ -282,9 +290,17 @@ class Handler(object):
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_FAILURE,
                 cluster)
-            operation = _('Resizing a cluster when status is '
-                          '"%s"') % cluster.status
-            raise exception.NotSupported(operation=operation)
+            reason = _('Resizing a cluster when status is '
+                       '"%s"') % cluster.status
+            failed_details = self._collect_heat_failed_resources(
+                context, cluster)
+            if failed_details:
+                reason = _('%(reason)s. Failed stack resources: '
+                           '%(details)s. Delete and recreate the cluster, '
+                           'or resolve the failed resources manually before '
+                           'retrying.') % {'reason': reason,
+                                           'details': failed_details}
+            raise exception.NotSupported(operation=reason)
 
         resize_manager = scale_manager.get_scale_manager(context, osc, cluster)
 
@@ -329,6 +345,38 @@ class Handler(object):
         cluster.save()
         return cluster
 
+    def _collect_heat_failed_resources(self, context, cluster):
+        """Query Heat for FAILED resources in the cluster stack.
+
+        Returns a human-readable summary string, or empty string if
+        no failed resources found or Heat is unreachable.
+        """
+        try:
+            osc = clients.OpenStackClients(context)
+            stack_id = cluster.stack_id
+            if not stack_id:
+                return ''
+            failed_resources = osc.heat().resources.list(
+                stack_id, nested_depth=2,
+                filters={'status': 'FAILED'})
+        except Exception as e:
+            LOG.warning("Failed to retrieve failed resources for "
+                        "cluster %(cluster)s from Heat stack %(stack)s: "
+                        "%(err)s",
+                        {'cluster': cluster.uuid,
+                         'stack': cluster.stack_id, 'err': e})
+            return ''
+
+        if not failed_resources:
+            return ''
+
+        parts = []
+        for res in failed_resources:
+            parts.append('%s (%s): %s' % (
+                res.resource_name, res.resource_type,
+                res.resource_status_reason))
+        return '; '.join(parts)
+
     def cluster_upgrade(self, context, cluster, cluster_template,
                         max_batch_size, nodegroup, rollback=False):
         LOG.debug('cluster_conductor cluster_upgrade')
@@ -349,9 +397,18 @@ class Handler(object):
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_UPDATE, taxonomy.OUTCOME_FAILURE,
                 cluster)
-            operation = _('Upgrading a cluster when status is '
-                          '"%s"') % cluster.status
-            raise exception.NotSupported(operation=operation)
+            reason = _('Upgrading a cluster when status is '
+                       '"%s"') % cluster.status
+            # Collect failed Heat resources to give the user actionable info.
+            failed_details = self._collect_heat_failed_resources(
+                context, cluster)
+            if failed_details:
+                reason = _('%(reason)s. Failed stack resources: '
+                           '%(details)s. Delete and recreate the cluster, '
+                           'or resolve the failed resources manually before '
+                           'retrying.') % {'reason': reason,
+                                           'details': failed_details}
+            raise exception.NotSupported(operation=reason)
 
         # Get driver - use nodegroup's cluster_template_id if available for non-default nodegroups
         if (nodegroup and not nodegroup.is_default and 
