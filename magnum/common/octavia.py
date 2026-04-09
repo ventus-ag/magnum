@@ -47,11 +47,29 @@ def wait_for_lb_deleted(octavia_client, deleted_lbs):
         if not (deleted_lbs & lbIDs):
             break
 
-        if (time.time() - timeout) > start_time:
+        if (time.time() - start_time) > timeout:
             raise Exception("Timeout waiting for the load balancers "
                             "%s to be deleted." % deleted_lbs)
 
         time.sleep(1)
+
+
+def _wait_for_lb_ready(octavia_client, lb_id, timeout=60):
+    """Wait for a load balancer to leave transitional (PENDING_*) state."""
+    start_time = time.time()
+    while True:
+        try:
+            lb = octavia_client.load_balancer_show(lb_id)
+        except osc_exc.NotFound:
+            return None
+        status = lb["provisioning_status"]
+        if not status.startswith("PENDING_"):
+            return lb
+        if (time.time() - start_time) > timeout:
+            LOG.warning("Timed out waiting for load balancer %s to leave "
+                        "%s state", lb_id, status)
+            return lb
+        time.sleep(2)
 
 
 def _delete_loadbalancers(context, lbs, cluster, octavia_client,
@@ -60,14 +78,29 @@ def _delete_loadbalancers(context, lbs, cluster, octavia_client,
 
     for lb in lbs:
         status = lb["provisioning_status"]
-        if status not in ["PENDING_DELETE", "DELETED"]:
-            LOG.info("Deleting load balancer %s for cluster %s",
-                     lb["id"], cluster.uuid)
-            octavia_client.load_balancer_delete(lb["id"], cascade=cascade)
-            candidates.add(lb["id"])
+        if status in ["PENDING_DELETE", "DELETED"]:
+            if status == "PENDING_DELETE":
+                candidates.add(lb["id"])
+            continue
 
-            if remove_fip:
-                neutron.delete_floatingip(context, lb["vip_port_id"], cluster)
+        # If the LB is in a transitional state, wait for it to settle
+        # before attempting deletion.
+        if status.startswith("PENDING_"):
+            LOG.info("Load balancer %s for cluster %s is in %s state, "
+                     "waiting for it to settle before deletion",
+                     lb["id"], cluster.uuid, status)
+            lb = _wait_for_lb_ready(octavia_client, lb["id"])
+            if lb is None:
+                # LB disappeared while waiting
+                continue
+
+        LOG.info("Deleting load balancer %s for cluster %s",
+                 lb["id"], cluster.uuid)
+        octavia_client.load_balancer_delete(lb["id"], cascade=cascade)
+        candidates.add(lb["id"])
+
+        if remove_fip:
+            neutron.delete_floatingip(context, lb["vip_port_id"], cluster)
 
     return candidates
 

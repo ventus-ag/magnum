@@ -351,13 +351,29 @@ class HeatDriver(driver.Driver):
 
         LOG.info("Starting to delete cluster %s", cluster.uuid)
         osc = clients.OpenStackClients(context)
+        errors = []
         for ng in cluster.nodegroups:
             ng.status = fields.ClusterStatus.DELETE_IN_PROGRESS
             ng.save()
             if ng.is_default:
                 continue
-            self._delete_stack(context, osc, ng.stack_id)
-        self._delete_stack(context, osc, cluster.default_ng_master.stack_id)
+            try:
+                self._delete_stack(context, osc, ng.stack_id)
+            except Exception as e:
+                LOG.error("Failed to delete stack for nodegroup %s "
+                          "(stack %s): %s", ng.name, ng.stack_id, e)
+                errors.append("nodegroup %s: %s" % (ng.name, e))
+        try:
+            self._delete_stack(
+                context, osc, cluster.default_ng_master.stack_id)
+        except Exception as e:
+            LOG.error("Failed to delete master stack %s: %s",
+                      cluster.default_ng_master.stack_id, e)
+            errors.append("master stack: %s" % e)
+        if errors:
+            raise exception.OperationInProgress(
+                cluster_name="%s (partial delete failures: %s)" %
+                (cluster.name, "; ".join(errors)))
 
     def resize_cluster(self, context, cluster, resize_manager,
                        node_count, nodes_to_remove, nodegroup=None,
@@ -620,8 +636,40 @@ class HeatDriver(driver.Driver):
             LOG.error('Failed to update cluster stack for master resize operation: %s', str(e))
             # Don't fail the main resize operation if this supplementary update fails
 
-    def _delete_stack(self, context, osc, stack_id):
-        osc.heat().stacks.delete(stack_id)
+    def _delete_stack(self, context, osc, stack_id, retries=3):
+        for attempt in range(1, retries + 1):
+            try:
+                osc.heat().stacks.delete(stack_id)
+                return
+            except heatexc.NotFound:
+                LOG.info("Stack %s already deleted", stack_id)
+                return
+            except heatexc.HTTPConflict:
+                # Stack is already being deleted or in a transitional state.
+                # Check if it's DELETE_IN_PROGRESS — if so, that's fine.
+                try:
+                    stack = osc.heat().stacks.get(stack_id)
+                    if stack.stack_status in (
+                            fields.ClusterStatus.DELETE_IN_PROGRESS,
+                            fields.ClusterStatus.DELETE_COMPLETE):
+                        LOG.info("Stack %s is already %s",
+                                 stack_id, stack.stack_status)
+                        return
+                    if stack.stack_status == fields.ClusterStatus.DELETE_FAILED:
+                        LOG.warning("Stack %s is DELETE_FAILED, retrying "
+                                    "delete (attempt %d/%d)",
+                                    stack_id, attempt, retries)
+                        continue
+                except heatexc.NotFound:
+                    LOG.info("Stack %s gone after conflict", stack_id)
+                    return
+                if attempt == retries:
+                    raise
+            except Exception:
+                if attempt == retries:
+                    raise
+                LOG.warning("Stack delete attempt %d/%d failed for %s, "
+                            "retrying", attempt, retries, stack_id)
 
 
 class KubernetesDriver(HeatDriver):
@@ -641,11 +689,7 @@ class KubernetesDriver(HeatDriver):
         if keystone.is_octavia_enabled():
             LOG.info("Starting to delete loadbalancers for cluster %s",
                      cluster.uuid)
-            try:
-                octavia.delete_loadbalancers(context, cluster)
-            except Exception as e:
-                LOG.error("Loadbalancers for cluster %s could not be "
-                          "pre-deleted: %s", cluster.uuid, str(e))
+            octavia.delete_loadbalancers(context, cluster)
 
     def _get_stack_update_template_fields(self, context, cluster,
                                           nodegroups=None):

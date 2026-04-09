@@ -246,10 +246,20 @@ class Handler(object):
                 cluster)
             return None
         except exc.HTTPConflict:
-            conductor_utils.notify_about_cluster_operation(
-                context, taxonomy.ACTION_DELETE, taxonomy.OUTCOME_FAILURE,
-                cluster)
-            raise exception.OperationInProgress(cluster_name=cluster.name)
+            # If the cluster is already DELETE_FAILED, allow the retry —
+            # the user is explicitly asking to delete again.
+            if cluster.status == fields.ClusterStatus.DELETE_FAILED:
+                LOG.info('Retrying delete for DELETE_FAILED cluster %s',
+                         cluster.uuid)
+                cluster.status = fields.ClusterStatus.DELETE_IN_PROGRESS
+                cluster.status_reason = None
+                cluster.save()
+            else:
+                conductor_utils.notify_about_cluster_operation(
+                    context, taxonomy.ACTION_DELETE, taxonomy.OUTCOME_FAILURE,
+                    cluster)
+                raise exception.OperationInProgress(
+                    cluster_name=cluster.name)
         except Exception as unexp:
             conductor_utils.notify_about_cluster_operation(
                 context, taxonomy.ACTION_DELETE, taxonomy.OUTCOME_FAILURE,
