@@ -480,11 +480,12 @@ parameters:
   occm_chart_tag:
     type: string
     description: Helm chart version for openstack-cloud-controller-manager
-    default: "2.35.0"
+    default: "2.30.0"
 
   cloud_provider_enabled:
     type: boolean
     description: Enable or disable the openstack kubernetes cloud provider
+    default: true
 
   etcd_tag:
     type: string
@@ -688,7 +689,7 @@ parameters:
     type: boolean
     description: >
       true if the auto scaling feature should be enabled
-    default: false
+    default: true
 
   manila_csi_enabled:
     type: boolean
