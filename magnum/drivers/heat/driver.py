@@ -142,13 +142,16 @@ class HeatDriver(driver.Driver):
                               resource_name, child_stack_id, exc)
 
     def _mark_failed_nested_resources_unhealthy(self, osc, stack_id):
-        """Mark CREATE_FAILED resources in nested LB stacks as unhealthy.
+        """Mark FAILED resources in nested stacks as unhealthy.
 
-        When a nested resource (e.g. a listener inside api_lb or etcd_lb)
-        is stuck in CREATE_FAILED with updated_at=None, Octavia's Heat
-        resource plugin crashes on datetime comparison during stack
-        update.  Marking the failed resources as unhealthy tells Heat
-        to recreate them instead of trying to update them.
+        When a resource (e.g. a listener or loadbalancer inside api_lb
+        or etcd_lb) has updated_at=None, Octavia's Heat resource plugin
+        crashes on datetime comparison during stack update.  This affects
+        both CREATE_FAILED resources (never created) and resources that
+        were created but never updated.
+
+        Marking them unhealthy tells Heat to recreate them instead of
+        trying to compare against old state.
         """
         try:
             resources = osc.heat().resources.list(
@@ -160,27 +163,24 @@ class HeatDriver(driver.Driver):
             return
 
         for res in resources:
-            if not res.physical_resource_id and res.resource_status and \
-                    'FAILED' in res.resource_status:
-                # This resource is in a nested stack — we need its
-                # parent stack ID to mark it unhealthy.
-                try:
-                    # res.links contains the stack URL, extract stack_id
-                    stack_link = [l for l in res.links
-                                 if l.get('rel') == 'stack']
-                    if not stack_link:
-                        continue
-                    href = stack_link[0]['href']
-                    nested_stack_id = href.split('/')[-1]
-                    osc.heat().resources.mark_unhealthy(
-                        nested_stack_id, res.resource_name, True,
-                        'pre-update: avoid datetime comparison crash '
-                        'on CREATE_FAILED resource')
-                    LOG.info('Marked %s in nested stack %s as unhealthy',
-                             res.resource_name, nested_stack_id)
-                except Exception as exc:
-                    LOG.debug('Could not mark %s unhealthy: %s',
-                              res.resource_name, exc)
+            if not res.resource_status or 'FAILED' not in res.resource_status:
+                continue
+            try:
+                stack_link = [l for l in res.links
+                             if l.get('rel') == 'stack']
+                if not stack_link:
+                    continue
+                href = stack_link[0]['href']
+                res_stack_id = href.split('/')[-1]
+                osc.heat().resources.mark_unhealthy(
+                    res_stack_id, res.resource_name, True,
+                    'pre-update: force recreate of FAILED resource')
+                LOG.info('Marked %s (%s) in stack %s as unhealthy',
+                         res.resource_name, res.resource_type,
+                         res_stack_id)
+            except Exception as exc:
+                LOG.warning('Could not mark %s unhealthy: %s',
+                            res.resource_name, exc)
 
     def _prepare_stack_for_template_update(self, osc, stack_id):
         """Mark problematic resources unhealthy before a template update.
