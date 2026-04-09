@@ -357,19 +357,29 @@ class HeatDriver(driver.Driver):
             ng.save()
             if ng.is_default:
                 continue
+            if not ng.stack_id:
+                LOG.info("Nodegroup %s has no stack_id, skipping",
+                         ng.name)
+                continue
             try:
                 self._delete_stack(context, osc, ng.stack_id)
             except Exception as e:
                 LOG.error("Failed to delete stack for nodegroup %s "
                           "(stack %s): %s", ng.name, ng.stack_id, e)
                 errors.append("nodegroup %s: %s" % (ng.name, e))
-        try:
-            self._delete_stack(
-                context, osc, cluster.default_ng_master.stack_id)
-        except Exception as e:
-            LOG.error("Failed to delete master stack %s: %s",
-                      cluster.default_ng_master.stack_id, e)
-            errors.append("master stack: %s" % e)
+
+        master_stack_id = cluster.default_ng_master.stack_id
+        if master_stack_id:
+            try:
+                self._delete_stack(context, osc, master_stack_id)
+            except Exception as e:
+                LOG.error("Failed to delete master stack %s: %s",
+                          master_stack_id, e)
+                errors.append("master stack: %s" % e)
+        else:
+            LOG.info("Cluster %s master has no stack_id, skipping",
+                     cluster.uuid)
+
         if errors:
             raise exception.OperationInProgress(
                 cluster_name="%s (partial delete failures: %s)" %
@@ -1441,7 +1451,17 @@ class HeatPoller(object):
                                       fields.ClusterStatus.UPDATE_FAILED,
                                       fields.ClusterStatus.ROLLBACK_COMPLETE,
                                       fields.ClusterStatus.ROLLBACK_FAILED):
-                self._sync_cluster_and_template_status(stack)
+                try:
+                    self._sync_cluster_and_template_status(stack)
+                except Exception:
+                    # For failed/deleting stacks, output resolution may
+                    # fail. Fall back to syncing just the status so the
+                    # cluster doesn't stay stuck in *_IN_PROGRESS forever.
+                    LOG.warning("Failed to sync outputs for stack %s "
+                                "in %s state, syncing status only",
+                                self.nodegroup.stack_id,
+                                stack.stack_status)
+                    self._sync_cluster_status(stack)
                 self._nodegroup_failed(stack)
         except heatexc.NotFound:
             self._sync_missing_heat_stack()
