@@ -1207,6 +1207,15 @@ class FedoraKubernetesDriver(KubernetesDriver):
 
         # Merge: new parameters win over old stack values.
         current_parameters.update(fields['parameters'])
+
+        # Volume types and sizes are immutable on in-use volumes —
+        # Cinder rejects retypes.  Drop them so Heat preserves
+        # existing values via 'existing: True'.
+        for immutable_param in ('docker_volume_type', 'etcd_volume_type',
+                                'boot_volume_type', 'docker_volume_size',
+                                'etcd_volume_size', 'boot_volume_size'):
+            current_parameters.pop(immutable_param, None)
+
         fields['parameters'] = current_parameters
 
         # Mark SoftwareConfig resources unhealthy before pushing the
@@ -1422,6 +1431,15 @@ class UbuntuKubernetesDriver(KubernetesDriver):
 
         # Merge: new parameters win over old stack values.
         current_parameters.update(fields['parameters'])
+
+        # Volume types and sizes are immutable on in-use volumes —
+        # Cinder rejects retypes.  Drop them so Heat preserves
+        # existing values via 'existing: True'.
+        for immutable_param in ('docker_volume_type', 'etcd_volume_type',
+                                'boot_volume_type', 'docker_volume_size',
+                                'etcd_volume_size', 'boot_volume_size'):
+            current_parameters.pop(immutable_param, None)
+
         fields['parameters'] = current_parameters
 
         # Mark SoftwareConfig resources unhealthy before pushing the
