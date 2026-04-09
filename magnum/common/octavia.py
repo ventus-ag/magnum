@@ -202,13 +202,14 @@ def delete_loadbalancers(context, cluster):
 
     adm_ctx = magnum_context.get_admin_context()
     adm_clients = clients.OpenStackClients(adm_ctx)
-    user_clients = clients.OpenStackClients(context)
     candidates = set()
 
     try:
         octavia_client_adm = adm_clients.octavia()
-        heat_client = user_clients.heat()
-        octavia_client = user_clients.octavia()
+        heat_client = adm_clients.heat()
+        # Use admin octavia for listing too — the user's trust may
+        # be expired, and we filter by cluster UUID anyway.
+        octavia_client = octavia_client_adm
 
         # Get load balancers created for service/ingress
         lbs = octavia_client.load_balancer_list().get("loadbalancers", [])

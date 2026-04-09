@@ -347,11 +347,31 @@ class HeatDriver(driver.Driver):
                         rollback=False):
         raise NotImplementedError("Must implement 'upgrade_cluster'")
 
+    def _get_cluster_osc(self, context, cluster):
+        """Get OpenStack clients for cluster operations.
+
+        Tries the cluster's trust context first.  If that fails (expired
+        trust, deleted trustor, etc.), falls back to admin context so
+        that delete and other lifecycle operations are not blocked by
+        broken trusts.
+        """
+        try:
+            cluster_ctx = mag_ctx.make_cluster_context(cluster)
+            osc = clients.OpenStackClients(cluster_ctx)
+            # Verify the context works by touching the session
+            osc.heat()
+            return osc
+        except Exception as e:
+            LOG.warning("Cluster trust auth failed for %s, falling back "
+                        "to admin context: %s", cluster.uuid, e)
+            adm_ctx = mag_ctx.make_admin_context()
+            return clients.OpenStackClients(adm_ctx)
+
     def delete_cluster(self, context, cluster):
         self.pre_delete_cluster(context, cluster)
 
         LOG.info("Starting to delete cluster %s", cluster.uuid)
-        osc = clients.OpenStackClients(context)
+        osc = self._get_cluster_osc(context, cluster)
         errors = []
         for ng in cluster.nodegroups:
             ng.status = fields.ClusterStatus.DELETE_IN_PROGRESS

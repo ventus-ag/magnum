@@ -159,11 +159,13 @@ def delete_volumes(context, cluster):
     if not cluster.stack_id:
         return
 
-    user_clients = clients.OpenStackClients(context)
+    from magnum.common import context as magnum_context
+    adm_ctx = magnum_context.make_admin_context()
+    adm_clients = clients.OpenStackClients(adm_ctx)
 
     try:
-        heat_client = user_clients.heat()
-        cinder_client = user_clients.cinder()
+        heat_client = adm_clients.heat()
+        cinder_client = adm_clients.cinder()
     except Exception as e:
         LOG.warning("Failed to initialize clients for volume cleanup "
                     "of cluster %s: %s", cluster.uuid, e)
