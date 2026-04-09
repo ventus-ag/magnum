@@ -141,23 +141,58 @@ class HeatDriver(driver.Driver):
                     LOG.debug('Could not mark %s unhealthy in %s: %s',
                               resource_name, child_stack_id, exc)
 
+    def _mark_failed_nested_resources_unhealthy(self, osc, stack_id):
+        """Mark CREATE_FAILED resources in nested LB stacks as unhealthy.
+
+        When a nested resource (e.g. a listener inside api_lb or etcd_lb)
+        is stuck in CREATE_FAILED with updated_at=None, Octavia's Heat
+        resource plugin crashes on datetime comparison during stack
+        update.  Marking the failed resources as unhealthy tells Heat
+        to recreate them instead of trying to update them.
+        """
+        try:
+            resources = osc.heat().resources.list(
+                stack_id, nested_depth=2,
+                filters={'status': 'FAILED'})
+        except Exception:
+            return
+
+        for res in resources:
+            if not res.physical_resource_id and res.resource_status and \
+                    'FAILED' in res.resource_status:
+                # This resource is in a nested stack — we need its
+                # parent stack ID to mark it unhealthy.
+                try:
+                    # res.links contains the stack URL, extract stack_id
+                    stack_link = [l for l in res.links
+                                 if l.get('rel') == 'stack']
+                    if not stack_link:
+                        continue
+                    href = stack_link[0]['href']
+                    nested_stack_id = href.split('/')[-1]
+                    osc.heat().resources.mark_unhealthy(
+                        nested_stack_id, res.resource_name, True,
+                        'pre-update: avoid datetime comparison crash '
+                        'on CREATE_FAILED resource')
+                    LOG.info('Marked %s in nested stack %s as unhealthy',
+                             res.resource_name, nested_stack_id)
+                except Exception as exc:
+                    LOG.debug('Could not mark %s unhealthy: %s',
+                              res.resource_name, exc)
+
     def _prepare_stack_for_template_update(self, osc, stack_id):
-        """Mark SoftwareConfig resources unhealthy before a template update.
+        """Mark problematic resources unhealthy before a template update.
 
-        When the template changes SoftwareConfig content (e.g. migrating
-        from str_replace to input_values), Heat tries to read the old
-        config during evaluation, which can fail with "Software config
-        not found" if a previous operation already deleted it.
-
-        Marking the config resources as unhealthy tells Heat they need
-        full recreation rather than an in-place comparison against the
-        old state.  Works for both cluster stacks (with kube_masters
-        and kube_minions) and standalone nodegroup stacks.
+        Handles two cases:
+        1. SoftwareConfig resources that reference deleted configs
+        2. CREATE_FAILED nested resources (LB listeners, pools) that
+           crash Octavia's Heat plugin on datetime comparison
         """
         for group_name, config_name in (('kube_masters', 'master_config'),
                                         ('kube_minions', 'node_config')):
             self._mark_config_unhealthy_in_child_stacks(
                 osc, stack_id, group_name, config_name)
+        self._mark_failed_nested_resources_unhealthy(osc, stack_id)
 
     def _get_update_timeout(self):
         return cfg.CONF.cluster_heat.update_timeout
