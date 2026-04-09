@@ -66,11 +66,6 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
             raise exception.InvalidParameterValue(_(
                 '"cluster_user_trust" must be set to True in magnum.conf when '
                 '"cloud_provider_enabled" label is set to true.'))
-        if (cluster_template.volume_driver == 'cinder'
-                and cloud_provider_enabled.lower() == 'false'):
-            raise exception.InvalidParameterValue(_(
-                '"cinder" volume driver needs "cloud_provider_enabled" label '
-                'to be true or unset.'))
         extra_params['cloud_provider_enabled'] = cloud_provider_enabled
 
         label_list = ['coredns_tag',
