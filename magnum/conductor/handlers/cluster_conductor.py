@@ -265,7 +265,15 @@ class Handler(object):
                 context, taxonomy.ACTION_DELETE, taxonomy.OUTCOME_FAILURE,
                 cluster)
             cluster.status = fields.ClusterStatus.DELETE_FAILED
-            cluster.status_reason = six.text_type(unexp)
+            reason = six.text_type(unexp)
+            # Append blocking Heat resource details so the user can see
+            # exactly what prevented deletion.
+            failed_details = self._collect_heat_failed_resources(
+                context, cluster)
+            if failed_details:
+                reason = '%s | Blocking resources: %s' % (
+                    reason, failed_details)
+            cluster.status_reason = reason
             cluster.save()
             raise
 

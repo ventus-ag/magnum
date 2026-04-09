@@ -437,11 +437,30 @@ class ClustersController(base.Controller):
 
         and store them into cluster.faults.
         """
-        # Gather fault info from the cluster nodegroups.
-        return {
+        from magnum.common import clients
+
+        faults = {
             ng.name: ng.status_reason for ng in cluster.nodegroups
             if ng.status.endswith('FAILED')
         }
+
+        # Also query Heat for the specific failed resources so the user
+        # can see exactly what is blocking (e.g. stuck load balancers,
+        # ports, security groups).
+        if cluster.stack_id:
+            try:
+                osc = clients.OpenStackClients(context)
+                failed_resources = osc.heat().resources.list(
+                    cluster.stack_id, nested_depth=2,
+                    filters={'status': 'FAILED'})
+                for res in failed_resources:
+                    key = '%s/%s' % (res.resource_name, res.resource_type)
+                    faults[key] = res.resource_status_reason
+            except Exception as e:
+                LOG.warning("Failed to retrieve Heat resources for "
+                            "cluster %s: %s", cluster.uuid, e)
+
+        return faults
 
     @expose.expose(Cluster, types.uuid_or_name)
     def get_one(self, cluster_ident):
