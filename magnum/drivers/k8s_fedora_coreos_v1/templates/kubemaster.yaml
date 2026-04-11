@@ -134,13 +134,6 @@ parameters:
     description: docker storage driver name
     default: "devicemapper"
 
-  cgroup_driver:
-    type: string
-    description: >
-      cgroup driver name that kubelet should use, ideally the same as
-      the docker cgroup driver.
-    default: "cgroupfs"
-
   volume_driver:
     type: string
     description: volume driver to use for container storage
@@ -614,7 +607,6 @@ resources:
         - name: DOCKER_VOLUME
         - name: DOCKER_VOLUME_SIZE
         - name: DOCKER_STORAGE_DRIVER
-        - name: CGROUP_DRIVER
         - name: NETWORK_DRIVER
         - name: FLANNEL_NETWORK_CIDR
         - name: FLANNEL_BACKEND
@@ -721,7 +713,6 @@ resources:
         DOCKER_VOLUME: { get_resource: docker_volume }
         DOCKER_VOLUME_SIZE: { get_param: docker_volume_size }
         DOCKER_STORAGE_DRIVER: { get_param: docker_storage_driver }
-        CGROUP_DRIVER: { get_param: cgroup_driver }
         NETWORK_DRIVER: { get_param: network_driver }
         FLANNEL_NETWORK_CIDR: { get_param: flannel_network_cidr }
         FLANNEL_BACKEND: { get_param: flannel_backend }

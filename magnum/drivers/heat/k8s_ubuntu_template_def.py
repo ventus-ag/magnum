@@ -71,7 +71,6 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         label_list = ['coredns_tag',
                       'kube_tag', 'container_infra_prefix',
                       'availability_zone',
-                      'cgroup_driver',
                       'container_runtime',
                       'containerd_version',
                       'containerd_tarball_url',
