@@ -89,7 +89,6 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'os_autoupgrade_enabled',
                       'auto_healing_controller',
                       'magnum_auto_healer_tag',
-                      'autoscaler_chart_tag',
                       'min_node_count', 'max_node_count',
                       'npd_chart_tag',
                       'occm_chart_tag', 'coredns_chart_tag',

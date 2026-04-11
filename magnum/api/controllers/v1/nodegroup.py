@@ -58,12 +58,8 @@ def _validate_node_count(ng):
             raise exception.NodeGroupInvalidInput(attr='max_node_count',
                                                   nodegroup=ng.name,
                                                   expl=expl)
-    if ng.min_node_count > ng.node_count:
-        expl = ('min_node_count (%s) should be less or equal to '
-                'node_count (%s)' % (ng.min_node_count, ng.node_count))
-        raise exception.NodeGroupInvalidInput(attr='min_node_count',
-                                              nodegroup=ng.name,
-                                              expl=expl)
+    # min_node_count > node_count is allowed: the cluster autoscaler will
+    # scale the nodegroup up to meet the configured minimum.
 
 
 def _parse_kube_minor(tag):

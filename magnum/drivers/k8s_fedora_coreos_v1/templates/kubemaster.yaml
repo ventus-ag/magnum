@@ -485,11 +485,6 @@ parameters:
     description: Helm chart version for openstack-cinder-csi
     default: ""
 
-  autoscaler_chart_tag:
-    type: string
-    description: Helm chart version for cluster-autoscaler
-    default: ""
-
   min_node_count:
     type: number
     description: >
@@ -814,7 +809,6 @@ resources:
         NFS_CSI_CHART_TAG: { get_param: nfs_csi_chart_tag }
         CINDER_CSI_ENABLED: { get_param: cinder_csi_enabled }
         CINDER_CSI_CHART_TAG: { get_param: cinder_csi_chart_tag }
-        AUTOSCALER_CHART_TAG: { get_param: autoscaler_chart_tag }
         MIN_NODE_COUNT: { get_param: min_node_count }
         MAX_NODE_COUNT: { get_param: max_node_count }
         NPD_CHART_TAG: { get_param: npd_chart_tag }
