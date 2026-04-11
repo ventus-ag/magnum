@@ -415,8 +415,19 @@ class HeatDriver(driver.Driver):
             return clients.OpenStackClients(adm_ctx)
 
     def delete_cluster(self, context, cluster):
-        self.pre_delete_cluster(context, cluster)
+        # On first delete attempt, go straight to Heat stack deletion.
+        # Pre-delete cleanup (LB, volumes) only runs as a fallback when
+        # retrying a DELETE_FAILED cluster — the cleanup logic can hang
+        # on stuck resources and block the entire delete otherwise.
+        is_retry = cluster.status == fields.ClusterStatus.DELETE_FAILED
+        if is_retry:
+            LOG.info("Retrying delete for cluster %s, running "
+                     "pre-delete cleanup first", cluster.uuid)
+            self.pre_delete_cluster(context, cluster)
 
+        self._delete_stacks(context, cluster)
+
+    def _delete_stacks(self, context, cluster):
         LOG.info("Starting to delete cluster %s", cluster.uuid)
         osc = self._get_cluster_osc(context, cluster)
         errors = []
@@ -762,13 +773,16 @@ class KubernetesDriver(HeatDriver):
         return None
 
     def pre_delete_cluster(self, context, cluster):
-        """Delete cloud resources before deleting the cluster.
+        """Clean up cloud resources that block Heat stack deletion.
+
+        Only called as a fallback when retrying a DELETE_FAILED cluster.
+        On first delete attempt we skip this and let Heat try directly —
+        running cleanup upfront can hang on stuck volumes or dead
+        amphora and block the entire delete.
 
         Both LB and volume cleanup are best-effort: if they fail or
-        time out (e.g. dead amphora, stuck volumes), we log a warning
-        and let Heat proceed with stack deletion.  Heat will mark
-        the individual resources as DELETE_FAILED, giving the user
-        actionable info without blocking the entire cluster delete.
+        time out, we log a warning and proceed with the stack deletion
+        retry anyway.
         """
         if keystone.is_octavia_enabled():
             LOG.info("Starting to delete loadbalancers for cluster %s",
