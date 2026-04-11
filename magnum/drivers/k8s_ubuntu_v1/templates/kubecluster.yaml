@@ -471,17 +471,6 @@ parameters:
       https://github.com/kubernetes/kubernetes/releases
     default: v1.18.2
 
-  cloud_provider_tag:
-    type: string
-    description: tag of the k8scloudprovider/openstack-cloud-controller-manager
-      https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-    default: v1.24.6
-
-  occm_chart_tag:
-    type: string
-    description: Helm chart version for openstack-cloud-controller-manager
-    default: "2.30.0"
-
   cloud_provider_enabled:
     type: boolean
     description: Enable or disable the openstack kubernetes cloud provider
@@ -490,27 +479,27 @@ parameters:
   etcd_tag:
     type: string
     description: tag of the etcd system container
-    default: v3.5.9
+    default: v3.6.10
 
   coredns_tag:
     type: string
     description: tag for coredns
-    default: v1.10.1
+    default: v1.31.1
 
   coredns_chart_tag:
     type: string
     description: Helm chart version for coredns
-    default: "1.22.0"
+    default: "1.45.2"
 
   flannel_tag:
     type: string
     description: tag of the flannel container
-    default: v0.22.0
+    default: v0.28.2
 
   flannel_cni_tag:
     type: string
     description: tag of the flannel cni container
-    default: v1.3.0
+    default: v1.9.0
 
   kube_version:
     type: string
@@ -679,11 +668,6 @@ parameters:
     description: >
       The service to be deployed for auto-healing.
     default: "draino"
-
-  magnum_auto_healer_tag:
-    type: string
-    description: tag of the magnum-auto-healer container image
-    default: "v1.27.1"
 
   auto_scaling_enabled:
     type: boolean
@@ -1077,8 +1061,6 @@ resources:
           https_proxy: { get_param: https_proxy }
           no_proxy: { get_param: no_proxy }
           kube_tag: { get_param: master_kube_tag }
-          cloud_provider_tag: { get_param: cloud_provider_tag }
-          occm_chart_tag: { get_param: occm_chart_tag }
           cloud_provider_enabled: { get_param: cloud_provider_enabled }
           kube_version: { get_param: kube_version }
           etcd_tag: { get_param: etcd_tag }
@@ -1118,7 +1100,6 @@ resources:
           helm_client_tag: { get_param: helm_client_tag }
           auto_healing_enabled: { get_param: auto_healing_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
-          magnum_auto_healer_tag: { get_param: magnum_auto_healer_tag }
           auto_scaling_enabled: { get_param: auto_scaling_enabled }
           manila_csi_enabled: { get_param: manila_csi_enabled }
           manila_csi_chart_tag: { get_param: manila_csi_chart_tag }

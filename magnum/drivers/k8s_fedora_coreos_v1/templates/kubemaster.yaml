@@ -255,16 +255,6 @@ parameters:
     type: string
     description: tag of the k8s containers used to provision the kubernetes cluster
 
-  cloud_provider_tag:
-    type: string
-    description: tag of the kubernetes/cloud-provider-openstack
-      https://hub.docker.com/r/k8scloudprovider/openstack-cloud-controller-manager/tags/
-
-  occm_chart_tag:
-    type: string
-    description: Helm chart version for openstack-cloud-controller-manager
-    default: ""
-
   cloud_provider_enabled:
     type: boolean
     description: Enable or disable the openstack kubernetes cloud provider
@@ -443,11 +433,6 @@ parameters:
     description: >
       The service to be deployed for auto-healing.
     default: "draino"
-
-  magnum_auto_healer_tag:
-    type: string
-    description: tag of the magnum-auto-healer container image
-    default: "v1.27.1"
 
   auto_scaling_enabled:
     type: boolean
@@ -656,7 +641,6 @@ resources:
         - name: HTTPS_PROXY
         - name: NO_PROXY
         - name: KUBE_TAG
-        - name: CLOUD_PROVIDER_TAG
         - name: CLOUD_PROVIDER_ENABLED
         - name: ETCD_TAG
         - name: COREDNS_TAG
@@ -690,7 +674,6 @@ resources:
         - name: HELM_CLIENT_TAG
         - name: AUTO_HEALING_ENABLED
         - name: AUTO_HEALING_CONTROLLER
-        - name: MAGNUM_AUTO_HEALER_TAG
         - name: AUTO_SCALING_ENABLED
         - name: MANILA_CSI_ENABLED
         - name: CINDER_CSI_ENABLED
@@ -765,8 +748,6 @@ resources:
         HTTPS_PROXY: { get_param: https_proxy }
         NO_PROXY: { get_param: no_proxy }
         KUBE_TAG: { get_param: kube_tag }
-        CLOUD_PROVIDER_TAG: { get_param: cloud_provider_tag }
-        OCCM_CHART_TAG: { get_param: occm_chart_tag }
         CLOUD_PROVIDER_ENABLED: { get_param: cloud_provider_enabled }
         ETCD_TAG: { get_param: etcd_tag }
         COREDNS_TAG: { get_param: coredns_tag }
@@ -801,7 +782,6 @@ resources:
         HELM_CLIENT_TAG: { get_param: helm_client_tag }
         AUTO_HEALING_ENABLED: { get_param: auto_healing_enabled }
         AUTO_HEALING_CONTROLLER: { get_param: auto_healing_controller }
-        MAGNUM_AUTO_HEALER_TAG: { get_param: magnum_auto_healer_tag }
         AUTO_SCALING_ENABLED: { get_param: auto_scaling_enabled }
         OS_AUTOUPGRADE_ENABLED: { get_param: os_autoupgrade_enabled }
         MANILA_CSI_ENABLED: { get_param: manila_csi_enabled }
