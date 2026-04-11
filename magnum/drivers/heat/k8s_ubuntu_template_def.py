@@ -75,18 +75,12 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'containerd_tarball_url',
                       'manila_csi_enabled',
                       'cinder_csi_enabled',
-                      'etcd_tag', 'flannel_tag', 'flannel_cni_tag',
                       'keystone_auth_enabled',
                       'metrics_server_enabled',
-                      'metrics_server_chart_tag',
                       'selinux_mode',
-                      'helm_client_url', 'helm_client_sha256',
-                      'helm_client_tag',
                       'auto_healing_enabled', 'auto_scaling_enabled',
                       'auto_healing_controller',
                       'min_node_count', 'max_node_count',
-                      'npd_chart_tag',
-                      'manila_csi_chart_tag', 'nfs_csi_chart_tag',
                       'use_podman', 'kube_image_digest']
 
         labels = self._get_relevant_labels(cluster, kwargs)

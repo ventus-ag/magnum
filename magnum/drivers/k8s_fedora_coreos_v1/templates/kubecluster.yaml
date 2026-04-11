@@ -176,11 +176,6 @@ parameters:
     description: enable/disable the use of metrics-server
     default: true
 
-  metrics_server_chart_tag:
-    type: string
-    description: tag of the stable/metrics-server chart to install
-    default: 3.12.2
-
   minion_flavor:
     type: string
     default: m1.small
@@ -469,30 +464,10 @@ parameters:
     description: Enable or disable the openstack kubernetes cloud provider
     default: true
 
-  etcd_tag:
-    type: string
-    description: tag of the etcd system container
-    default: v3.6.10
-
-  flannel_tag:
-    type: string
-    description: tag of the flannel container
-    default: v0.28.2
-
-  flannel_cni_tag:
-    type: string
-    description: tag of the flannel cni container
-    default: v1.9.1
-
   kube_version:
     type: string
     description: version of kubernetes used for kubernetes cluster
     default: v1.18.2
-
-  kube_dashboard_version:
-    type: string
-    description: version of kubernetes dashboard helm chart
-    default: "7.14.0"
 
   insecure_registry_url:
     type: string
@@ -618,23 +593,6 @@ parameters:
     description: Json read from /etc/magnum/keystone_auth_default_policy.json
     default: ""
 
-  helm_client_url:
-    type: string
-    description: url of helm client tarball
-    default: ""
-
-  helm_client_sha256:
-    type: string
-    description: sha256 of helm client tarball
-    default: "da36e117d6dbc57c8ec5bab2283222fbd108db86c83389eebe045ad1ef3e2c3b"
-
-  helm_client_tag:
-    type: string
-    description: >
-      release tag of helm client
-      https://github.com/helm/helm/releases
-    default: "v3.12.0"
-
   auto_healing_enabled:
     type: boolean
     description: >
@@ -671,16 +629,6 @@ parameters:
       true if the cinder csi plugin feature should be enabled
     default: true
 
-  manila_csi_chart_tag:
-    type: string
-    description: Helm chart version for openstack-manila-csi
-    default: "2.27.1"
-
-  nfs_csi_chart_tag:
-    type: string
-    description: Helm chart version for csi-driver-nfs
-    default: "4.5.0"
-
   min_node_count:
     type: number
     description: >
@@ -697,11 +645,6 @@ parameters:
     description: >
       max batch size when doing rolling upgrade
     default: 1
-
-  npd_chart_tag:
-    type: string
-    description: Helm chart version for node-problem-detector
-    default: "2.3.4"
 
   use_podman:
     type: boolean
@@ -1004,7 +947,6 @@ resources:
           is_resize: { get_param: is_resize }
           timestamp_upgrade: { get_param: timestamp_upgrade }
           metrics_server_enabled: { get_param: metrics_server_enabled }
-          metrics_server_chart_tag: { get_param: metrics_server_chart_tag }
           api_public_address: { get_attr: [api_lb, floating_address] }
           api_private_address: { get_attr: [api_lb, address] }
           ssh_key_name: { get_param: ssh_key_name }
@@ -1046,10 +988,6 @@ resources:
           kube_tag: { get_param: master_kube_tag }
           cloud_provider_enabled: { get_param: cloud_provider_enabled }
           kube_version: { get_param: kube_version }
-          etcd_tag: { get_param: etcd_tag }
-          flannel_tag: { get_param: flannel_tag }
-          flannel_cni_tag: { get_param: flannel_cni_tag }
-          kube_dashboard_version: { get_param: kube_dashboard_version }
           trustee_user_id: { get_param: trustee_user_id }
           trustee_password: { get_param: trustee_password }
           trust_id: { get_param: trust_id }
@@ -1075,20 +1013,14 @@ resources:
             { get_param: kube_service_account_private_key }
           ca_rotation_id: { get_param: ca_rotation_id }
           keystone_auth_enabled: { get_param: keystone_auth_enabled }
-          helm_client_url: { get_param: helm_client_url }
-          helm_client_sha256: { get_param: helm_client_sha256 }
-          helm_client_tag: { get_param: helm_client_tag }
           auto_healing_enabled: { get_param: auto_healing_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
           auto_scaling_enabled: { get_param: auto_scaling_enabled }
           os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
           manila_csi_enabled: { get_param: manila_csi_enabled }
-          manila_csi_chart_tag: { get_param: manila_csi_chart_tag }
-          nfs_csi_chart_tag: { get_param: nfs_csi_chart_tag }
           cinder_csi_enabled: { get_param: cinder_csi_enabled }
           min_node_count: { get_param: min_node_count }
           max_node_count: { get_param: max_node_count }
-          npd_chart_tag: { get_param: npd_chart_tag }
           use_podman: { get_param: use_podman }
           heat_container_agent_tag: { get_param: heat_container_agent_tag }
           selinux_mode: { get_param: selinux_mode }
@@ -1212,7 +1144,6 @@ resources:
           os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
           auto_healing_controller: { get_param: auto_healing_controller }
           use_podman: { get_param: use_podman }
-          flannel_cni_tag: { get_param: flannel_cni_tag }
           heat_container_agent_tag: { get_param: heat_container_agent_tag }
           selinux_mode: { get_param: selinux_mode }
           container_runtime: { get_param: container_runtime }
