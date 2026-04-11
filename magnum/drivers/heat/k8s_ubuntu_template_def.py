@@ -68,8 +68,7 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                 '"cloud_provider_enabled" label is set to true.'))
         extra_params['cloud_provider_enabled'] = cloud_provider_enabled
 
-        label_list = ['coredns_tag',
-                      'kube_tag', 'container_infra_prefix',
+        label_list = ['kube_tag', 'container_infra_prefix',
                       'availability_zone',
                       'container_runtime',
                       'containerd_version',
@@ -87,7 +86,6 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'auto_healing_controller',
                       'min_node_count', 'max_node_count',
                       'npd_chart_tag',
-                      'coredns_chart_tag',
                       'manila_csi_chart_tag', 'nfs_csi_chart_tag',
                       'use_podman', 'kube_image_digest']
 

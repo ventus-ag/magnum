@@ -256,15 +256,6 @@ parameters:
     type: string
     description: tag of the etcd system container
 
-  coredns_tag:
-    type: string
-    description: tag of the coredns container
-
-  coredns_chart_tag:
-    type: string
-    description: Helm chart version for coredns
-    default: ""
-
   flannel_tag:
     type: string
     description: tag of the flannel system containers
@@ -828,7 +819,6 @@ resources:
         - name: KUBE_TAG
         - name: CLOUD_PROVIDER_ENABLED
         - name: ETCD_TAG
-        - name: COREDNS_TAG
         - name: FLANNEL_TAG
         - name: NUMBER_OF_MASTERS
         - name: FLANNEL_CNI_TAG
@@ -934,8 +924,6 @@ resources:
         KUBE_TAG: { get_param: kube_tag }
         CLOUD_PROVIDER_ENABLED: { get_param: cloud_provider_enabled }
         ETCD_TAG: { get_param: etcd_tag }
-        COREDNS_TAG: { get_param: coredns_tag }
-        COREDNS_CHART_TAG: { get_param: coredns_chart_tag }
         FLANNEL_TAG: { get_param: flannel_tag }
         NUMBER_OF_MASTERS: { get_param: number_of_masters }
         FLANNEL_CNI_TAG: { get_param: flannel_cni_tag }

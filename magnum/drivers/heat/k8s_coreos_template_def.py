@@ -56,8 +56,7 @@ class CoreOSK8sTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
             extra_params["pods_network_cidr"] = \
                 cluster.labels.get('calico_ipv4pool', '10.100.0.0/16')
 
-        label_list = ['coredns_tag',
-                      'kube_tag', 'container_infra_prefix',
+        label_list = ['kube_tag', 'container_infra_prefix',
                       'availability_zone',
                       'calico_tag',
                       'calico_kube_controllers_tag', 'calico_ipv4pool',
