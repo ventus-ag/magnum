@@ -484,7 +484,7 @@ parameters:
   coredns_tag:
     type: string
     description: tag for coredns
-    default: v1.31.1
+    default: v1.14.2
 
   coredns_chart_tag:
     type: string
@@ -696,11 +696,6 @@ parameters:
     description: >
       true if the cinder csi plugin feature should be enabled
     default: true
-
-  cinder_csi_chart_tag:
-    type: string
-    description: Helm chart version for openstack-cinder-csi
-    default: "2.30.0"
 
   min_node_count:
     type: number
@@ -1105,7 +1100,6 @@ resources:
           manila_csi_chart_tag: { get_param: manila_csi_chart_tag }
           nfs_csi_chart_tag: { get_param: nfs_csi_chart_tag }
           cinder_csi_enabled: { get_param: cinder_csi_enabled }
-          cinder_csi_chart_tag: { get_param: cinder_csi_chart_tag }
           min_node_count: { get_param: min_node_count }
           max_node_count: { get_param: max_node_count }
           npd_chart_tag: { get_param: npd_chart_tag }

@@ -90,7 +90,6 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'min_node_count', 'max_node_count',
                       'npd_chart_tag',
                       'coredns_chart_tag',
-                      'cinder_csi_chart_tag',
                       'manila_csi_chart_tag', 'nfs_csi_chart_tag',
                       'heat_container_agent_tag',
                       'use_podman', 'kube_image_digest']
