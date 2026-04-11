@@ -412,8 +412,13 @@ class NodeGroupController(base.Controller):
         """
         cluster = _get_cluster_resource(cluster_id,
                                         'nodegroup:update_all_projects')
-        nodegroup = self._patch(cluster.uuid, nodegroup_id, patch)
-        pecan.request.rpcapi.nodegroup_update_async(cluster, nodegroup)
+        nodegroup, needs_resize = self._patch(cluster.uuid, nodegroup_id,
+                                              patch)
+        if needs_resize:
+            pecan.request.rpcapi.cluster_resize_async(
+                cluster, nodegroup.node_count, None, nodegroup)
+        else:
+            pecan.request.rpcapi.nodegroup_update_async(cluster, nodegroup)
         return NodeGroup.convert(nodegroup)
 
     @base.Controller.api_version("1.9")
@@ -438,6 +443,7 @@ class NodeGroupController(base.Controller):
         context = pecan.request.context
         policy.enforce(context, 'nodegroup:update', action='nodegroup:update')
         nodegroup = objects.NodeGroup.get(context, cluster_uuid, nodegroup_id)
+        old_node_count = nodegroup.node_count
 
         try:
             ng_dict = nodegroup.as_dict()
@@ -467,4 +473,5 @@ class NodeGroupController(base.Controller):
 
         _validate_node_count(nodegroup)
 
-        return nodegroup
+        needs_resize = nodegroup.node_count != old_node_count
+        return nodegroup, needs_resize
