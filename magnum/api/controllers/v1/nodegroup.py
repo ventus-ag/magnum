@@ -457,6 +457,14 @@ class NodeGroupController(base.Controller):
                 patch_val = None
             if nodegroup[field] != patch_val:
                 nodegroup[field] = patch_val
+
+        # When min_node_count is raised above the current node_count,
+        # bump node_count to match so Magnum triggers an actual resize.
+        # Without this the autoscaler would only react to unschedulable
+        # pods, leaving the nodegroup at 0 indefinitely.
+        if nodegroup.min_node_count > nodegroup.node_count:
+            nodegroup.node_count = nodegroup.min_node_count
+
         _validate_node_count(nodegroup)
 
         return nodegroup
