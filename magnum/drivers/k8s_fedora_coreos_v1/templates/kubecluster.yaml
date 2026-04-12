@@ -629,6 +629,13 @@ parameters:
       true if the cinder csi plugin feature should be enabled
     default: true
 
+  gpu_operator_enabled:
+    type: boolean
+    description: >
+      true if the NVIDIA GPU Operator should be deployed (enable only
+      if the cluster has GPU worker nodes)
+    default: false
+
   min_node_count:
     type: number
     description: >
@@ -1009,6 +1016,7 @@ resources:
           os_autoupgrade_enabled: { get_param: os_autoupgrade_enabled }
           manila_csi_enabled: { get_param: manila_csi_enabled }
           cinder_csi_enabled: { get_param: cinder_csi_enabled }
+          gpu_operator_enabled: { get_param: gpu_operator_enabled }
           min_node_count: { get_param: min_node_count }
           max_node_count: { get_param: max_node_count }
           use_podman: { get_param: use_podman }

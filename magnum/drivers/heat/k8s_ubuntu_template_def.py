@@ -73,6 +73,7 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'container_runtime',
                       'manila_csi_enabled',
                       'cinder_csi_enabled',
+                      'gpu_operator_enabled',
                       'keystone_auth_enabled',
                       'metrics_server_enabled',
                       'selinux_mode',
