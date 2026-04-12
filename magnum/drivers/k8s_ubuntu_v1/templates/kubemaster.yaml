@@ -433,13 +433,6 @@ parameters:
     type: string
     description: The container runtime to install
 
-  containerd_version:
-    type: string
-    description: The containerd version to download from https://storage.googleapis.com/cri-containerd-release/
-
-  containerd_tarball_url:
-    type: string
-    description: Url location of the containerd tarball.
 
   post_install_manifest_url:
     type: string
@@ -802,8 +795,6 @@ resources:
         - name: USE_PODMAN
         - name: KUBE_IMAGE_DIGEST
         - name: CONTAINER_RUNTIME
-        - name: CONTAINERD_VERSION
-        - name: CONTAINERD_TARBALL_URL
         - name: POST_INSTALL_MANIFEST_URL
         - name: RECONCILER_VERSION
         - name: RECONCILER_BINARY_URL
@@ -899,8 +890,6 @@ resources:
         USE_PODMAN: { get_param: use_podman }
         KUBE_IMAGE_DIGEST: { get_param: kube_image_digest }
         CONTAINER_RUNTIME: { get_param: container_runtime }
-        CONTAINERD_VERSION: { get_param: containerd_version }
-        CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
         POST_INSTALL_MANIFEST_URL: { get_param: post_install_manifest_url }
         RECONCILER_VERSION: { get_param: reconciler_version }
         RECONCILER_BINARY_URL: { get_param: reconciler_binary_url }

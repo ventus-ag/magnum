@@ -71,8 +71,6 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         label_list = ['kube_tag', 'container_infra_prefix',
                       'availability_zone',
                       'container_runtime',
-                      'containerd_version',
-                      'containerd_tarball_url',
                       'manila_csi_enabled',
                       'cinder_csi_enabled',
                       'keystone_auth_enabled',

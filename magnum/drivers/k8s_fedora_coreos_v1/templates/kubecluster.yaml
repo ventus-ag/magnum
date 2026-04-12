@@ -678,16 +678,6 @@ parameters:
     description: The container runtime to install
     default: "containerd"
 
-  containerd_version:
-    type: string
-    description: The containerd version to download from https://github.com/containerd/containerd/releases
-    default: "2.2.2"
-
-  containerd_tarball_url:
-    type: string
-    description: Url location of the containerd tarball.
-    default: ""
-
   post_install_manifest_url:
     type: string
     description: >
@@ -1026,8 +1016,6 @@ resources:
           selinux_mode: { get_param: selinux_mode }
           kube_image_digest: { get_param: kube_image_digest }
           container_runtime: { get_param: container_runtime }
-          containerd_version: { get_param: containerd_version }
-          containerd_tarball_url: { get_param: containerd_tarball_url }
           post_install_manifest_url: { get_param: post_install_manifest_url }
           reconciler_version: { get_param: reconciler_version }
           reconciler_binary_url: { get_param: reconciler_binary_url }
@@ -1147,8 +1135,6 @@ resources:
           heat_container_agent_tag: { get_param: heat_container_agent_tag }
           selinux_mode: { get_param: selinux_mode }
           container_runtime: { get_param: container_runtime }
-          containerd_version: { get_param: containerd_version }
-          containerd_tarball_url: { get_param: containerd_tarball_url }
           kube_service_account_key: { get_param: kube_service_account_key }
           kube_service_account_private_key:
             { get_param: kube_service_account_private_key }

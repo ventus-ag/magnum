@@ -339,14 +339,6 @@ parameters:
     type: string
     description: The container runtime to install
 
-  containerd_version:
-    type: string
-    description: The containerd version to download from https://storage.googleapis.com/cri-containerd-release/
-
-  containerd_tarball_url:
-    type: string
-    description: Url location of the containerd tarball.
-
   kube_service_account_key:
     type: string
     hidden: true
@@ -483,8 +475,6 @@ resources:
         - name: NODEGROUP_NAME
         - name: USE_PODMAN
         - name: CONTAINER_RUNTIME
-        - name: CONTAINERD_VERSION
-        - name: CONTAINERD_TARBALL_URL
         - name: OS_AUTOUPGRADE_ENABLED
         - name: RECONCILER_VERSION
         - name: RECONCILER_BINARY_URL
@@ -564,8 +554,6 @@ resources:
         NODEGROUP_NAME: { get_param: nodegroup_name }
         USE_PODMAN: { get_param: use_podman }
         CONTAINER_RUNTIME: { get_param: container_runtime }
-        CONTAINERD_VERSION: { get_param: containerd_version }
-        CONTAINERD_TARBALL_URL: { get_param: containerd_tarball_url }
         RECONCILER_VERSION: { get_param: reconciler_version }
         RECONCILER_BINARY_URL: { get_param: reconciler_binary_url }
         RECONCILER_BINARY_URL_SHA256: { get_param: reconciler_binary_url_sha256 }
