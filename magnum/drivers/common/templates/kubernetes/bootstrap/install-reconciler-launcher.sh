@@ -84,10 +84,12 @@ fi
 
 binary_dir="${cache_root}/${version}"
 binary_path="${binary_dir}/${binary_name}"
+sha256_url="${binary_url}.sha256"
 
 # Re-download if the binary is missing OR if the previous run failed
 # (binary might be corrupt or incomplete).
 need_download=false
+binary_url_sha256=""
 if [ ! -x "${binary_path}" ]; then
     need_download=true
 elif [ -f "${result_file}" ]; then
@@ -96,6 +98,21 @@ elif [ -f "${result_file}" ]; then
         log "Previous run failed, re-downloading binary"
         rm -rf "${binary_dir}"
         need_download=true
+    fi
+fi
+
+if [ "${need_download}" = "false" ]; then
+    log "Fetching checksum from ${sha256_url}"
+    binary_url_sha256=$(curl -fsSL "${sha256_url}" 2>/dev/null | awk '{print $1}') || true
+    if [ -n "${binary_url_sha256}" ]; then
+        current_binary_sha256=$(sha256sum "${binary_path}" | awk '{print $1}')
+        if [ "${current_binary_sha256}" != "${binary_url_sha256}" ]; then
+            log "Cached binary checksum differs from release checksum, re-downloading reconciler"
+            rm -rf "${binary_dir}"
+            need_download=true
+        fi
+    else
+        log "Release checksum fetch failed, keeping cached reconciler binary"
     fi
 fi
 
@@ -109,9 +126,10 @@ if [ "${need_download}" = "true" ]; then
     fi
     curl -fsSL "${binary_url}" -o "${tmp_binary}"
     # Download SHA256 checksum from the release and verify.
-    sha256_url="${binary_url}.sha256"
-    log "Fetching checksum from ${sha256_url}"
-    binary_url_sha256=$(curl -fsSL "${sha256_url}" 2>/dev/null | awk '{print $1}') || true
+    if [ -z "${binary_url_sha256}" ]; then
+        log "Fetching checksum from ${sha256_url}"
+        binary_url_sha256=$(curl -fsSL "${sha256_url}" 2>/dev/null | awk '{print $1}') || true
+    fi
     if [ -n "${binary_url_sha256}" ]; then
         printf '%s  %s\n' "${binary_url_sha256}" "${tmp_binary}" | sha256sum -c -
     else
