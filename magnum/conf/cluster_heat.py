@@ -39,10 +39,15 @@ cluster_heat_opts = [
                deprecated_group='bay_heat',
                deprecated_name='bay_create_timeout'),
     cfg.IntOpt('update_timeout',
-               default=20,
+               default=90,
                help=('The length of time to let cluster update operations '
                      'such as upgrade and CA rotation continue. This '
-                     'interval is in minutes. The default is 20 minutes.'))
+                     'interval is in minutes. The default is 90 minutes. '
+                     'CA rotation runs a multi-phase prepare/cutover/finalize '
+                     'protocol coordinated across all nodes, so this must '
+                     'comfortably exceed the time for the slowest node to '
+                     'complete all phases (control-plane restarts plus '
+                     'cluster-wide barriers).'))
 ]
 
 
