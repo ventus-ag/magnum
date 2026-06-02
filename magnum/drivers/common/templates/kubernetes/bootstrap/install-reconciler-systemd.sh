@@ -17,6 +17,16 @@ Type=oneshot
 ExecStart=/usr/local/bin/magnum-reconcile-launcher run-once
 User=root
 Group=root
+# Backstop above the reconciler's own RECONCILER_RUN_TIMEOUT_SECONDS (default
+# 4800s). oneshot units have no start timeout by default, so a run that ignores
+# its own context (stuck in a syscall, unkillable wait) would otherwise hold the
+# reconcile flock indefinitely and wedge every subsequent run. On timeout
+# systemd sends SIGTERM (graceful unwind, lock released on exit) then SIGKILL
+# after TimeoutStopSec.
+TimeoutStartSec=5100
+TimeoutStopSec=120
+KillMode=mixed
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target
@@ -27,8 +37,6 @@ cat <<'EOF' | $ssh_cmd "cat > /etc/systemd/system/magnum-reconcile-periodic.serv
 Description=Magnum Reconcile Periodic
 After=network-online.target
 Wants=network-online.target
-StartLimitIntervalSec=600
-StartLimitBurst=3
 
 [Service]
 Type=oneshot
@@ -36,9 +44,19 @@ ExecStart=/usr/local/bin/magnum-reconcile-launcher run-periodic
 User=root
 Group=root
 
-# Retry up to 3 times with 60s delay on failure.
-Restart=on-failure
-RestartSec=60
+# Do NOT auto-restart on failure. Periodic runs are drift correction; the timer
+# fires them again on its own schedule. An immediate restart loop here would
+# repeatedly re-acquire the reconcile flock for a rotation that is stuck (e.g.
+# blocked at a CA-rotation barrier), starving Heat-triggered run-once invocations
+# that wait on the same lock — a key reason a single timeout used to wedge every
+# later operation.
+Restart=no
+
+# Same backstop as run-once so a hung periodic resume cannot squat the lock.
+TimeoutStartSec=5100
+TimeoutStopSec=120
+KillMode=mixed
+KillSignal=SIGTERM
 
 # Limit CPU impact on cluster workloads during periodic drift checks.
 Nice=15

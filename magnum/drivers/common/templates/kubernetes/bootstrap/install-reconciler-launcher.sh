@@ -55,6 +55,11 @@ version="${RECONCILER_VERSION:-}"
 repository_url="${RECONCILER_REPOSITORY_URL:-${default_repository_url}}"
 binary_url="${RECONCILER_BINARY_URL:-}"
 lock_timeout_seconds="${RECONCILER_LOCK_TIMEOUT_SECONDS:-900}"
+# Overall reconcile timeout. MUST stay a safe margin below Heat's stack
+# update_timeout so the reconciler self-cancels, reports failure, and releases
+# this flock BEFORE Heat gives up — otherwise a wedged run keeps holding the
+# lock after Heat fails the deployment and every retry blocks on it.
+run_timeout_seconds="${RECONCILER_RUN_TIMEOUT_SECONDS:-4800}"
 
 if [ -z "${binary_url}" ] && [ -n "${version}" ]; then
     binary_url="${repository_url}/releases/download/${version}/bootstrap"
@@ -162,6 +167,7 @@ export MAGNUM_RECONCILE_STATE_BACKUP_DIR="${state_backup_dir}"
 export MAGNUM_PULUMI_BACKEND_DIR="${pulumi_state_root}"
 export MAGNUM_PULUMI_BACKEND_URL="file://${pulumi_state_root}"
 export MAGNUM_PULUMI_BACKUP_DIR="${pulumi_backup_dir}"
+export MAGNUM_RECONCILE_RUN_TIMEOUT_SECONDS="${run_timeout_seconds}"
 
 log "Starting reconciler binary=${binary_path} mode=${mode}"
 "${binary_path}" "${mode}" "$@"
