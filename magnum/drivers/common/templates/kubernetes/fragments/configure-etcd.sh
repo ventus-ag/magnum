@@ -209,6 +209,26 @@ election-timeout: 15000
 auto-compaction-mode: periodic
 auto-compaction-retention: "24h"
 EOF
+    elif [ "$mode" = "new-static" ]; then
+        # Discovery-free bootstrap of a brand-new cluster from a known member
+        # list. A shared initial-cluster-token makes all members agree they
+        # belong to the same cluster.
+        cat << EOF
+name: "$INSTANCE_NAME"
+data-dir: "/var/lib/etcd/default.etcd"
+listen-metrics-urls: "http://$myip:2378"
+listen-client-urls: "$protocol://$myip:2379,http://127.0.0.1:2379"
+listen-peer-urls: "$protocol://$myip:2380"
+advertise-client-urls: "$protocol://$myip:2379"
+initial-advertise-peer-urls: "$protocol://$myip:2380"
+initial-cluster: "$extra"
+initial-cluster-state: "new"
+initial-cluster-token: "$(etcd_cluster_token)"
+heartbeat-interval: 1000
+election-timeout: 15000
+auto-compaction-mode: periodic
+auto-compaction-retention: "24h"
+EOF
     elif [ "$mode" = "existing" ]; then
         cat << EOF
 name: "$INSTANCE_NAME"
@@ -255,6 +275,57 @@ EOF
 # Legacy function for compatibility (now calls the complete config builder)
 build_config() {
     build_complete_config "$@"
+}
+
+# Cluster-wide token so every member of a freshly bootstrapped static cluster
+# agrees it belongs to the same cluster.
+etcd_cluster_token() {
+    if [ -n "${CLUSTER_UUID:-}" ]; then
+        echo "etcd-${CLUSTER_UUID}"
+    else
+        echo "magnum-etcd-cluster"
+    fi
+}
+
+# True when this node is the first/only master (the bootstrapper). Matches the
+# reconciler's IsFirstMaster: instance name ending in "master-0", or a
+# single-master cluster.
+is_first_master() {
+    case "$INSTANCE_NAME" in
+        *master-0) return 0 ;;
+    esac
+    [ "${NUMBER_OF_MASTERS:-1}" = "1" ]
+}
+
+# Echo the static etcd initial-cluster member list used to bootstrap a NEW
+# cluster without v2 discovery, and return 0 if one could be determined.
+# ETCD_INITIAL_CLUSTER (full "name=peerURL,..." list) wins; otherwise a
+# first/single master bootstraps a one-node cluster from its own peer URL.
+static_initial_cluster() {
+    if [ -n "${ETCD_INITIAL_CLUSTER:-}" ]; then
+        echo "$ETCD_INITIAL_CLUSTER"
+        return 0
+    fi
+    if is_first_master; then
+        echo "$INSTANCE_NAME=$protocol://$myip:2380"
+        return 0
+    fi
+    return 1
+}
+
+# Bootstrap a brand-new etcd cluster from the static member list. Exits non-zero
+# when no list can be determined (multi-master with neither ETCD_INITIAL_CLUSTER
+# nor an existing cluster to join — bootstrapping self would split-brain).
+bootstrap_static_cluster() {
+    local members
+    if ! members=$(static_initial_cluster); then
+        echo "Error: no healthy LB endpoint, no discovery URL, and cannot determine a static initial-cluster (multi-master needs ETCD_INITIAL_CLUSTER or an existing cluster to join)." >&2
+        return 1
+    fi
+    echo "Bootstrapping new etcd cluster from static initial-cluster: $members" >&2
+    cleanup_etcd
+    config=$(build_config new-static "$members")
+    write_and_start_etcd "$config"
 }
 
 # Remove our node from LB (if present) and add it back.
@@ -592,13 +663,26 @@ elif [ $discovery_ok -eq 0 ]; then
                 rebuild_config_if_needed
             fi
         else
-            echo "Discovery invalid but LB shows existing cluster without our node. Joining existing cluster." >&2
-            cleanup_etcd
-            join_existing_cluster || exit 1
+            # LB up but we are not a member: join if a cluster already exists,
+            # otherwise bootstrap a new cluster statically (no discovery).
+            if existing_members=$(run_etcdctl "$lb_endpoint" member list 2>/dev/null) && [ -n "$existing_members" ]; then
+                echo "Discovery invalid but LB shows existing cluster without our node. Joining existing cluster." >&2
+                cleanup_etcd
+                join_existing_cluster || exit 1
+            else
+                echo "Discovery invalid and LB has no existing cluster. Bootstrapping new cluster statically." >&2
+                bootstrap_static_cluster || exit 1
+            fi
         fi
+    elif [ $local_ok -eq 1 ]; then
+        # Local etcd is healthy but not visible via the LB (single-node cluster,
+        # or LB down). Treat as an existing standalone node; never re-bootstrap.
+        echo "Discovery invalid and LB unavailable, but local etcd is healthy. Rebuilding config if needed." >&2
+        rebuild_config_if_needed
     else
-        echo "Error: Neither a valid discovery URL nor a healthy LB endpoint is available." >&2
-        exit 1
+        # No discovery, no LB cluster, no local etcd: bootstrap statically.
+        echo "No discovery URL and no healthy LB endpoint. Bootstrapping new cluster statically." >&2
+        bootstrap_static_cluster || exit 1
     fi
 fi
 
