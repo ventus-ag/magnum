@@ -154,11 +154,6 @@ parameters:
     description: >
       List of admission control plugins to activate
 
-  discovery_url:
-    type: string
-    description: >
-      Discovery URL used for bootstrapping the etcd cluster.
-
   tls_disabled:
     type: boolean
     description: whether or not to enable TLS
@@ -751,7 +746,6 @@ resources:
         - name: PODS_NETWORK_CIDR
         - name: PORTAL_NETWORK_CIDR
         - name: ADMISSION_CONTROL_LIST
-        - name: ETCD_DISCOVERY_URL
         - name: AUTH_URL
         - name: CLUSTER_NETWORK_NAME
         - name: CLUSTER_SUBNET
@@ -847,7 +841,6 @@ resources:
         PODS_NETWORK_CIDR: { get_param: pods_network_cidr }
         PORTAL_NETWORK_CIDR: { get_param: portal_network_cidr }
         ADMISSION_CONTROL_LIST: { get_param: admission_control_list }
-        ETCD_DISCOVERY_URL: { get_param: discovery_url }
         AUTH_URL: { get_param: auth_url }
         CLUSTER_NETWORK_NAME: { get_param: fixed_network_name }
         CLUSTER_SUBNET: { get_param: fixed_subnet }
