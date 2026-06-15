@@ -655,43 +655,21 @@ class HeatDriver(driver.Driver):
             nodegroup=nodegroup,
         )
 
-        # Resize only changes the node count.  Do NOT pass ca_rotation_id,
-        # is_resize, is_upgrade, or timestamp_upgrade here.  Those parameters
-        # are embedded in the SoftwareConfig script via str_replace (or in
-        # the SoftwareDeployment input_values).  Changing them forces Heat to
-        # replace the immutable SoftwareConfig on existing nodes, which can
-        # fail with "Software config not found" when the old config is
-        # deleted before the deployment references the new one.
+        # Resize is a parameters-only Heat update (matches the legacy ussuri
+        # behaviour).  We deliberately do NOT re-push the template, mark any
+        # SoftwareConfig unhealthy, or change ca_rotation_id / is_resize /
+        # is_upgrade / timestamp_upgrade.  Those values flow into the existing
+        # nodes' SoftwareDeployment input_values; touching them (or marking
+        # their config unhealthy) re-fires the reconciler on already-converged
+        # nodes and can hit "Software config not found" on the immutable
+        # SoftwareConfig.
         #
-        # With ``existing: True`` Heat preserves all parameters that are not
-        # explicitly passed, so existing nodes see zero changes and their
-        # deployments are not re-triggered.  New nodes are created fresh and
-        # their CREATE deployment fires normally.
-
-        # Use the nodegroup's own driver for non-default nodegroups so
-        # cross-OS nodepools get the correct template.
-        if nodegroup and not nodegroup.is_default:
-            template_path, _, env_files = (
-                self._extract_template_definition_for_nodegroup(
-                    context, cluster, nodegroup
-                )
-            )
-        else:
-            template_path, _, env_files = self._extract_template_definition(
-                context, cluster
-            )
-
-        tpl_files, template = template_utils.get_template_contents(template_path)
-        environment_files, env_map = self._get_env_files(template_path, env_files)
-        tpl_files.update(env_map)
-
-        # Mark SoftwareConfig resources unhealthy before template update.
-        self._prepare_stack_for_template_update(osc, nodegroup.stack_id)
-
+        # With ``existing: True`` Heat preserves every parameter we do not
+        # pass, so existing nodes see zero input changes and their deployments
+        # are not re-triggered.  Only the ResourceGroup count changes: new
+        # members are created fresh (CREATE deployment) and removed members
+        # are deleted per removal_policies.
         fields = {
-            "template": template,
-            "environment_files": environment_files,
-            "files": tpl_files,
             "parameters": scale_params,
             "existing": True,
             "disable_rollback": not rollback,
@@ -778,7 +756,6 @@ class HeatDriver(driver.Driver):
             }
 
             fields = {
-                **self._get_stack_update_template_fields(context, cluster),
                 "parameters": cluster_params,
                 "existing": True,
                 "disable_rollback": True,
