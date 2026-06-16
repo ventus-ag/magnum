@@ -1626,6 +1626,34 @@ class HeatPoller(object):
                 ng_statuses.append(status)
         self.aggregate_nodegroup_statuses(ng_statuses)
 
+    def _has_member_stack_in_progress(self):
+        """Whether any per-node member stack under this nodegroup's stack is
+        mid-update.
+
+        A direct-child CA rotation updates the ResourceGroup member (node)
+        stacks out-of-band, so the parent stack can read *_COMPLETE while the
+        nodes are still converging.  Used to keep the cluster in
+        UPDATE_IN_PROGRESS for the duration so a concurrent upgrade is
+        rejected by the conductor precondition (which would otherwise corrupt
+        the in-flight rotation).
+        """
+        try:
+            resources = self.openstack_client.heat().resources.list(
+                self.nodegroup.stack_id, nested_depth=2
+            )
+        except Exception as e:
+            LOG.debug(
+                "Could not list nested resources of stack %s: %s",
+                self.nodegroup.stack_id,
+                e,
+            )
+            return False
+        for res in resources:
+            status = getattr(res, "resource_status", "") or ""
+            if status.endswith("_IN_PROGRESS"):
+                return True
+        return False
+
     def extract_nodegroup_status(self):
 
         if self.nodegroup.stack_id is None:
@@ -1654,6 +1682,35 @@ class HeatPoller(object):
                 fields.ClusterStatus.CREATE_COMPLETE,
                 fields.ClusterStatus.UPDATE_COMPLETE,
             ):
+                # A direct-child CA rotation updates the per-node (member)
+                # stacks out-of-band, so this parent stack can read
+                # UPDATE_COMPLETE while the nodes are still rotating.  Hold the
+                # nodegroup in UPDATE_IN_PROGRESS until the member stacks settle
+                # so the cluster stays UPDATE_IN_PROGRESS and the conductor
+                # rejects a concurrent upgrade (which would corrupt the
+                # in-flight rotation).  Self-healing: once the members reach a
+                # terminal state this returns False and the sync below flips
+                # the cluster to UPDATE_COMPLETE.
+                if (
+                    stack.stack_status == fields.ClusterStatus.UPDATE_COMPLETE
+                    and self.cluster.status
+                    == fields.ClusterStatus.UPDATE_IN_PROGRESS
+                    and self._has_member_stack_in_progress()
+                ):
+                    self.nodegroup.status = (
+                        fields.ClusterStatus.UPDATE_IN_PROGRESS
+                    )
+                    self.nodegroup.status_reason = (
+                        "CA rotation in progress on member stacks"
+                    )
+                    self.nodegroup.save()
+                    return NodeGroupStatus(
+                        name=self.nodegroup.name,
+                        status=self.nodegroup.status,
+                        is_default=self.nodegroup.is_default,
+                        reason=self.nodegroup.status_reason,
+                    )
+
                 # Resolve all outputs if the stack is COMPLETE
                 stack = self.openstack_client.heat().stacks.get(
                     self.nodegroup.stack_id, resolve_outputs=True
