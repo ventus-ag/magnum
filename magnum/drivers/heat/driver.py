@@ -18,6 +18,7 @@ import six
 import json
 import datetime
 import time
+import eventlet
 import yaml
 
 from string import ascii_letters
@@ -1126,24 +1127,57 @@ class KubernetesDriver(HeatDriver):
         }
         if "ca_key" in heat_params:
             cluster_sync_params["ca_key"] = heat_params["ca_key"]
-        if updated_member_stacks:
-            self._wait_for_stacks_settled(osc, updated_member_stacks)
-        for parent_stack_id in parent_stacks_to_sync:
-            try:
-                osc.heat().stacks.update(
-                    parent_stack_id,
-                    existing=True,
-                    parameters=cluster_sync_params,
-                    disable_rollback=True,
-                    timeout_mins=self._get_update_timeout(),
-                )
-            except Exception as e:
-                LOG.warning(
-                    "CA rotation: failed to sync rotated parameters onto "
-                    "stack %s for cluster %s (nodes added to this nodegroup "
-                    "later may render stale service account keys): %s",
-                    parent_stack_id, cluster.uuid, e,
-                )
+        # The sync must wait for the async child-stack updates to settle, which
+        # can take minutes — far longer than the synchronous ``ca rotate`` API
+        # /RPC timeout (a blocking wait here returns 504 to the caller). Run it
+        # detached so rotate_ca_certificate returns immediately (the original
+        # fire-and-forget behaviour) and the sync happens in the background,
+        # best-effort.
+        if parent_stacks_to_sync:
+            eventlet.spawn_n(
+                self._sync_rotated_params_to_parents,
+                context,
+                list(parent_stacks_to_sync),
+                list(updated_member_stacks),
+                cluster_sync_params,
+                cluster.uuid,
+            )
+
+    def _sync_rotated_params_to_parents(self, context, parent_stacks,
+                                        member_stacks, sync_params,
+                                        cluster_uuid):
+        """Background sync of rotated SA keys onto parent stacks.
+
+        Runs in a detached greenthread after rotate_ca_certificate returns so
+        the synchronous ``ca rotate`` request is not blocked waiting for the
+        child-stack updates to finish. Entirely best-effort: any failure only
+        leaves the pre-existing stale-key behaviour for future-added nodes.
+        """
+        try:
+            osc = clients.OpenStackClients(context)
+            if member_stacks:
+                self._wait_for_stacks_settled(osc, member_stacks)
+            for parent_stack_id in parent_stacks:
+                try:
+                    osc.heat().stacks.update(
+                        parent_stack_id,
+                        existing=True,
+                        parameters=sync_params,
+                        disable_rollback=True,
+                        timeout_mins=self._get_update_timeout(),
+                    )
+                except Exception as e:
+                    LOG.warning(
+                        "CA rotation: failed to sync rotated parameters onto "
+                        "stack %s for cluster %s (nodes added to this "
+                        "nodegroup later may render stale service account "
+                        "keys): %s", parent_stack_id, cluster_uuid, e,
+                    )
+        except Exception as e:
+            LOG.warning(
+                "CA rotation: background parameter sync for cluster %s "
+                "aborted: %s", cluster_uuid, e,
+            )
 
     def _wait_for_stacks_settled(self, osc, stack_ids,
                                  timeout_s=1800, interval_s=10):
