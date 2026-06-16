@@ -17,6 +17,7 @@ from pbr.version import SemanticVersion as SV
 import six
 import json
 import datetime
+import time
 import yaml
 
 from string import ascii_letters
@@ -1024,16 +1025,17 @@ class KubernetesDriver(HeatDriver):
         heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
         heat_params["update_max_batch_size"] = self._get_ca_rotation_batch_size(cluster)
 
-        # Do NOT update the cluster stack — even a parameter-only update
-        # propagates to ResourceGroup members and triggers a rolling
-        # update that conflicts with our direct child-stack updates
-        # below.  The ca_rotation_id is cleared to '' on the next
-        # operation anyway, and the service account keys are hidden
-        # (masked) so they can't be read back from the cluster stack.
-
-        # Update ALL nodegroups' child stacks directly so masters and
-        # workers rotate simultaneously instead of sequentially through
-        # the cluster stack's ResourceGroup rolling update.
+        # Rotate every nodegroup's member stacks DIRECTLY (below) so masters
+        # and workers rotate simultaneously instead of sequentially through
+        # the cluster stack's ResourceGroup rolling update.  The cluster stack
+        # is then synced once at the end of this method (see the trailing
+        # block) so nodes ADDED later — resize / autoscale / replacement —
+        # render the rotated service account keys instead of the pre-rotation
+        # ones.  The values written there are byte-for-byte what these direct
+        # child updates apply, so the cluster sync is a no-op for existing
+        # members (no rolling update, no restart).
+        updated_member_stacks = []
+        parent_stacks_to_sync = set()
         for nodegroup in cluster.nodegroups:
             if not nodegroup.stack_id:
                 continue
@@ -1090,6 +1092,87 @@ class KubernetesDriver(HeatDriver):
                     "disable_rollback": True,
                 }
                 osc.heat().stacks.update(stack_id, **nodegroup_fields)
+                updated_member_stacks.append(stack_id)
+            # Only sync a parent whose members we actually rotated above.
+            parent_stacks_to_sync.add(parent_stack_id)
+
+        # Sync the rotated material onto every parent stack — the cluster
+        # stack for default master/worker nodegroups, and each non-default
+        # nodepool's own stack — so nodes ADDED later (resize / autoscale /
+        # replacement) render the NEW service account keys instead of the
+        # pre-rotation ones.
+        #
+        # Mirror _get_nested_ca_rotation_params exactly: these are the member
+        # resource_def inputs, so writing the same values a parent already
+        # pushed to its members re-renders every existing member to a state it
+        # already holds → no diff, no rolling update, no restart.  Only newly
+        # added members (rendered after this) pick up the rotated keys.
+        #
+        # Best-effort and per-stack isolated: a failure only leaves the
+        # pre-existing stale-key behaviour for that pool's future nodes and
+        # must never fail the rotation, which already succeeded on every
+        # existing node.  Runs AFTER the direct child updates settle — Heat
+        # rejects a parent update while one of its nested members is still
+        # *_IN_PROGRESS.
+        cluster_sync_params = {
+            "ca_rotation_id": heat_params["ca_rotation_id"],
+            "kube_service_account_key": heat_params["kube_service_account_key"],
+            "kube_service_account_private_key": heat_params[
+                "kube_service_account_private_key"
+            ],
+            "is_upgrade": False,
+            "is_resize": False,
+            "timestamp_upgrade": heat_params["timestamp_upgrade"],
+        }
+        if "ca_key" in heat_params:
+            cluster_sync_params["ca_key"] = heat_params["ca_key"]
+        if updated_member_stacks:
+            self._wait_for_stacks_settled(osc, updated_member_stacks)
+        for parent_stack_id in parent_stacks_to_sync:
+            try:
+                osc.heat().stacks.update(
+                    parent_stack_id,
+                    existing=True,
+                    parameters=cluster_sync_params,
+                    disable_rollback=True,
+                    timeout_mins=self._get_update_timeout(),
+                )
+            except Exception as e:
+                LOG.warning(
+                    "CA rotation: failed to sync rotated parameters onto "
+                    "stack %s for cluster %s (nodes added to this nodegroup "
+                    "later may render stale service account keys): %s",
+                    parent_stack_id, cluster.uuid, e,
+                )
+
+    def _wait_for_stacks_settled(self, osc, stack_ids,
+                                 timeout_s=1800, interval_s=10):
+        """Block until none of the given stacks are in a *_IN_PROGRESS state.
+
+        Used after the direct child-stack CA-rotation updates so the follow-up
+        cluster (parent) stack sync is not rejected for touching a nested
+        member that is still updating.  Best-effort: on timeout we log and
+        return, leaving the caller to proceed (the sync is itself wrapped in a
+        best-effort try/except).
+        """
+        deadline = time.time() + timeout_s
+        pending = set(stack_ids)
+        while pending and time.time() < deadline:
+            for sid in list(pending):
+                try:
+                    status = osc.heat().stacks.get(sid).stack_status
+                except Exception:
+                    # Stack vanished or transient API error: stop waiting on it.
+                    pending.discard(sid)
+                    continue
+                if not status.endswith("_IN_PROGRESS"):
+                    pending.discard(sid)
+            if pending:
+                time.sleep(interval_s)
+        if pending:
+            LOG.warning(
+                "CA rotation: timed out waiting for member stacks to settle "
+                "before cluster-stack sync: %s", ", ".join(sorted(pending)))
 
     def _get_ca_rotation_params(self, context, cluster):
         heat_params = {
