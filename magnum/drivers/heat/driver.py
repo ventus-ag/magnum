@@ -232,20 +232,6 @@ class HeatDriver(driver.Driver):
         params["is_resize"] = is_resize
         return params
 
-    def _get_ca_rotation_batch_size(self, cluster):
-        # CA rotation performs a hard certificate swap — a node with new
-        # certs cannot communicate with nodes still using the old CA.
-        # All members of each resource group must rotate in a single
-        # batch.  Since kube_masters and kube_minions share one
-        # update_max_batch_size parameter, use the largest group size
-        # so both groups fit in one batch.
-        max_count = 1
-        for ng in cluster.nodegroups:
-            if ng.is_default:
-                count = getattr(ng, "node_count", 1) or 1
-                max_count = max(max_count, count)
-        return max_count
-
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
         env_abs_paths = [os.path.join(template_dir, f) for f in env_rel_paths]
@@ -1018,25 +1004,30 @@ class KubernetesDriver(HeatDriver):
             osc.heat().stacks.get(cluster.stack_id).parameters.copy()
         )
 
-        # Ensure upgrade/resize conditional resources don't re-trigger.
-        heat_params["is_upgrade"] = False
-        heat_params["is_resize"] = False
+        # Bump timestamp_upgrade so each per-node SoftwareDeployment re-fires
+        # (its inputs change).  is_upgrade/is_resize are forced off by
+        # _get_nested_ca_rotation_params so upgrade/resize conditional
+        # resources don't re-trigger.
         heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
-        heat_params["update_max_batch_size"] = self._get_ca_rotation_batch_size(cluster)
 
-        # Update ALL nodegroups' MEMBER (child) stacks DIRECTLY — full template
-        # push + mark-unhealthy — so every master and worker rotates
-        # SIMULTANEOUSLY, and so an old cluster's bootstrap scripts are
-        # migrated to the current template on a plain ca-rotate.
+        # Params-only, direct-child token bump.  Update each nodegroup's
+        # MEMBER (per-node) stacks DIRECTLY with only the rotation parameters
+        # (existing: True, NO template push, NO mark_unhealthy):
         #
-        # Do NOT route this through the cluster/parent stack: a parent
-        # ResourceGroup update serialises masters before minions (the minion
-        # member stacks depend on the master IP), so the masters block at the
-        # reconciler's dual-CA barrier waiting for workers Heat has not
-        # triggered yet — a guaranteed deadlock.  Direct child updates fire
-        # every node at once, which is what the hard CA swap requires.  The
-        # cluster stack is left untouched (ca_rotation_id is cleared to '' on
-        # the next op anyway and the SA keys are masked there).
+        #   * every master and worker rotates SIMULTANEOUSLY.  A parent
+        #     ResourceGroup update serialises masters before minions (the
+        #     minion member stacks depend on the master IP), so masters would
+        #     block at the reconciler's dual-CA barrier waiting for workers
+        #     Heat has not triggered yet — a guaranteed deadlock.  Direct
+        #     child updates fire every node at once, which the hard CA swap
+        #     requires.
+        #   * the existing *_config_deployment re-fires via its
+        #     actions:["CREATE","UPDATE"] because the CA_ROTATION_ID /
+        #     TIMESTAMP_UPGRADE / KUBE_SERVICE_ACCOUNT_* inputs change — no
+        #     SoftwareConfig recreate and no parent-stack template desync.
+        #
+        # Bootstrap-script / template migration deliberately does NOT happen
+        # on rotation; it rides on upgrade (full template) or reconfigure.
         for nodegroup in cluster.nodegroups:
             if not nodegroup.stack_id:
                 continue
@@ -1060,39 +1051,21 @@ class KubernetesDriver(HeatDriver):
                 )
                 continue
 
-            # Resolve the correct child template.  Non-default nodegroups
-            # may use a different driver (cross-OS nodepool support).
-            stack_fields = self._get_nested_stack_update_template_fields(
-                context, nodegroup
-            )
-
-            config_name = (
-                "master_config" if nodegroup.role == "master" else "node_config"
-            )
-            deploy_name = config_name + "_deployment"
             for stack_id in stack_ids:
-                for rn in (config_name, deploy_name):
-                    try:
-                        osc.heat().resources.mark_unhealthy(
-                            stack_id, rn, True, "pre-template-migration"
-                        )
-                    except Exception:
-                        pass
-                nodegroup_fields = {
-                    **stack_fields,
-                    "existing": True,
-                    "parameters": self._get_merged_stack_parameters(
-                        osc,
-                        stack_id,
-                        self._get_nested_ca_rotation_params(
-                            nodegroup, heat_params, cluster_stack_params
-                        ),
-                        template=stack_fields["template"],
+                merged = self._get_merged_stack_parameters(
+                    osc,
+                    stack_id,
+                    self._get_nested_ca_rotation_params(
+                        nodegroup, heat_params, cluster_stack_params
                     ),
-                    "timeout_mins": self._get_update_timeout(),
-                    "disable_rollback": True,
-                }
-                osc.heat().stacks.update(stack_id, **nodegroup_fields)
+                )
+                osc.heat().stacks.update(
+                    stack_id,
+                    existing=True,
+                    parameters=merged,
+                    timeout_mins=self._get_update_timeout(),
+                    disable_rollback=True,
+                )
 
         LOG.info("Triggered CA rotation of cluster %s", cluster.uuid)
 
