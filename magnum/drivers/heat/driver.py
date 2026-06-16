@@ -1075,16 +1075,22 @@ class KubernetesDriver(HeatDriver):
         """
         stack_id = nodegroup.stack_id
 
-        # Use the correct driver/template — non-default nodepools may run a
-        # different OS (cross-OS nodepool support).
+        # Re-extract the full template AND its freshly rendered parameters,
+        # exactly like upgrade_cluster.  Using the EXTRACTED params (not just
+        # the stack's stored params) is what makes BOTH ResourceGroups
+        # (kube_masters AND kube_minions) re-render.  Pushing only the rotation
+        # overrides over the stored params left the minions RG unchanged, so
+        # workers kept stale post-upgrade values (is_upgrade=true,
+        # ca_rotation_id="").  Non-default nodepools may run a different OS
+        # (cross-OS nodepool support), hence the per-nodegroup extraction.
         if nodegroup and not nodegroup.is_default:
-            template_path, _, env_files = (
+            template_path, heat_params, env_files = (
                 self._extract_template_definition_for_nodegroup(
                     context, cluster, nodegroup
                 )
             )
         else:
-            template_path, _, env_files = self._extract_template_definition(
+            template_path, heat_params, env_files = self._extract_template_definition(
                 context, cluster
             )
 
@@ -1092,18 +1098,32 @@ class KubernetesDriver(HeatDriver):
         environment_files, env_map = self._get_env_files(template_path, env_files)
         tpl_files.update(env_map)
 
-        # Start from the stack's current parameters so existing values are
-        # preserved, overlay the rotation params, then filter to the new
-        # template so any parameter the template doesn't declare (e.g. ca_key
-        # on a stack without cert_manager_api) can't raise "Parameters not
-        # defined".
+        # Overlay the rotation params (fresh ca_rotation_id, regenerated
+        # service account keys, is_upgrade/is_resize False, fresh timestamp,
+        # hard-swap batch) so they win over the extracted defaults.
+        heat_params.update(rotation_params)
+
+        fields = {
+            "template": template,
+            "environment_files": environment_files,
+            "files": tpl_files,
+            "existing": True,
+            "parameters": heat_params,
+            "timeout_mins": self._get_update_timeout(),
+            "disable_rollback": True,
+        }
+
+        # Merge current stack params (filtered to the new template) UNDER the
+        # extracted + rotation params, then drop immutable volume params and
+        # anything the template doesn't declare (e.g. ca_key on a stack without
+        # cert_manager_api) — same sequence as upgrade_cluster.
         current_parameters = heat_tdef.omit_masked_heat_parameters(
             osc.heat().stacks.get(stack_id).parameters.copy()
         )
-        current_parameters.update(rotation_params)
-
-        # Volume types/sizes are immutable on in-use volumes — drop them so
-        # Heat preserves existing values via existing:True.
+        current_parameters = self._filter_params_for_template(
+            current_parameters, template
+        )
+        current_parameters.update(fields["parameters"])
         for immutable_param in (
             "docker_volume_type",
             "etcd_volume_type",
@@ -1113,20 +1133,10 @@ class KubernetesDriver(HeatDriver):
             "boot_volume_size",
         ):
             current_parameters.pop(immutable_param, None)
-
         current_parameters = self._filter_params_for_template(
             current_parameters, template
         )
-
-        fields = {
-            "template": template,
-            "environment_files": environment_files,
-            "files": tpl_files,
-            "existing": True,
-            "parameters": current_parameters,
-            "timeout_mins": self._get_update_timeout(),
-            "disable_rollback": True,
-        }
+        fields["parameters"] = current_parameters
 
         # Mark SoftwareConfig resources unhealthy so Heat recreates them
         # instead of failing on stale config references during template
