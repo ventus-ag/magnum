@@ -1011,85 +1011,128 @@ class KubernetesDriver(HeatDriver):
         return current_parameters
 
     def rotate_ca_certificate(self, context, cluster):
-        osc = clients.OpenStackClients(context)
+        osc = self._get_cluster_osc(context, cluster)
 
-        heat_params = self._get_ca_rotation_params(context, cluster)
-        cluster_stack_params = heat_tdef.omit_masked_heat_parameters(
-            osc.heat().stacks.get(cluster.stack_id).parameters.copy()
+        # New rotation material: fresh ca_rotation_id, a regenerated service
+        # account keypair, and (when cert_manager_api is on) the decrypted CA
+        # key.  These flow into every node's SoftwareDeployment input_values
+        # and re-fire the reconciler, which performs the dual-CA rotation.
+        rotation_params = self._get_ca_rotation_params(context, cluster)
+        rotation_params["is_upgrade"] = False
+        rotation_params["is_resize"] = False
+        rotation_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
+
+        # Drive the rotation through the SAME parent-stack path as upgrade
+        # (full template + mark unhealthy + merged params) rather than
+        # updating the nested member stacks directly.  Two reasons:
+        #
+        #   1. Migration — pushing the full template re-applies the current
+        #      bootstrap scripts, so an old cluster created from an older
+        #      template is migrated to the new structure by a plain ca-rotate
+        #      (exactly like upgrade does).
+        #   2. Convergence — updating Heat-owned nested member stacks
+        #      out-of-band desynchronises the parent ResourceGroup, which then
+        #      wedges the NEXT parent-driven operation (an upgrade hangs
+        #      without ever re-triggering the node's SoftwareDeployment).
+        #      Going through the parent keeps parent<->child ownership intact
+        #      so create -> rotate -> upgrade -> resize all converge.
+        #
+        # The default master + worker nodegroups share the cluster stack; each
+        # non-default nodepool has its own stack.  Update each distinct stack
+        # once.
+        updated_stacks = set()
+        for nodegroup in cluster.nodegroups:
+            if not nodegroup.stack_id or nodegroup.stack_id in updated_stacks:
+                continue
+            updated_stacks.add(nodegroup.stack_id)
+
+            # Hard CA swap: a node on the new CA cannot talk to a node still on
+            # the old one, so every member of a stack must rotate in a single
+            # batch.  Sub-batching would deadlock the reconciler's cluster-wide
+            # barrier (early batch waits for a later batch Heat hasn't fired).
+            if nodegroup.is_default:
+                batch = self._get_ca_rotation_batch_size(cluster)
+            else:
+                batch = getattr(nodegroup, "node_count", 1) or 1
+            rotation_params["update_max_batch_size"] = batch
+
+            self._apply_ca_rotation_template_update(
+                context, osc, cluster, nodegroup, dict(rotation_params)
+            )
+
+        LOG.info("Triggered CA rotation of cluster %s", cluster.uuid)
+
+    def _apply_ca_rotation_template_update(
+        self, context, osc, cluster, nodegroup, rotation_params
+    ):
+        """Push the full template to a nodegroup's stack with rotation params.
+
+        Mirrors the upgrade path (full template, mark SoftwareConfig unhealthy,
+        merge current params filtered to the template) but flips
+        ca_rotation_id / service account keys instead of kube_tag and keeps
+        is_upgrade/is_resize False.  Driving the parent stack — not the nested
+        member stacks — keeps Heat's parent<->child ownership consistent.
+        """
+        stack_id = nodegroup.stack_id
+
+        # Use the correct driver/template — non-default nodepools may run a
+        # different OS (cross-OS nodepool support).
+        if nodegroup and not nodegroup.is_default:
+            template_path, _, env_files = (
+                self._extract_template_definition_for_nodegroup(
+                    context, cluster, nodegroup
+                )
+            )
+        else:
+            template_path, _, env_files = self._extract_template_definition(
+                context, cluster
+            )
+
+        tpl_files, template = template_utils.get_template_contents(template_path)
+        environment_files, env_map = self._get_env_files(template_path, env_files)
+        tpl_files.update(env_map)
+
+        # Start from the stack's current parameters so existing values are
+        # preserved, overlay the rotation params, then filter to the new
+        # template so any parameter the template doesn't declare (e.g. ca_key
+        # on a stack without cert_manager_api) can't raise "Parameters not
+        # defined".
+        current_parameters = heat_tdef.omit_masked_heat_parameters(
+            osc.heat().stacks.get(stack_id).parameters.copy()
+        )
+        current_parameters.update(rotation_params)
+
+        # Volume types/sizes are immutable on in-use volumes — drop them so
+        # Heat preserves existing values via existing:True.
+        for immutable_param in (
+            "docker_volume_type",
+            "etcd_volume_type",
+            "boot_volume_type",
+            "docker_volume_size",
+            "etcd_volume_size",
+            "boot_volume_size",
+        ):
+            current_parameters.pop(immutable_param, None)
+
+        current_parameters = self._filter_params_for_template(
+            current_parameters, template
         )
 
-        # Ensure upgrade/resize conditional resources don't re-trigger.
-        heat_params["is_upgrade"] = False
-        heat_params["is_resize"] = False
-        heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
-        heat_params["update_max_batch_size"] = self._get_ca_rotation_batch_size(cluster)
+        fields = {
+            "template": template,
+            "environment_files": environment_files,
+            "files": tpl_files,
+            "existing": True,
+            "parameters": current_parameters,
+            "timeout_mins": self._get_update_timeout(),
+            "disable_rollback": True,
+        }
 
-        # Do NOT update the cluster stack — even a parameter-only update
-        # propagates to ResourceGroup members and triggers a rolling
-        # update that conflicts with our direct child-stack updates
-        # below.  The ca_rotation_id is cleared to '' on the next
-        # operation anyway, and the service account keys are hidden
-        # (masked) so they can't be read back from the cluster stack.
-
-        # Update ALL nodegroups' child stacks directly so masters and
-        # workers rotate simultaneously instead of sequentially through
-        # the cluster stack's ResourceGroup rolling update.
-        for nodegroup in cluster.nodegroups:
-            if not nodegroup.stack_id:
-                continue
-
-            # For default nodegroups, child stacks live inside the
-            # cluster stack.  For non-default, they're in the
-            # nodegroup's own stack.
-            if nodegroup.is_default:
-                parent_stack_id = cluster.stack_id
-            else:
-                parent_stack_id = nodegroup.stack_id
-
-            stack_ids = self._get_nested_stack_ids(osc, parent_stack_id, nodegroup)
-            if not stack_ids:
-                LOG.warning(
-                    "Could not resolve %s member stacks for "
-                    "nodegroup %s in cluster %s during CA rotation",
-                    nodegroup.role,
-                    nodegroup.uuid,
-                    cluster.uuid,
-                )
-                continue
-
-            # Resolve the correct child template.  Non-default nodegroups
-            # may use a different driver (cross-OS nodepool support).
-            stack_fields = self._get_nested_stack_update_template_fields(
-                context, nodegroup
-            )
-
-            config_name = (
-                "master_config" if nodegroup.role == "master" else "node_config"
-            )
-            deploy_name = config_name + "_deployment"
-            for stack_id in stack_ids:
-                for rn in (config_name, deploy_name):
-                    try:
-                        osc.heat().resources.mark_unhealthy(
-                            stack_id, rn, True, "pre-template-migration"
-                        )
-                    except Exception:
-                        pass
-                nodegroup_fields = {
-                    **stack_fields,
-                    "existing": True,
-                    "parameters": self._get_merged_stack_parameters(
-                        osc,
-                        stack_id,
-                        self._get_nested_ca_rotation_params(
-                            nodegroup, heat_params, cluster_stack_params
-                        ),
-                        template=stack_fields["template"],
-                    ),
-                    "timeout_mins": self._get_update_timeout(),
-                    "disable_rollback": True,
-                }
-                osc.heat().stacks.update(stack_id, **nodegroup_fields)
+        # Mark SoftwareConfig resources unhealthy so Heat recreates them
+        # instead of failing on stale config references during template
+        # migration, and so the reconciler re-fires on every node.
+        self._prepare_stack_for_template_update(osc, stack_id)
+        osc.heat().stacks.update(stack_id, **fields)
 
     def _get_ca_rotation_params(self, context, cluster):
         heat_params = {
