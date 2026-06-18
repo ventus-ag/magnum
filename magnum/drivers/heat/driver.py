@@ -641,6 +641,21 @@ class HeatDriver(driver.Driver):
             nodegroup=nodegroup,
         )
 
+        # Refresh ca_key from the cert manager when adding masters.  The parent
+        # stack still stores the pre-rotation ca_key (a CA rotation only updates
+        # the per-node member stacks), so without this a master added after a
+        # rotation renders the stale ca_key while fetching the regenerated
+        # ca.crt live from Magnum -- a keypair mismatch that crashes
+        # kube-controller-manager and wedges the node NotReady.  Existing
+        # masters already hold this exact value (it was pushed to their member
+        # stacks during the rotation), so under existing:True their input is
+        # unchanged and their deployments are NOT re-fired; only the new member
+        # picks it up.  See _fetch_ca_key.
+        if nodegroup and nodegroup.role == "master" and nodegroup.node_count > current_node_count:
+            ca_key = self._fetch_ca_key(context, cluster)
+            if ca_key:
+                scale_params["ca_key"] = ca_key
+
         # Resize is a parameters-only Heat update (matches the legacy ussuri
         # behaviour).  We deliberately do NOT re-push the template, mark any
         # SoftwareConfig unhealthy, or change ca_rotation_id / is_resize /
@@ -1088,9 +1103,35 @@ class KubernetesDriver(HeatDriver):
         # always agree on it. The key is preserved by simply omitting it from
         # the per-node rotation params below.
 
+        ca_key = self._fetch_ca_key(context, cluster)
+        if ca_key:
+            heat_params["ca_key"] = ca_key
+
+        return heat_params
+
+    def _fetch_ca_key(self, context, cluster):
+        """Return the cluster CA private key (newline-escaped) from the cert
+        manager, or None when cert_manager_api is disabled / unavailable.
+
+        cert_manager_api defaults to true: the reconciler-driven clusters always
+        run the in-cluster cert API manager, which needs the CA private key on
+        every master to sign kubelet-serving CSRs.
+
+        This is the single source of the current CA key. After a CA rotation the
+        conductor regenerates the cluster CA in the cert manager (Barbican), but
+        the parent cluster/nodegroup stack still stores the PRE-rotation ca_key
+        (rotation updates the per-node member stacks directly, never the parent).
+        A master added later renders ca_key from that stale parent value while
+        fetching the regenerated ca.crt live from Magnum — a CA keypair mismatch
+        that crashes kube-controller-manager (cluster-signing-cert/key) and
+        leaves the node NotReady. Callers refresh ca_key from here so newly added
+        masters get the current key.
+        """
         cluster_labels = cluster.labels or {}
-        cert_manager_api = cluster_labels.get("cert_manager_api")
-        if six.text_type(cert_manager_api).lower() == "true":
+        cert_manager_api = cluster_labels.get("cert_manager_api", "true")
+        if six.text_type(cert_manager_api).lower() != "true":
+            return None
+        try:
             ca_cert = cert_manager.get_cluster_ca_certificate(cluster, context=context)
             ca_key_password = ca_cert.get_private_key_passphrase()
             if six.PY3 and isinstance(ca_key_password, six.text_type):
@@ -1099,9 +1140,14 @@ class KubernetesDriver(HeatDriver):
                 ).decode()
             else:
                 ca_key = x509.decrypt_key(ca_cert.get_private_key(), ca_key_password)
-            heat_params["ca_key"] = ca_key.replace("\n", "\\n")
-
-        return heat_params
+            return ca_key.replace("\n", "\\n")
+        except Exception as exc:
+            LOG.warning(
+                "Could not fetch current CA key for cluster %s: %s",
+                cluster.uuid,
+                exc,
+            )
+            return None
 
     def upgrade_cluster(
         self,

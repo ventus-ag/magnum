@@ -836,12 +836,37 @@ class TestHeatDriverResizeFlags(base.TestCase):
         driver = DummyKubernetesDriver()
         cluster = mock.MagicMock(uuid='cluster-uuid', labels={})
 
-        params = driver._get_ca_rotation_params(mock.sentinel.ctx, cluster)
+        with mock.patch.object(driver, '_fetch_ca_key', return_value=None):
+            params = driver._get_ca_rotation_params(mock.sentinel.ctx, cluster)
 
         self.assertIn('ca_rotation_id', params)
         self.assertTrue(params['ca_rotation_id'])
         self.assertNotIn('kube_service_account_key', params)
         self.assertNotIn('kube_service_account_private_key', params)
+
+    @patch('magnum.drivers.heat.driver.x509.decrypt_key')
+    @patch('magnum.drivers.heat.driver.cert_manager.get_cluster_ca_certificate')
+    def test_fetch_ca_key_defaults_enabled(self, mock_get_ca, mock_decrypt):
+        # cert_manager_api absent => treated as enabled, so a node added later
+        # always renders the CURRENT CA key and never mismatches the live ca.crt.
+        driver = DummyKubernetesDriver()
+        ca_cert = mock.MagicMock()
+        ca_cert.get_private_key_passphrase.return_value = b'pw'
+        mock_get_ca.return_value = ca_cert
+        mock_decrypt.return_value = 'KEY\nLINE2'
+        cluster = mock.MagicMock(uuid='cluster-uuid', labels={})
+
+        ca_key = driver._fetch_ca_key(mock.sentinel.ctx, cluster)
+
+        self.assertEqual('KEY\\nLINE2', ca_key)
+        mock_get_ca.assert_called_once()
+
+    def test_fetch_ca_key_disabled_when_label_false(self):
+        driver = DummyKubernetesDriver()
+        cluster = mock.MagicMock(uuid='cluster-uuid',
+                                 labels={'cert_manager_api': 'false'})
+
+        self.assertIsNone(driver._fetch_ca_key(mock.sentinel.ctx, cluster))
 
     @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
     def test_resize_stack_clears_stale_ca_rotation_id(self, mock_osc_cls):

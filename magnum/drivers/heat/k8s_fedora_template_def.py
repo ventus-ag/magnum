@@ -112,7 +112,11 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                                       **kwargs)
 
     def _set_cert_manager_params(self, context, cluster, extra_params):
-        cert_manager_api = cluster.labels.get('cert_manager_api')
+        # Default to enabled: reconciler-driven clusters always run the
+        # in-cluster cert API manager, which needs the CA private key (ca_key)
+        # on every master to sign kubelet-serving CSRs. Populating ca_key here
+        # from the cert manager also keeps it current after a CA rotation.
+        cert_manager_api = cluster.labels.get('cert_manager_api', 'true')
         if strutils.bool_from_string(cert_manager_api):
             extra_params['cert_manager_api'] = cert_manager_api
             ca_cert = cert_manager.get_cluster_ca_certificate(cluster,
