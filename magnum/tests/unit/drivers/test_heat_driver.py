@@ -824,9 +824,24 @@ class TestHeatDriverResizeFlags(base.TestCase):
 
         self.assertEqual('trustee-user', nested['trustee_user_id'])
         self.assertEqual('https://keystone.example/v3', nested['auth_url'])
-        self.assertEqual('private-key',
-                         nested['kube_service_account_private_key'])
+        # CA rotation must NOT touch the service-account keypair: it is omitted
+        # from the per-node params so a params-only `existing=True` update makes
+        # Heat preserve each member's current value (keeping it in lockstep with
+        # the unchanged parent stack, so masters added later still match).
+        self.assertNotIn('kube_service_account_key', nested)
+        self.assertNotIn('kube_service_account_private_key', nested)
         self.assertNotIn('trustee_password', nested)
+
+    def test_get_ca_rotation_params_does_not_rotate_sa_keys(self):
+        driver = DummyKubernetesDriver()
+        cluster = mock.MagicMock(uuid='cluster-uuid', labels={})
+
+        params = driver._get_ca_rotation_params(mock.sentinel.ctx, cluster)
+
+        self.assertIn('ca_rotation_id', params)
+        self.assertTrue(params['ca_rotation_id'])
+        self.assertNotIn('kube_service_account_key', params)
+        self.assertNotIn('kube_service_account_private_key', params)
 
     @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
     def test_resize_stack_clears_stale_ca_rotation_id(self, mock_osc_cls):

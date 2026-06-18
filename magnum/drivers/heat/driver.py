@@ -918,12 +918,14 @@ class KubernetesDriver(HeatDriver):
     def _get_nested_ca_rotation_params(
         self, nodegroup, heat_params, cluster_stack_params=None
     ):
+        # The service-account keypair is intentionally absent: CA rotation must
+        # leave it untouched (see _get_ca_rotation_params). Omitting it from a
+        # params-only `existing=True` update makes Heat preserve each member's
+        # current value, keeping every node's SA key in lockstep with the
+        # unchanged parent stack. The deployment still re-fires because
+        # ca_rotation_id and timestamp_upgrade change.
         nested_params = {
             "ca_rotation_id": heat_params["ca_rotation_id"],
-            "kube_service_account_key": heat_params["kube_service_account_key"],
-            "kube_service_account_private_key": heat_params[
-                "kube_service_account_private_key"
-            ],
             "is_upgrade": False,
             "is_resize": False,
             "timestamp_upgrade": heat_params["timestamp_upgrade"],
@@ -939,8 +941,6 @@ class KubernetesDriver(HeatDriver):
                 "verify_ca",
                 "cluster_uuid",
                 "tls_disabled",
-                "kube_service_account_key",
-                "kube_service_account_private_key",
             ):
                 value = heat_tdef.get_unmasked_heat_parameter(cluster_stack_params, key)
                 if value is not None:
@@ -1023,8 +1023,9 @@ class KubernetesDriver(HeatDriver):
         #     requires.
         #   * the existing *_config_deployment re-fires via its
         #     actions:["CREATE","UPDATE"] because the CA_ROTATION_ID /
-        #     TIMESTAMP_UPGRADE / KUBE_SERVICE_ACCOUNT_* inputs change — no
-        #     SoftwareConfig recreate and no parent-stack template desync.
+        #     TIMESTAMP_UPGRADE inputs change — no SoftwareConfig recreate and
+        #     no parent-stack template desync.  (The SA keypair is intentionally
+        #     left unchanged; see _get_nested_ca_rotation_params.)
         #
         # Bootstrap-script / template migration deliberately does NOT happen
         # on rotation; it rides on upgrade (full template) or reconfigure.
@@ -1074,13 +1075,18 @@ class KubernetesDriver(HeatDriver):
             "ca_rotation_id": short_id.generate_id(),
         }
 
-        csr_keys = x509.generate_csr_and_key("Kubernetes Service Account")
-        heat_params["kube_service_account_key"] = csr_keys["public_key"].replace(
-            "\n", "\\n"
-        )
-        heat_params["kube_service_account_private_key"] = csr_keys[
-            "private_key"
-        ].replace("\n", "\\n")
+        # NOTE: CA rotation deliberately does NOT rotate the service-account
+        # signing keypair. The SA key is an independent trust root from the
+        # cluster PKI CA, and rotating it here breaks masters added AFTER a
+        # rotation: a new master renders the SA key from the parent cluster
+        # stack (never updated by the direct-child rotation), so a freshly
+        # generated key would leave it with a different signing/verification
+        # key than the rest of the cluster — its apiserver rejects every
+        # service-account token (flannel/CSI/etc. 401), the CNI never
+        # initializes, and the node stays NotReady. Keeping the SA key stable
+        # (kubeadm's `certs renew` does the same) means parent and all members
+        # always agree on it. The key is preserved by simply omitting it from
+        # the per-node rotation params below.
 
         cluster_labels = cluster.labels or {}
         cert_manager_api = cluster_labels.get("cert_manager_api")
