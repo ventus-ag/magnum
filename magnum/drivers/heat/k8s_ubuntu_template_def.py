@@ -69,6 +69,7 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
         extra_params['cloud_provider_enabled'] = cloud_provider_enabled
 
         label_list = ['kube_tag', 'container_infra_prefix',
+                      'heat_container_agent_tag',
                       'availability_zone',
                       'container_runtime',
                       'manila_csi_enabled',

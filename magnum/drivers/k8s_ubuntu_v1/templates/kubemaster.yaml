@@ -309,7 +309,7 @@ parameters:
   cert_manager_api:
     type: boolean
     description: true if the kubernetes cert api manager should be enabled
-    default: false
+    default: true
 
   pods_network_cidr:
     type: string
@@ -365,6 +365,7 @@ parameters:
   heat_container_agent_tag:
     type: string
     description: tag of the heat_container_agent system container
+    default: victoria-stable-1
 
   keystone_auth_enabled:
     type: boolean
