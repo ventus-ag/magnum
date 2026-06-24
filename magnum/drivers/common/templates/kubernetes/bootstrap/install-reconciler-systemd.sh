@@ -28,6 +28,15 @@ TimeoutStopSec=120
 KillMode=mixed
 KillSignal=SIGTERM
 
+# Cgroup memory backstop. kube-apiserver/etcd/controller/kubelet run as their own
+# systemd services (separate cgroups), so capping the reconciler tree here keeps
+# a runaway Pulumi/Helm run from starving the control plane into a node-wide OOM.
+# MemoryHigh is a soft limit: the kernel throttles + reclaims as the cgroup nears
+# it rather than killing. 60% of RAM leaves comfortable headroom once parallelism
+# and GOMEMLIMIT (set by the launcher) keep steady-state usage well below this.
+MemoryAccounting=yes
+MemoryHigh=60%
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -62,6 +71,11 @@ KillSignal=SIGTERM
 Nice=15
 CPUWeight=20
 CPUQuota=50%
+
+# Same cgroup memory backstop as the run-once unit (see note there): keep a
+# runaway periodic Pulumi/Helm run from OOM-ing the node's control plane.
+MemoryAccounting=yes
+MemoryHigh=60%
 EOF
 
 cat <<EOF | $ssh_cmd "cat > /etc/systemd/system/magnum-reconcile.timer.tmp"

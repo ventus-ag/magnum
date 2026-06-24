@@ -18,14 +18,14 @@ esac
 
 ssh_cmd="ssh -F /srv/magnum/.ssh/config root@localhost"
 
-# Reconciler defaults — applied when Heat template does not set explicit values.
-# CI updates the version on each release. SHA256 is downloaded automatically
-# from the release alongside the binary.
-RECONCILER_DEFAULT_VERSION="v1.0.0"
-RECONCILER_DEFAULT_REPOSITORY="https://github.com/ventus-ag/magnum-bootstrap"
-RECONCILER_DEFAULT_BINARY_URL="${RECONCILER_DEFAULT_REPOSITORY}/releases/download/${RECONCILER_DEFAULT_VERSION}/bootstrap"
-RECONCILER_VERSION="${RECONCILER_VERSION:-${RECONCILER_DEFAULT_VERSION}}"
-RECONCILER_BINARY_URL="${RECONCILER_BINARY_URL:-${RECONCILER_DEFAULT_BINARY_URL}}"
+# Reconciler delivery — no hardcoded version here. When neither RECONCILER_VERSION
+# nor RECONCILER_BINARY_URL is set (the default), the launcher auto-resolves the
+# latest published release on every run and upgrades in place, silently falling
+# back to the currently-installed binary on any failure. Setting RECONCILER_VERSION
+# (or RECONCILER_BINARY_URL) pins an exact build and disables auto-upgrade. The
+# last-resort fallback version lives inside install-reconciler-launcher.sh.
+RECONCILER_VERSION="${RECONCILER_VERSION:-}"
+RECONCILER_BINARY_URL="${RECONCILER_BINARY_URL:-}"
 RECONCILER_BINARY_URL_SHA256="${RECONCILER_BINARY_URL_SHA256:-}"
 RECONCILER_LOCK_TIMEOUT_SECONDS="${RECONCILER_LOCK_TIMEOUT_SECONDS:-900}"
 # Overall reconcile timeout (seconds). Kept below Heat's stack update_timeout
