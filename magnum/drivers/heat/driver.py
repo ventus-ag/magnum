@@ -149,37 +149,52 @@ class HeatDriver(driver.Driver):
                     )
 
     def _mark_failed_nested_resources_unhealthy(self, osc, stack_id):
-        """Mark FAILED resources in nested stacks as unhealthy.
+        """Mark Octavia resources that crash Heat's datetime comparison.
 
-        When a resource (e.g. a listener or loadbalancer inside api_lb
-        or etcd_lb) has updated_at=None, Octavia's Heat resource plugin
-        crashes on datetime comparison during stack update.  This affects
-        both CREATE_FAILED resources (never created) and resources that
-        were created but never updated.
+        Octavia's Heat resource plugin compares a resource's ``updated_at``
+        during stack update. A resource that is FAILED, or that was created
+        but NEVER updated (``updated_at`` is None), makes that comparison
+        raise ``'<' not supported between instances of 'datetime.datetime'
+        and 'NoneType'`` and fails the whole stack update. On the FIRST
+        update of an old multi-master cluster this hits the per-master LBaaS
+        pool members (api_lb / etcd_lb), which were created once under the
+        legacy templates and have ``updated_at`` None — surfacing as
+        ``resources.kube_masters: resources[1]: '<' not supported ...``.
 
-        Marking them unhealthy tells Heat to recreate them instead of
-        trying to compare against old state.
+        Marking such resources unhealthy tells Heat to RECREATE them instead
+        of diffing against missing/None state. Gating on
+        FAILED-or-updated_at-None is self-limiting: after one successful
+        update the timestamps are set and nothing more is marked, so steady
+        clusters are untouched.
         """
-        try:
-            resources = osc.heat().resources.list(
-                stack_id, nested_depth=2, filters={"status": "FAILED"}
-            )
-        except Exception as e:
-            LOG.warning("Could not list failed resources for stack %s: %s", stack_id, e)
-            return
-
-        # Only Octavia resources have the datetime comparison bug.
+        # Octavia resources are the ones with the datetime(None) comparison
+        # bug. PoolMember is included: each master registers itself to the
+        # api_lb and etcd_lb pools, and those members are exactly what trips
+        # the crash on the first migration update.
         lb_resource_types = (
             "Magnum::Optional::Neutron::LBaaS::LoadBalancer",
             "Magnum::Optional::Neutron::LBaaS::Listener",
             "Magnum::Optional::Neutron::LBaaS::Pool",
+            "Magnum::Optional::Neutron::LBaaS::PoolMember",
             "Magnum::Optional::Neutron::LBaaS::HealthMonitor",
             "Magnum::Optional::Neutron::LBaaS::FloatingIP",
         )
+        # List ALL nested resources (no status filter): the triggering pool
+        # members are CREATE_COMPLETE, not FAILED, so a FAILED-only query
+        # would miss them.
+        try:
+            resources = osc.heat().resources.list(stack_id, nested_depth=2)
+        except Exception as e:
+            LOG.warning("Could not list nested resources for stack %s: %s", stack_id, e)
+            return
+
         for res in resources:
-            if not res.resource_status or "FAILED" not in res.resource_status:
-                continue
             if res.resource_type not in lb_resource_types:
+                continue
+            status = getattr(res, "resource_status", "") or ""
+            updated_at = getattr(res, "updated_time", None)
+            # Only the two conditions that trigger the Octavia datetime crash.
+            if "FAILED" not in status and updated_at is not None:
                 continue
             try:
                 stack_link = [l for l in res.links if l.get("rel") == "stack"]
@@ -191,12 +206,15 @@ class HeatDriver(driver.Driver):
                     res_stack_id,
                     res.resource_name,
                     True,
-                    "pre-update: force recreate of FAILED resource",
+                    "pre-update: force recreate to avoid Octavia datetime(None) compare",
                 )
                 LOG.info(
-                    "Marked %s (%s) in stack %s as unhealthy",
+                    "Marked Octavia resource %s (%s, status=%s, updated_at=%s) "
+                    "in stack %s as unhealthy",
                     res.resource_name,
                     res.resource_type,
+                    status,
+                    updated_at,
                     res_stack_id,
                 )
             except Exception as exc:
