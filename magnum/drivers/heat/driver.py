@@ -271,6 +271,10 @@ class HeatDriver(driver.Driver):
         second such hop and re-introduces the validation failure).  Identical
         content yields an identical alias, so re-running the same upgrade is
         idempotent and does not churn the stored file set.
+
+        Returns ``(template, aliased)`` where ``aliased`` maps each rewritten
+        group name to the original (pre-alias) child key, so the pin step can
+        restore genuine pre-migration content under that key.
         """
         if isinstance(template, dict):
             parsed = copy.deepcopy(template)
@@ -286,6 +290,7 @@ class HeatDriver(driver.Driver):
         }
 
         changed = False
+        aliased = {}
         resources = parsed.get("resources") or {}
         for group_name, child_name in aliases.items():
             group = resources.get(group_name) or {}
@@ -327,6 +332,7 @@ class HeatDriver(driver.Driver):
             resource_def["type"] = alias_ref
             tpl_files[alias_ref] = tpl_files[child_ref]
             tpl_files.pop(child_ref, None)
+            aliased[group_name] = child_ref
             changed = True
             LOG.info(
                 "Rolling-migration alias %s -> %s for group %s",
@@ -336,10 +342,85 @@ class HeatDriver(driver.Driver):
             )
 
         if not changed:
-            return template
+            return template, aliased
         if return_dict:
-            return parsed
-        return yaml.safe_dump(parsed, default_flow_style=False)
+            return parsed, aliased
+        return yaml.safe_dump(parsed, default_flow_style=False), aliased
+
+    @staticmethod
+    def _pin_existing_child_templates_from_members(
+        osc, parent_stack_id, aliased, tpl_files
+    ):
+        """Pin genuine pre-migration child content under the original key.
+
+        The alias step alone only protects clusters that have never had a
+        failed migration attempt.  Once an attempt runs, Heat stores the new
+        (aliased) parent template, but the existing ResourceGroup member
+        definitions in the *nested* group stack still reference the original
+        child filename (e.g. kubemaster.yaml) carrying the old, now-removed
+        properties (heapster_enabled, ...).  Heat's existing-update file merge
+        (``new_files = current_stack.t.files; new_files.update(files)``) keeps
+        whatever content is already stored under that key — which, after a
+        prior attempt, is the *new* child content — so those old member
+        definitions keep failing validation (``Unknown Property
+        heapster_enabled``) and the cluster can never be retried.
+
+        The member stacks themselves are never touched (the update dies during
+        group validation, before any node), so each still stores its original
+        child template.  Fetch one and pin it under the original key, which
+        overrides any polluted content and makes recovery independent of what
+        the stored parent files contain (and of convergence mode).
+        """
+        for group_name, orig_ref in (aliased or {}).items():
+            try:
+                group = osc.heat().resources.get(parent_stack_id, group_name)
+                group_stack_id = getattr(group, "physical_resource_id", None)
+                if not group_stack_id:
+                    continue
+
+                # Pick a member still defined with the original child type
+                # (i.e. not yet migrated); its stored child template is the
+                # authoritative pre-migration content.  Robust to partially
+                # migrated groups, where some members already use the alias.
+                group_tmpl = osc.heat().stacks.template(group_stack_id)
+                member_defs = group_tmpl.get("resources") or {}
+                target = None
+                for mname, mdef in member_defs.items():
+                    if (mdef or {}).get("type") == orig_ref:
+                        target = mname
+                        break
+                if target is None:
+                    continue
+
+                member_stack_id = None
+                for res in osc.heat().resources.list(group_stack_id):
+                    if getattr(res, "resource_name", None) == target:
+                        member_stack_id = getattr(
+                            res, "physical_resource_id", None
+                        )
+                        break
+                if not member_stack_id:
+                    continue
+
+                old_child = osc.heat().stacks.template(member_stack_id)
+                tpl_files[orig_ref] = json.dumps(old_child)
+                LOG.info(
+                    "Pinned pre-migration child %s for group %s from member "
+                    "%s (%s)",
+                    orig_ref,
+                    group_name,
+                    target,
+                    member_stack_id,
+                )
+            except Exception as e:
+                LOG.warning(
+                    "Could not pin pre-migration child for group %s (%s): %s; "
+                    "retry of a previously failed migration may still fail "
+                    "validation",
+                    group_name,
+                    orig_ref,
+                    e,
+                )
 
     @abc.abstractmethod
     def get_template_definition(self):
@@ -1421,8 +1502,17 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files, template = template_utils.get_template_contents(template_path)
         environment_files, env_map = self._get_env_files(template_path, env_files)
         tpl_files.update(env_map)
-        template = self._alias_resource_group_child_templates_for_rolling_migration(
-            template, tpl_files
+        template, aliased = (
+            self._alias_resource_group_child_templates_for_rolling_migration(
+                template, tpl_files
+            )
+        )
+        # Recover clusters already broken by a prior failed migration attempt:
+        # pin the genuine pre-migration child templates (fetched from the
+        # untouched member stacks) under their original keys so stale member
+        # definitions validate against the schema they were created with.
+        self._pin_existing_child_templates_from_members(
+            osc, stack_id, aliased, tpl_files
         )
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
@@ -1655,8 +1745,17 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         tpl_files, template = template_utils.get_template_contents(template_path)
         environment_files, env_map = self._get_env_files(template_path, env_files)
         tpl_files.update(env_map)
-        template = self._alias_resource_group_child_templates_for_rolling_migration(
-            template, tpl_files
+        template, aliased = (
+            self._alias_resource_group_child_templates_for_rolling_migration(
+                template, tpl_files
+            )
+        )
+        # Recover clusters already broken by a prior failed migration attempt:
+        # pin the genuine pre-migration child templates (fetched from the
+        # untouched member stacks) under their original keys so stale member
+        # definitions validate against the schema they were created with.
+        self._pin_existing_child_templates_from_members(
+            osc, stack_id, aliased, tpl_files
         )
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
