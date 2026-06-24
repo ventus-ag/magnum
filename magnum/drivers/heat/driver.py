@@ -12,6 +12,8 @@
 
 import abc
 import collections
+import copy
+import hashlib
 import os
 from pbr.version import SemanticVersion as SV
 import six
@@ -240,6 +242,104 @@ class HeatDriver(driver.Driver):
             env_paths=env_abs_paths, env_list_tracker=environment_files
         )
         return environment_files, env_map
+
+    @staticmethod
+    def _alias_resource_group_child_templates_for_rolling_migration(
+        template, tpl_files
+    ):
+        """Avoid old/new child-template file collisions during migration.
+
+        Heat ResourceGroup rolling updates keep old member definitions for
+        nodes outside the current batch.  Heat merges the update's ``files`` on
+        top of the stack's stored files (``new_files = current_stack.t.files;
+        new_files.update(files)`` for ``existing=True`` updates), so reusing the
+        same child-template filename (kubemaster.yaml/kubeminion.yaml)
+        overwrites the old child content with the new one.  Old member
+        definitions then fail validation against the new child template before
+        their batch is reached (e.g. ``Unknown Property heapster_enabled``).
+
+        Point new ResourceGroup members at a content-stamped alias filename and
+        do not send the new child template under the old name.  The merge keeps
+        each generation's child content under its own key, so non-batch members
+        always validate against the exact content they were created with while
+        updated members validate against the new alias.
+
+        The alias is stamped with a short hash of the new child content rather
+        than a fixed suffix, so every template generation gets a distinct,
+        never-overwritten filename.  This keeps rolling migration correct across
+        repeated property-dropping upgrades (a fixed alias collides again on the
+        second such hop and re-introduces the validation failure).  Identical
+        content yields an identical alias, so re-running the same upgrade is
+        idempotent and does not churn the stored file set.
+        """
+        if isinstance(template, dict):
+            parsed = copy.deepcopy(template)
+            return_dict = True
+        else:
+            parsed = yaml.safe_load(template) or {}
+            return_dict = False
+
+        # group name -> child template filename it must point at
+        aliases = {
+            "kube_masters": "kubemaster.yaml",
+            "kube_minions": "kubeminion.yaml",
+        }
+
+        changed = False
+        resources = parsed.get("resources") or {}
+        for group_name, child_name in aliases.items():
+            group = resources.get(group_name) or {}
+            properties = group.get("properties") or {}
+            resource_def = properties.get("resource_def") or {}
+            child_ref = resource_def.get("type")
+            if not isinstance(child_ref, six.string_types):
+                continue
+            if not child_ref.endswith(child_name):
+                continue
+            if child_ref not in tpl_files:
+                # Group present but its child template is not in the file map.
+                # Should not happen (heatclient keys files and rewrites the
+                # ``type`` to the same absolute URL), but log it so a silent
+                # no-op here does not quietly reintroduce the multi-node
+                # validation failure.
+                LOG.warning(
+                    "Rolling-migration alias: %s for %s not found in template "
+                    "files; skipping (multi-node upgrade may fail validation)",
+                    child_ref,
+                    group_name,
+                )
+                continue
+
+            content = tpl_files[child_ref]
+            raw = content.encode("utf-8") if isinstance(
+                content, six.string_types
+            ) else content
+            digest = hashlib.sha1(raw).hexdigest()[:10]
+            # strip the trailing ".yaml" and stamp with the content hash
+            alias_ref = "%s%s-%s.yaml" % (
+                child_ref[: -len(child_name)],
+                child_name[:-5],
+                digest,
+            )
+            if alias_ref == child_ref:
+                continue
+
+            resource_def["type"] = alias_ref
+            tpl_files[alias_ref] = tpl_files[child_ref]
+            tpl_files.pop(child_ref, None)
+            changed = True
+            LOG.info(
+                "Rolling-migration alias %s -> %s for group %s",
+                child_ref,
+                alias_ref,
+                group_name,
+            )
+
+        if not changed:
+            return template
+        if return_dict:
+            return parsed
+        return yaml.safe_dump(parsed, default_flow_style=False)
 
     @abc.abstractmethod
     def get_template_definition(self):
@@ -1321,6 +1421,9 @@ class FedoraKubernetesDriver(KubernetesDriver):
         tpl_files, template = template_utils.get_template_contents(template_path)
         environment_files, env_map = self._get_env_files(template_path, env_files)
         tpl_files.update(env_map)
+        template = self._alias_resource_group_child_templates_for_rolling_migration(
+            template, tpl_files
+        )
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
         heat_params["update_max_batch_size"] = max_batch_size or 1
@@ -1552,6 +1655,9 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         tpl_files, template = template_utils.get_template_contents(template_path)
         environment_files, env_map = self._get_env_files(template_path, env_files)
         tpl_files.update(env_map)
+        template = self._alias_resource_group_child_templates_for_rolling_migration(
+            template, tpl_files
+        )
 
         self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
         heat_params["update_max_batch_size"] = max_batch_size or 1
