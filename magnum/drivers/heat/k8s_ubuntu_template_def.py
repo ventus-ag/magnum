@@ -81,7 +81,11 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'auto_healing_enabled', 'auto_scaling_enabled',
                       'auto_healing_controller',
                       'min_node_count', 'max_node_count',
-                      'use_podman', 'kube_image_digest']
+                      'use_podman', 'kube_image_digest',
+                      # Reconciler binary pinning (see k8s_fedora_template_def)
+                      'reconciler_version',
+                      'reconciler_binary_url',
+                      'reconciler_binary_url_sha256']
 
         labels = self._get_relevant_labels(cluster, kwargs)
 

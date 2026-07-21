@@ -82,7 +82,16 @@ class K8sFedoraTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                       'auto_healing_controller',
                       'min_node_count', 'max_node_count',
                       'heat_container_agent_tag',
-                      'use_podman', 'kube_image_digest']
+                      'use_podman', 'kube_image_digest',
+                      # Reconciler binary pinning. The templates declare these
+                      # params (default "" -> launcher auto-resolves the latest
+                      # GitHub release), but nothing mapped the labels into
+                      # them, so an explicit pin (e2e staged builds via
+                      # reconciler_binary_url, or an operator version pin)
+                      # silently never reached the nodes.
+                      'reconciler_version',
+                      'reconciler_binary_url',
+                      'reconciler_binary_url_sha256']
 
         labels = self._get_relevant_labels(cluster, kwargs)
 
