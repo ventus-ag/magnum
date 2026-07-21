@@ -2947,9 +2947,20 @@ class HeatPoller(object):
                 if non_default_ngs_exist:
                     status = getattr(fields.ClusterStatus, action + state)
                 else:
-                    # If there are no non-default NGs
-                    # just use the default NG's status.
-                    status = default_ng_status
+                    # Don't assume both default nodegroups share a status.
+                    # A per-nodegroup metadata update (node_labels /
+                    # node_taints) drives the default WORKER's status
+                    # independently, so it can sit at UPDATE_IN_PROGRESS while
+                    # the master is already UPDATE_COMPLETE. Deriving the
+                    # cluster status from the master alone would report
+                    # COMPLETE prematurely, stop the conductor's status poll,
+                    # and strand the worker in UPDATE_IN_PROGRESS forever. Use
+                    # the default nodegroup that actually matches this priority
+                    # state instead (the any() guard above guarantees one).
+                    status = next(
+                        ns.status for ns in ng_statuses
+                        if ns.is_default and ns.status.endswith(state)
+                    )
                 self.cluster.status = status
                 break
 
