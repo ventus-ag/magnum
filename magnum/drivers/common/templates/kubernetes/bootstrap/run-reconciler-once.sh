@@ -175,6 +175,27 @@ fi
 echo "Starting reconciler timer" >&2
 $ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 
+# The reconciler's result file is authoritative over this wrapper's exit code.
+# emit_heat_outputs echoes the payload status ("succeeded" / "failed" / ...).
+if result_status="$(emit_heat_outputs "${result_json}")"; then
+    :
+else
+    result_status=""
+fi
+
+# Trust the result file over the systemd/ssh rc. `systemctl start --wait` runs
+# over a single `ssh root@localhost` connection held open for the WHOLE reconcile.
+# A converging node restarts kube-proxy / kube-apiserver / etcd mid-run (kube-proxy
+# re-flushes iptables, the API/etcd bounce), which drops that held connection, so
+# ssh returns non-zero AFTER the reconciler already wrote status=succeeded on-host
+# (the later `$ssh_cmd cat` reconnects fine and reads it). Without this, a node
+# that reconciled cleanly is reported to Heat as FAILED purely because its own
+# service restart severed the wait-connection. So a succeeded result IS success,
+# even if rc!=0 -- force rc=0 so the self-signal fires and we exit 0.
+if [ "${result_status}" = "succeeded" ]; then
+    rc=0
+fi
+
 # Deliver the Heat completion signal ourselves, with retry, on success.
 #
 # After this script returns the heat-container-agent sends the Heat completion
@@ -184,17 +205,13 @@ $ssh_cmd systemctl restart magnum-reconcile.timer 2>&1 || true
 # it fails ("Response None") and the SoftwareDeployment hangs in
 # *_IN_PROGRESS forever even though the reconcile succeeded.  Re-invoking
 # heat-config-notify in a loop rides out the blip; the agent's later one-shot
-# call then becomes a harmless redundant signal.
+# call then becomes a harmless redundant signal.  (This is now reached for the
+# recovered rc!=0-but-succeeded case above too, which is exactly a blip.)
 if [ "${rc}" -eq 0 ]; then
     signal_heat_with_retry "${result_json}"
 fi
 
 printf '%b\n' "${result_json}"
-if result_status="$(emit_heat_outputs "${result_json}")"; then
-    :
-else
-    result_status=""
-fi
 
 if [ "${result_status}" = "failed" ]; then
     # Let Heat fail via SoftwareConfig error outputs so the deployment
