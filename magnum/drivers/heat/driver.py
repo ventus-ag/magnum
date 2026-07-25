@@ -739,6 +739,103 @@ class HeatDriver(driver.Driver):
                 except Exception:
                     pass
 
+    def _assert_heat_stack_credentials_usable(self, stack_id, cluster=None):
+        """Fail fast when the Heat stack's own credentials are dead.
+
+        Heat stores per-stack credentials (``user_creds``) and authenticates
+        with them to do deferred work -- including processing the deployment
+        signals the nodes send back. Those credentials are a Keystone trust
+        whose trustor is whoever created the cluster, and a trust dies with its
+        trustor. When the creator is a federated user that gets reprovisioned,
+        the trust becomes unusable and Heat answers every signal with
+        ``ResourceFailure: Unauthorized``.
+
+        The failure mode is silent and expensive: the nodes reconcile
+        perfectly and signal, Heat drops every signal, the deployment sits at
+        "Deploy data available", and the stack burns its entire timeout (hours
+        on a multi-node cluster) before being cancelled -- leaving stale
+        convergence locks that fail the next attempt too. Diagnosing it takes a
+        heat-engine traceback; nothing in Magnum or the cluster hints at it.
+        Observed live on golem-ua-05 (upper-austria), whose stack trust had
+        been dead since its federated creator was removed.
+
+        This is deliberately NOT a repair: Magnum cannot mint Heat's trust for
+        it (the trust must be delegated to Heat's own trustee user, and the
+        stored copy is encrypted with Heat's ``auth_encryption_key``, which
+        Magnum does not have). It only converts a multi-hour hang into an
+        immediate, actionable error.
+
+        Magnum's OWN trust is unaffected and already healed separately by
+        ``trust_manager.ensure_trust`` -- the two are independent objects, and
+        repairing one does nothing for the other.
+
+        Requires ``[cluster_heat] heat_db_connection`` (the only way to read
+        ``user_creds``); a no-op without it. Only a definite answer -- the user
+        is gone or disabled -- raises. Anything ambiguous (no trustor recorded,
+        Keystone unreachable, lookup error) is logged and allowed through, so a
+        transient blip never blocks an upgrade that would have worked.
+        """
+        conn_url = cfg.CONF.cluster_heat.heat_db_connection
+        if not conn_url:
+            return
+        cluster_uuid = getattr(cluster, "uuid", None) or stack_id
+
+        trustor = None
+        engine = None
+        try:
+            import sqlalchemy
+
+            engine = sqlalchemy.create_engine(conn_url)
+            with engine.begin() as conn:
+                row = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT uc.trustor_user_id FROM stack s "
+                        "JOIN user_creds uc ON uc.id = s.user_creds_id "
+                        "WHERE s.id = :sid AND s.deleted_at IS NULL"
+                    ),
+                    {"sid": stack_id},
+                ).fetchone()
+            trustor = row[0] if row else None
+        except Exception as e:
+            LOG.warning(
+                "Could not read the Heat stack credentials of %s to verify "
+                "them (%s); continuing. If this update hangs with every node "
+                "converged, check heat-engine for 'Unauthorized' on the "
+                "deployment signals.",
+                stack_id,
+                e,
+            )
+            return
+        finally:
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
+
+        if not trustor:
+            # Password-based or otherwise trust-less credentials: nothing that
+            # can die with a user.
+            return
+
+        try:
+            user = clients.OpenStackClients(
+                mag_ctx.make_admin_context()).keystone().get_user(trustor)
+        except Exception as e:
+            if "not found" in str(e).lower() or getattr(e, "http_status", None) == 404:
+                raise exception.HeatStackCredentialsInvalid(
+                    cluster_uuid=cluster_uuid, trustor=trustor,
+                    problem="no longer exists")
+            LOG.warning(
+                "Could not verify Heat stack trustor %s of %s (%s); "
+                "continuing", trustor, stack_id, e)
+            return
+
+        if getattr(user, "enabled", True) is False:
+            raise exception.HeatStackCredentialsInvalid(
+                cluster_uuid=cluster_uuid, trustor=trustor,
+                problem="is disabled")
+
     def _clear_stale_convergence_locks(self, osc, stack_id):
         """Release per-resource convergence locks left by a dead traversal.
 
@@ -1050,6 +1147,7 @@ class HeatDriver(driver.Driver):
         3. CREATE_FAILED nested resources (LB listeners, pools) that
            crash Octavia's Heat plugin on datetime comparison
         """
+        self._assert_heat_stack_credentials_usable(stack_id)
         self._backfill_null_resource_timestamps(osc, stack_id)
         self._clear_stale_convergence_locks(osc, stack_id)
         self._clear_orphaned_software_deployments(osc, stack_id)
@@ -1076,6 +1174,7 @@ class HeatDriver(driver.Driver):
         exact ``resize to 0`` wedge: the datetime/None comparison aborts the
         ResourceGroup update).
         """
+        self._assert_heat_stack_credentials_usable(stack_id)
         self._backfill_null_resource_timestamps(osc, stack_id)
         self._clear_stale_convergence_locks(osc, stack_id)
         self._clear_orphaned_software_deployments(osc, stack_id)

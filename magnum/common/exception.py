@@ -406,6 +406,18 @@ class TrusteeOrTrustToClusterFailed(MagnumException):
                 "%(cluster_uuid)s")
 
 
+class HeatStackCredentialsInvalid(MagnumException):
+    message = _("The Heat stack of cluster %(cluster_uuid)s cannot "
+                "authenticate: its stored credentials name trustor user "
+                "%(trustor)s, which %(problem)s. Heat needs those credentials "
+                "to process the deployment signals the nodes send, so the "
+                "nodes would converge and the stack would then wait until it "
+                "times out. Repair the stack credentials first: create a "
+                "Keystone trust from a live trustor to the Heat trustee user, "
+                "scoped to the cluster project, and store it in the stack's "
+                "user_creds row.")
+
+
 class CertificatesToClusterFailed(MagnumException):
     message = _("Failed to create certificates for Cluster: %(cluster_uuid)s")
 
