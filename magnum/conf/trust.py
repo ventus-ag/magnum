@@ -76,7 +76,34 @@ trust_opts = [
                       'stalls it must never block the upgrade, so the whole '
                       'heal is wrapped in a timeout and the upgrade proceeds '
                       'regardless. Also used as the per-request timeout for the '
-                      'trustee read. Set to 0 to disable the heal entirely.'))
+                      'trustee read. Set to 0 to disable the heal entirely.')),
+    cfg.BoolOpt('heal_dead_trustor',
+                default=True,
+                help=_('On cluster upgrade, if the cluster trust cannot be '
+                       'redeemed because its trustor user was DELETED (or '
+                       'disabled) -- the common outcome when the creator was a '
+                       'federated OIDC user that got reprovisioned -- rebuild '
+                       'the trust with the operator running the upgrade as the '
+                       'new trustor. Without this the cluster is hard-wedged: '
+                       'upgrade and resize both fail 401/403 and the existing '
+                       'role re-grant cannot help, because there is no longer '
+                       'a trustor to grant roles to. The rebuilt trust is '
+                       'always scoped to the CLUSTER\'s project, never the '
+                       'operator\'s, and is verified by redeeming a '
+                       'trust-scoped token before it is persisted. Set to '
+                       'False to leave such clusters for manual repair.')),
+    cfg.ListOpt('recreate_roles',
+                default=['_member_', 'load-balancer_admin'],
+                help=_('Roles delegated when a trust is rebuilt after its '
+                       'trustor was deleted. Deliberately NOT the caller\'s '
+                       'roles: that path runs as an operator who typically '
+                       'holds "admin", and inheriting it would hand every '
+                       'healed cluster admin rights on its project for the '
+                       'rest of its life. This is the minimal set proven '
+                       'sufficient for the in-cluster cloud controllers '
+                       '(OCCM load balancers, Cinder/Manila CSI volumes, '
+                       'auto-healer). Overridden by the "roles" option when '
+                       'that is set.'))
 ]
 
 

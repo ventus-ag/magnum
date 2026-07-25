@@ -91,11 +91,18 @@ cluster_heat_opts = [
                      'clusters.')),
     cfg.IntOpt('stale_lock_grace_minutes',
                default=0,
-               help=('Clear stale per-resource convergence locks '
-                     '(resource.engine_id) before a stack update, once the '
-                     'whole stack tree has had NO database activity for this '
-                     'many minutes. Requires heat_db_connection. 0 (the '
-                     'default) disables the repair entirely. '
+               help=('Extra, opt-in half of the stale convergence-lock repair: '
+                     'also clear resource.engine_id when stacks in the tree '
+                     'still claim to be IN_PROGRESS, once the whole tree has '
+                     'had NO database activity for this many minutes. '
+                     'Requires heat_db_connection. 0 (the default) leaves '
+                     'IN_PROGRESS trees alone. '
+                     'NOTE the safe half needs no option and is always on '
+                     'when heat_db_connection is set: when no stack in the '
+                     'tree is IN_PROGRESS, any surviving engine_id is '
+                     'provably stale, because convergence only stamps it '
+                     'during a traversal and a traversal keeps its stack '
+                     'IN_PROGRESS. '
                      'A traversal cancelled by re-triggering an update while '
                      'the stack is still IN_PROGRESS can leave engine_id set; '
                      'every later update then fails "<resource> is locked or '

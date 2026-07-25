@@ -763,27 +763,37 @@ class HeatDriver(driver.Driver):
         clear locks out from under a running traversal and corrupt an
         in-flight create or update.
 
-        What a live traversal does do is write to the DB as it advances, so
-        the tree's newest ``created_at``/``updated_at`` across stacks AND
-        resources is a usable liveness proxy.  We clear only after the whole
-        tree has been silent for ``stale_lock_grace_minutes``.  The comparison
-        uses the database's own clock, so conductor/DB clock skew cannot
-        shorten the window.
+        Two cases, with very different confidence:
 
-        The trade-off this cannot escape: a node whose SoftwareDeployment is
-        legitimately still running writes nothing while it waits, so a grace
-        shorter than the longest single-node reconcile would misread a healthy
-        slow node as a dead traversal.  That is why the repair is OFF by
-        default (``stale_lock_grace_minutes = 0``) and why the option
-        documents a floor well above a first old->new migration.
+        * **No stack in the tree is ``IN_PROGRESS`` -- always enabled.**
+          Convergence stamps ``engine_id`` only while a traversal is running,
+          and a running traversal keeps its stack ``*_IN_PROGRESS``.  So once
+          every stack has landed terminal, any surviving stamp is provably
+          garbage.  This is the shape the common real failure leaves behind: a
+          node's reconciler dies or never signals, Heat waits out the stack
+          timeout, the update is cancelled, the tree lands ``*_FAILED`` with
+          locks still set -- and every later upgrade then dies on "is locked
+          or does not exist" without ever getting far enough to migrate a
+          single node.
 
-        Best-effort and a no-op unless both ``[cluster_heat]
-        heat_db_connection`` and ``stale_lock_grace_minutes`` are set; any
-        failure is logged and never blocks the operation.
+        * **Stacks still claim ``IN_PROGRESS`` -- opt-in.**  That is either a
+          live traversal or one that died mid-flight, and the DB cannot tell
+          them apart; only elapsed silence can.  A live traversal writes as it
+          advances, so the newest ``created_at``/``updated_at`` across the
+          tree's stacks and resources serves as a proxy, and locks are cleared
+          only after ``stale_lock_grace_minutes`` of silence (compared against
+          the database's own clock, so conductor/DB skew cannot shorten the
+          window).  This cannot escape one trade-off -- a node whose
+          SoftwareDeployment is legitimately still running writes nothing
+          while it waits -- so it stays off by default and the option
+          documents a floor well above a first old->new migration.
+
+        Best-effort and a no-op unless ``[cluster_heat] heat_db_connection``
+        is set; any failure is logged and never blocks the operation.
         """
         conn_url = cfg.CONF.cluster_heat.heat_db_connection
         grace = cfg.CONF.cluster_heat.stale_lock_grace_minutes
-        if not conn_url or not grace or grace <= 0:
+        if not conn_url:
             return
         engine = None
         try:
@@ -802,6 +812,41 @@ class HeatDriver(driver.Driver):
                     return
                 prefix = row[0] + "%"
 
+                # Provably safe case, always enabled: convergence only stamps
+                # engine_id while a traversal is running, and a running
+                # traversal keeps its stack *_IN_PROGRESS. So if NO stack in
+                # the tree is in progress, every remaining stamp is garbage
+                # from a cancelled traversal and can be cleared with no
+                # heuristic and no waiting. This is the common real-world
+                # shape: a node's reconciler dies or never signals, Heat waits
+                # out the stack timeout, the update is cancelled, the tree
+                # lands *_FAILED with locks still set -- and every later
+                # upgrade then fails "is locked or does not exist" and never
+                # gets as far as migrating anything.
+                in_progress = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT COUNT(*) FROM stack "
+                        "WHERE name LIKE :prefix AND deleted_at IS NULL "
+                        "AND status = 'IN_PROGRESS'"
+                    ),
+                    {"prefix": prefix},
+                ).scalar()
+
+                quiet_minutes = None
+                if in_progress:
+                    # Stacks still claim to be in progress. That is either a
+                    # live traversal or one that died mid-flight, and the DB
+                    # cannot tell them apart -- only elapsed silence can, which
+                    # is a heuristic, so it stays opt-in.
+                    if not grace or grace <= 0:
+                        LOG.info(
+                            "Stack tree %s has %s stack(s) IN_PROGRESS; not "
+                            "touching resource convergence locks "
+                            "([cluster_heat] stale_lock_grace_minutes is off)",
+                            row[0],
+                            in_progress,
+                        )
+                        return
                 activity = conn.execute(
                     sqlalchemy.text(
                         "SELECT GREATEST("
@@ -823,13 +868,15 @@ class HeatDriver(driver.Driver):
                     {"prefix": prefix},
                 ).fetchone()
                 quiet_minutes = (activity[1] if activity else None) or 0
-                if quiet_minutes < grace:
+                if in_progress and quiet_minutes < grace:
                     LOG.info(
-                        "Stack tree %s last changed %s minute(s) ago (grace "
-                        "%s); leaving resource convergence locks alone -- a "
-                        "traversal may still be running (stack_lock is always "
-                        "empty under convergence and proves nothing)",
+                        "Stack tree %s has %s stack(s) IN_PROGRESS and last "
+                        "changed %s minute(s) ago (grace %s); leaving resource "
+                        "convergence locks alone -- a traversal may still be "
+                        "running (stack_lock is always empty under "
+                        "convergence and proves nothing)",
                         row[0],
+                        in_progress,
                         quiet_minutes,
                         grace,
                     )
@@ -858,14 +905,15 @@ class HeatDriver(driver.Driver):
                 )
                 LOG.warning(
                     "Cleared %s stale resource convergence lock(s) in stack "
-                    "tree %s left by a cancelled/dead traversal (tree silent "
-                    "for %s minute(s), grace %s): %s. Without this the next "
-                    "update fails with 'is locked or does not exist' and "
-                    "re-strands them.",
+                    "tree %s left by a cancelled/dead traversal (%s): %s. "
+                    "Without this the next update fails with 'is locked or "
+                    "does not exist', re-strands them, and never gets far "
+                    "enough to migrate anything.",
                     len(locked),
                     row[0],
-                    quiet_minutes,
-                    grace,
+                    "no stack IN_PROGRESS" if not in_progress
+                    else "tree silent for %s min, grace %s" % (
+                        quiet_minutes, grace),
                     [(r[0], r[3], r[1], r[2]) for r in locked],
                 )
         except Exception as e:
