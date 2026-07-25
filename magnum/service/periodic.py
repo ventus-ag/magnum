@@ -19,6 +19,7 @@ from oslo_log import log
 from oslo_log.versionutils import deprecated
 from oslo_service import loopingcall
 from oslo_service import periodic_task
+from oslo_utils import timeutils
 
 from pycadf import cadftaxonomy as taxonomy
 
@@ -106,9 +107,36 @@ class ClusterUpdateJob(object):
 
 class ClusterHealthUpdateJob(object):
 
-    def __init__(self, ctx, cluster):
+    def __init__(self, ctx, cluster, unreachable=None):
         self.ctx = ctx
         self.cluster = cluster
+        # Shared {cluster_uuid: (retry_after_ts, failures)} owned by the
+        # periodic task, so a cluster that cannot be reached is skipped for
+        # a growing window instead of stalling every single interval.
+        self.unreachable = unreachable if unreachable is not None else {}
+
+    def _record_unreachable(self):
+        """Back off polling this cluster after a failed health request."""
+        max_backoff = CONF.kubernetes.health_unreachable_backoff
+        if max_backoff <= 0:
+            return
+        interval = max(CONF.kubernetes.health_polling_interval, 1)
+        _, failures = self.unreachable.get(self.cluster.uuid, (0, 0))
+        failures += 1
+        # Double from one polling interval up to the configured ceiling.
+        window = min(interval * (2 ** (failures - 1)), max_backoff)
+        self.unreachable[self.cluster.uuid] = (
+            timeutils.utcnow_ts() + window, failures)
+        LOG.info(
+            "Cluster %(cluster)s health unreachable (%(failures)s consecutive "
+            "failure(s)); skipping its health poll for %(window)ss. It keeps "
+            "its last known health status and is retried afterwards.",
+            {'cluster': self.cluster.uuid, 'failures': failures,
+             'window': window})
+
+    def _record_reachable(self):
+        """Clear any backoff the moment a poll succeeds."""
+        self.unreachable.pop(self.cluster.uuid, None)
 
     def _update_health_status(self):
         monitor = monitors.create_monitor(self.ctx, self.cluster)
@@ -118,6 +146,14 @@ class ClusterHealthUpdateJob(object):
         try:
             monitor.poll_health_status()
         except Exception as e:
+            # An unreachable Kubernetes API is the expensive case, not a rare
+            # one: a dead cluster behind a live load balancer stalls in
+            # the TLS handshake, and those stalls run in the conductor, so
+            # enough of them starve the synchronous RPCs the API waits
+            # on and an upgrade returns a gateway error though it did start.
+            # Back
+            # off this cluster rather than paying that cost every interval.
+            self._record_unreachable()
             LOG.warning(
                 "Skip pulling data from cluster %(cluster)s due to "
                 "error: %(e)s",
@@ -126,6 +162,8 @@ class ClusterHealthUpdateJob(object):
             # UNKNOWN if Magnum failed to pull data from the cluster? Because
             # that basically means the k8s API doesn't work at that moment.
             return
+
+        self._record_reachable()
 
         if monitor.data.get('health_status'):
             self.cluster.health_status = monitor.data.get('health_status')
@@ -166,6 +204,10 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
     def __init__(self, conf):
         super(MagnumPeriodicTasks, self).__init__(conf)
         self.notifier = rpc.get_notifier()
+        # {cluster_uuid: (retry_after_ts, consecutive_failures)} for clusters
+        # whose Kubernetes API could not be reached. Kept in memory only: a
+        # conductor restart simply retries everything once.
+        self._unreachable_clusters = {}
 
     @periodic_task.periodic_task(spacing=10, run_immediately=True)
     @set_context
@@ -215,8 +257,18 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
                 return
 
             # synchronize using native COE API
+            now = timeutils.utcnow_ts()
             for cluster in clusters:
-                job = ClusterHealthUpdateJob(ctx, cluster)
+                retry_after, failures = self._unreachable_clusters.get(
+                    cluster.uuid, (0, 0))
+                if retry_after > now:
+                    LOG.debug(
+                        "Skipping health poll of unreachable cluster %s "
+                        "(%s consecutive failure(s), retrying in %ss)",
+                        cluster.uuid, failures, retry_after - now)
+                    continue
+                job = ClusterHealthUpdateJob(ctx, cluster,
+                                             self._unreachable_clusters)
                 # though this call isn't really looping, we use this
                 # abstraction anyway to avoid dealing directly with eventlet
                 # hooey

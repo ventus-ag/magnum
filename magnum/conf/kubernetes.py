@@ -33,6 +33,32 @@ kubernetes_opts = [
                help=('The default polling interval for Kubernetes cluster '
                      'health. If this number is negative the periodic task '
                      'will be disabled.')),
+    cfg.IntOpt('health_request_timeout',
+               default=10,
+               help=('Per-request timeout, in seconds, for the health poll '
+                     'against a cluster\'s Kubernetes API (connect and read). '
+                     'Without it these requests are UNBOUNDED: a cluster '
+                     'whose API is dead but whose endpoint still accepts TCP '
+                     '(a '
+                     'live load balancer in front of dead masters) stalls the '
+                     'poll in the TLS handshake, and urllib3 retries it three '
+                     'times. Those stalls run in the conductor, so a handful '
+                     'of dead clusters starve the synchronous RPCs that the '
+                     'API waits on -- upgrade/resize then return a gateway '
+                     'error even though the conductor eventually does the '
+                     'work. 0 restores the unbounded behaviour.')),
+    cfg.IntOpt('health_unreachable_backoff',
+               default=900,
+               help=('Maximum time, in seconds, to stop polling the health of '
+                     'a cluster whose Kubernetes API could not be reached. '
+                     'The skip window doubles from one polling interval up to '
+                     'this value on each consecutive failure and is cleared '
+                     'the moment a poll succeeds, so a permanently dead '
+                     'cluster costs one request per window instead of one per '
+                     'interval, while a briefly unreachable one recovers '
+                     'quickly. The cluster is NEVER dropped from polling '
+                     'entirely -- it keeps its last known health status and '
+                     'is retried. 0 disables the backoff.')),
 ]
 
 

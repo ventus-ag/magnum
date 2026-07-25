@@ -19,9 +19,19 @@ from oslo_utils import strutils
 from magnum.common import utils
 from magnum.conductor import k8s_api as k8s
 from magnum.conductor import monitors
+import magnum.conf
 from magnum.objects import fields as m_fields
 
+CONF = magnum.conf.CONF
 LOG = logging.getLogger(__name__)
+
+
+def _health_request_timeout():
+    """(connect, read) timeout for cluster health requests, or None."""
+    seconds = CONF.kubernetes.health_request_timeout
+    if not seconds or seconds <= 0:
+        return None
+    return (seconds, seconds)
 
 
 class K8sMonitor(monitors.MonitorBase):
@@ -237,13 +247,22 @@ class K8sMonitor(monitors.MonitorBase):
         health_status_reason = {}
         api_status = None
 
+        # Bound every request. These calls are otherwise UNBOUNDED, and a
+        # cluster whose API is dead behind a live load balancer stalls in the
+        # TLS handshake -- which urllib3 then retries three times. The stall
+        # happens inside the conductor, so a few such clusters starve the
+        # synchronous RPCs the API is waiting on and upgrades come back as
+        # gateway errors. See [kubernetes] health_request_timeout.
+        timeout = _health_request_timeout()
+
         try:
             api_status, _, _ = k8s_api.api_client.call_api(
-                '/healthz', 'GET', response_type=object)
+                '/healthz', 'GET', response_type=object,
+                _request_timeout=timeout)
 
             self._poll_version(k8s_api)
 
-            for node in k8s_api.list_node().items:
+            for node in k8s_api.list_node(_request_timeout=timeout).items:
                 node_key = node.metadata.name + ".Ready"
                 ready = False
                 for condition in node.status.conditions:
@@ -270,7 +289,8 @@ class K8sMonitor(monitors.MonitorBase):
     def _poll_version(self, k8s_api):
         try:
             version_raw, _, _ = k8s_api.api_client.call_api(
-                '/version', 'GET', response_type=object)
+                '/version', 'GET', response_type=object,
+                _request_timeout=_health_request_timeout())
             if isinstance(version_raw, str):
                 version_info = json.loads(version_raw)
             else:
