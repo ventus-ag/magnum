@@ -752,20 +752,38 @@ class HeatDriver(driver.Driver):
         API that clears a resource ``engine_id``, so without this the only fix
         is the manual runbook UPDATE.
 
-        Gated hard on there being NO ``stack_lock`` row anywhere in the stack
-        tree.  A live traversal always holds one, so its absence is what
-        distinguishes an abandoned update from a running one; clearing locks
-        out from under a live engine would corrupt an in-flight update.  Both
-        the check and the clear run in one transaction, and Magnum serialises
-        operations per cluster, so the only exposure is an engine acquiring
-        the lock in the instant between them -- immediately before we push our
-        own update, which the conductor precondition already excludes.
+        Liveness is decided by QUIET TIME, not by ``stack_lock``.  Under
+        convergence -- Heat's default since Newton, and what every stack on
+        these clouds runs (``stack.convergence = 1``) -- the engine does NOT
+        take ``stack_lock`` rows at all; that table belongs to the legacy
+        locking path and is permanently empty.  Verified live: a cluster in
+        ``CREATE_IN_PROGRESS`` with three resources actively stamped by three
+        different engines had ZERO ``stack_lock`` rows.  Treating that absence
+        as "no engine is working" -- as the manual runbook long did -- would
+        clear locks out from under a running traversal and corrupt an
+        in-flight create or update.
 
-        Best-effort and a no-op unless ``[cluster_heat] heat_db_connection``
-        is configured; any failure is logged and never blocks the operation.
+        What a live traversal does do is write to the DB as it advances, so
+        the tree's newest ``created_at``/``updated_at`` across stacks AND
+        resources is a usable liveness proxy.  We clear only after the whole
+        tree has been silent for ``stale_lock_grace_minutes``.  The comparison
+        uses the database's own clock, so conductor/DB clock skew cannot
+        shorten the window.
+
+        The trade-off this cannot escape: a node whose SoftwareDeployment is
+        legitimately still running writes nothing while it waits, so a grace
+        shorter than the longest single-node reconcile would misread a healthy
+        slow node as a dead traversal.  That is why the repair is OFF by
+        default (``stale_lock_grace_minutes = 0``) and why the option
+        documents a floor well above a first old->new migration.
+
+        Best-effort and a no-op unless both ``[cluster_heat]
+        heat_db_connection`` and ``stale_lock_grace_minutes`` are set; any
+        failure is logged and never blocks the operation.
         """
         conn_url = cfg.CONF.cluster_heat.heat_db_connection
-        if not conn_url:
+        grace = cfg.CONF.cluster_heat.stale_lock_grace_minutes
+        if not conn_url or not grace or grace <= 0:
             return
         engine = None
         try:
@@ -784,21 +802,36 @@ class HeatDriver(driver.Driver):
                     return
                 prefix = row[0] + "%"
 
-                held = conn.execute(
+                activity = conn.execute(
                     sqlalchemy.text(
-                        "SELECT COUNT(*) FROM stack_lock sl "
-                        "JOIN stack s ON sl.stack_id = s.id "
+                        "SELECT GREATEST("
+                        "  COALESCE(MAX(s.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(s.created_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.created_at), '1970-01-01')"
+                        ") AS last_activity,"
+                        " TIMESTAMPDIFF(MINUTE, GREATEST("
+                        "  COALESCE(MAX(s.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(s.created_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.created_at), '1970-01-01')"
+                        "), UTC_TIMESTAMP()) AS quiet_minutes "
+                        "FROM stack s LEFT JOIN resource r "
+                        "  ON r.stack_id = s.id "
                         "WHERE s.name LIKE :prefix AND s.deleted_at IS NULL"
                     ),
                     {"prefix": prefix},
-                ).scalar()
-                if held:
+                ).fetchone()
+                quiet_minutes = (activity[1] if activity else None) or 0
+                if quiet_minutes < grace:
                     LOG.info(
-                        "Stack tree %s has %s live stack_lock row(s); leaving "
-                        "resource convergence locks alone (an engine is "
-                        "working this stack)",
+                        "Stack tree %s last changed %s minute(s) ago (grace "
+                        "%s); leaving resource convergence locks alone -- a "
+                        "traversal may still be running (stack_lock is always "
+                        "empty under convergence and proves nothing)",
                         row[0],
-                        held,
+                        quiet_minutes,
+                        grace,
                     )
                     return
 
@@ -825,11 +858,14 @@ class HeatDriver(driver.Driver):
                 )
                 LOG.warning(
                     "Cleared %s stale resource convergence lock(s) in stack "
-                    "tree %s left by a cancelled/dead traversal (no live "
-                    "stack_lock): %s. Without this the next update fails with "
-                    "'is locked or does not exist' and re-strands them.",
+                    "tree %s left by a cancelled/dead traversal (tree silent "
+                    "for %s minute(s), grace %s): %s. Without this the next "
+                    "update fails with 'is locked or does not exist' and "
+                    "re-strands them.",
                     len(locked),
                     row[0],
+                    quiet_minutes,
+                    grace,
                     [(r[0], r[3], r[1], r[2]) for r in locked],
                 )
         except Exception as e:
