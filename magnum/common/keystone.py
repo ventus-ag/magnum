@@ -286,6 +286,18 @@ class KeystoneClientV3(object):
         trustor, trustee, nor a system-scoped admin (project-scoped admins
         cannot read other users' trusts). The session is deliberately
         unscoped for that reason.
+
+        An unscoped token carries an EMPTY service catalog, so keystoneclient
+        cannot discover the identity endpoint from it and every call raises
+        ``EmptyCatalog`` -- which made this read (and therefore the whole
+        role-regrant heal that depends on it) fail 100% of the time, silently,
+        as "could not read trust ... skipping trust heal". Point the client at
+        the known identity endpoint explicitly instead of asking the catalog.
+
+        ``auth_url`` is not guaranteed to carry the version segment (on these
+        clouds it is bare, e.g. ``http://10.177.16.10:443``), and keystoneclient
+        builds ``/OS-TRUST/trusts/<id>`` relative to whatever it is given -- so
+        overriding with the bare URL 404s. Append ``/v3`` when it is absent.
         """
         auth = ka_v3.Password(auth_url=self.auth_url,
                               user_id=trustee_user_id,
@@ -298,8 +310,14 @@ class KeystoneClientV3(object):
             cert=CONF[ksconf.CFG_LEGACY_GROUP].certfile,
             # Never let a slow/stalled Keystone block the upgrade heal.
             timeout=CONF.trust.heal_timeout or None)
-        client = kc_v3.Client(session=sess)
+        client = kc_v3.Client(session=sess,
+                              endpoint_override=self._identity_v3_endpoint())
         return client.trusts.get(trust_id)
+
+    def _identity_v3_endpoint(self):
+        """``auth_url`` with a ``/v3`` segment guaranteed."""
+        url = (self.auth_url or '').rstrip('/')
+        return url if url.endswith('/v3') else url + '/v3'
 
     def grant_role(self, role_id, user_id, project_id):
         """Grant a project-scoped role to a user (idempotent).
