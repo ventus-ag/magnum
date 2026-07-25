@@ -195,15 +195,24 @@ class KeystoneClientV3(object):
 
         return self._trustee_domain_id
 
-    def create_trust(self, trustee_user):
+    def create_trust(self, trustee_user, project_id=None, roles=None):
         trustor_user_id = self.session.get_user_id()
-        trustor_project_id = self.session.get_project_id()
+        # The trust's project decides where the in-cluster cloud controllers
+        # (OCCM, Cinder/Manila CSI, auto-healer) create load balancers and
+        # volumes.  It defaults to the caller's project, which is only correct
+        # while the caller IS the cluster owner.  Healing a cluster whose
+        # trustor was deleted runs as an operator scoped somewhere else
+        # entirely (typically the admin project), so that path passes the
+        # cluster's own project explicitly -- otherwise the cluster would
+        # silently start provisioning into the operator's project.
+        trustor_project_id = project_id or self.session.get_project_id()
 
         # inherit the role of the trustor, unless set CONF.trust.roles
-        if CONF.trust.roles:
-            roles = CONF.trust.roles
-        else:
-            roles = self.context.roles
+        if roles is None:
+            if CONF.trust.roles:
+                roles = CONF.trust.roles
+            else:
+                roles = self.context.roles
 
         try:
             trust = self.client.trusts.create(
@@ -219,6 +228,54 @@ class KeystoneClientV3(object):
                 trustee_user_id=trustee_user)
         return trust
 
+    def verify_trust_redeemable(self, trustee_user_id, trustee_password,
+                                trust_id):
+        """Prove a trust can actually be redeemed, as the trustee.
+
+        Creating a trust says nothing about whether it WORKS: Keystone happily
+        creates one whose trustor does not hold the delegated roles on the
+        project, and the failure only surfaces later as a 401/403 from the
+        conductor and from every in-cluster cloud controller.  Redeeming a
+        trust-scoped token here is the same check an operator would run by
+        hand, and it is what lets the caller refuse to persist a dead trust
+        onto the cluster row.
+
+        Returns the ``(project_id, user_id)`` the trust resolves to -- the
+        project must be the cluster's, and the user is the impersonated
+        trustor.
+        """
+        auth = ka_v3.Password(auth_url=self.auth_url,
+                              user_id=trustee_user_id,
+                              password=trustee_password,
+                              trust_id=trust_id)
+        sess = ka_loading.session.Session().load_from_options(
+            auth=auth,
+            insecure=CONF[ksconf.CFG_LEGACY_GROUP].insecure,
+            cacert=CONF[ksconf.CFG_LEGACY_GROUP].cafile,
+            key=CONF[ksconf.CFG_LEGACY_GROUP].keyfile,
+            cert=CONF[ksconf.CFG_LEGACY_GROUP].certfile,
+            timeout=CONF.trust.heal_timeout or None)
+        return sess.get_project_id(), sess.get_user_id()
+
+    def get_user(self, user_id):
+        """Fetch a Keystone user with this client's identity (admin)."""
+        return self.client.users.get(user_id)
+
+    def find_role_ids(self, role_names):
+        """Resolve role names to ``(id, name)`` tuples; unknown names skipped."""
+        found = []
+        for name in role_names or []:
+            try:
+                matches = self.client.roles.list(name=name)
+            except Exception as e:
+                LOG.warning('Could not look up role %s: %s', name, e)
+                continue
+            if matches:
+                found.append((matches[0].id, name))
+            else:
+                LOG.warning('Role %s does not exist; skipping', name)
+        return found
+
     def get_trust_as_trustee(self, trustee_user_id, trustee_password,
                              trust_id):
         """Read a trust authenticating as its trustee.
@@ -229,6 +286,18 @@ class KeystoneClientV3(object):
         trustor, trustee, nor a system-scoped admin (project-scoped admins
         cannot read other users' trusts). The session is deliberately
         unscoped for that reason.
+
+        An unscoped token carries an EMPTY service catalog, so keystoneclient
+        cannot discover the identity endpoint from it and every call raises
+        ``EmptyCatalog`` -- which made this read (and therefore the whole
+        role-regrant heal that depends on it) fail 100% of the time, silently,
+        as "could not read trust ... skipping trust heal". Point the client at
+        the known identity endpoint explicitly instead of asking the catalog.
+
+        ``auth_url`` is not guaranteed to carry the version segment (on these
+        clouds it is bare, e.g. ``http://10.177.16.10:443``), and keystoneclient
+        builds ``/OS-TRUST/trusts/<id>`` relative to whatever it is given -- so
+        overriding with the bare URL 404s. Append ``/v3`` when it is absent.
         """
         auth = ka_v3.Password(auth_url=self.auth_url,
                               user_id=trustee_user_id,
@@ -241,8 +310,14 @@ class KeystoneClientV3(object):
             cert=CONF[ksconf.CFG_LEGACY_GROUP].certfile,
             # Never let a slow/stalled Keystone block the upgrade heal.
             timeout=CONF.trust.heal_timeout or None)
-        client = kc_v3.Client(session=sess)
+        client = kc_v3.Client(session=sess,
+                              endpoint_override=self._identity_v3_endpoint())
         return client.trusts.get(trust_id)
+
+    def _identity_v3_endpoint(self):
+        """``auth_url`` with a ``/v3`` segment guaranteed."""
+        url = (self.auth_url or '').rstrip('/')
+        return url if url.endswith('/v3') else url + '/v3'
 
     def grant_role(self, role_id, user_id, project_id):
         """Grant a project-scoped role to a user (idempotent).

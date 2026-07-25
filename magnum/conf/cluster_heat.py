@@ -88,7 +88,38 @@ cluster_heat_opts = [
                      'direct DB write is the only automated remedy that does '
                      'not modify Heat itself. Leave empty to disable; the '
                      'manual runbook SQL then remains necessary on affected '
-                     'clusters.'))
+                     'clusters.')),
+    cfg.IntOpt('stale_lock_grace_minutes',
+               default=0,
+               help=('Extra, opt-in half of the stale convergence-lock repair: '
+                     'also clear resource.engine_id when stacks in the tree '
+                     'still claim to be IN_PROGRESS, once the whole tree has '
+                     'had NO database activity for this many minutes. '
+                     'Requires heat_db_connection. 0 (the default) leaves '
+                     'IN_PROGRESS trees alone. '
+                     'NOTE the safe half needs no option and is always on '
+                     'when heat_db_connection is set: when no stack in the '
+                     'tree is IN_PROGRESS, any surviving engine_id is '
+                     'provably stale, because convergence only stamps it '
+                     'during a traversal and a traversal keeps its stack '
+                     'IN_PROGRESS. '
+                     'A traversal cancelled by re-triggering an update while '
+                     'the stack is still IN_PROGRESS can leave engine_id set; '
+                     'every later update then fails "<resource> is locked or '
+                     'does not exist", cancels, and re-strands the same rows '
+                     '-- a self-perpetuating wedge with no Heat API remedy, '
+                     'because no API clears that column. '
+                     'CAUTION when enabling: under convergence (the default '
+                     'since Newton) Heat does NOT take stack_lock rows, so '
+                     'their absence proves nothing about liveness -- quiet '
+                     'time is the only signal available from the DB. A node '
+                     'whose SoftwareDeployment is legitimately still running '
+                     'writes nothing to the DB while it waits, so this value '
+                     'MUST exceed the longest plausible single-node reconcile '
+                     '(a first old->new migration can take 30 minutes; 90 or '
+                     'more is a safe starting point). Set too low, this will '
+                     'clear locks out from under a live traversal and corrupt '
+                     'an in-flight create or update.'))
 ]
 
 

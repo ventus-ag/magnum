@@ -271,10 +271,28 @@ class HeatDriver(driver.Driver):
         ``resources.kube_masters: resources[1]: '<' not supported ...``.
 
         Marking such resources unhealthy tells Heat to RECREATE them instead
-        of diffing against missing/None state. Gating on
-        FAILED-or-updated_at-None is self-limiting: after one successful
-        update the timestamps are set and nothing more is marked, so steady
-        clusters are untouched.
+        of diffing against missing/None state.
+
+        IMPORTANT — this method can only act on the FAILED half of that pair.
+        A NULL ``updated_at`` is NOT observable through the Heat API:
+        ``heat.engine.api.format_stack_resource`` emits
+        ``updated_time = resource.updated_time or resource.created_time``, so
+        a row whose column is NULL is reported with its creation timestamp and
+        ``updated_time`` is never None. (Verified live: a resource with
+        ``resource.updated_at IS NULL`` in the heat DB returns
+        ``creation_time == updated_time`` from ``resource show``.) An earlier
+        ``updated_at is not None`` guard here was therefore dead code and
+        never marked anything on that branch.
+
+        The NULL case is instead repaired directly in the DB by
+        ``_backfill_null_resource_timestamps`` (requires
+        ``[cluster_heat] heat_db_connection``; otherwise the manual runbook
+        SQL applies). We deliberately do NOT substitute the available
+        heuristic (``updated_time == creation_time`` from a detailed listing):
+        it also matches every healthy never-updated load balancer, and marking
+        those unhealthy RECREATES live load balancers — a far worse outcome
+        than the update failing loudly. Recreation stays reserved for rows
+        Heat has already declared FAILED.
         """
         # Octavia resources are the ones with the datetime(None) comparison
         # bug. PoolMember is included: each master registers itself to the
@@ -302,8 +320,12 @@ class HeatDriver(driver.Driver):
                 continue
             status = getattr(res, "resource_status", "") or ""
             updated_at = getattr(res, "updated_time", None)
-            # Only the two conditions that trigger the Octavia datetime crash.
-            if "FAILED" not in status and updated_at is not None:
+            # FAILED only. The NULL-updated_at half of the Octavia crash is
+            # invisible here (the API substitutes created_at, see docstring)
+            # and is repaired in the DB instead; do not widen this condition
+            # to a creation_time heuristic -- it would recreate healthy load
+            # balancers.
+            if "FAILED" not in status:
                 continue
             try:
                 stack_link = [l for l in res.links if l.get("rel") == "stack"]
@@ -717,6 +739,198 @@ class HeatDriver(driver.Driver):
                 except Exception:
                     pass
 
+    def _clear_stale_convergence_locks(self, osc, stack_id):
+        """Release per-resource convergence locks left by a dead traversal.
+
+        Heat's convergence engine stamps ``resource.engine_id`` on every
+        resource a traversal is working.  Triggering a new update while a
+        stack is still ``*_IN_PROGRESS`` makes Heat CANCEL the running
+        traversal, and a cancel does not reliably clear those stamps.  The
+        next traversal then hits ``<resource> is locked or does not exist`` on
+        the stranded rows, cancels again, and re-strands them -- a
+        self-perpetuating wedge that survives every retry.  There is no Heat
+        API that clears a resource ``engine_id``, so without this the only fix
+        is the manual runbook UPDATE.
+
+        Liveness is decided by QUIET TIME, not by ``stack_lock``.  Under
+        convergence -- Heat's default since Newton, and what every stack on
+        these clouds runs (``stack.convergence = 1``) -- the engine does NOT
+        take ``stack_lock`` rows at all; that table belongs to the legacy
+        locking path and is permanently empty.  Verified live: a cluster in
+        ``CREATE_IN_PROGRESS`` with three resources actively stamped by three
+        different engines had ZERO ``stack_lock`` rows.  Treating that absence
+        as "no engine is working" -- as the manual runbook long did -- would
+        clear locks out from under a running traversal and corrupt an
+        in-flight create or update.
+
+        Two cases, with very different confidence:
+
+        * **No stack in the tree is ``IN_PROGRESS`` -- always enabled.**
+          Convergence stamps ``engine_id`` only while a traversal is running,
+          and a running traversal keeps its stack ``*_IN_PROGRESS``.  So once
+          every stack has landed terminal, any surviving stamp is provably
+          garbage.  This is the shape the common real failure leaves behind: a
+          node's reconciler dies or never signals, Heat waits out the stack
+          timeout, the update is cancelled, the tree lands ``*_FAILED`` with
+          locks still set -- and every later upgrade then dies on "is locked
+          or does not exist" without ever getting far enough to migrate a
+          single node.
+
+        * **Stacks still claim ``IN_PROGRESS`` -- opt-in.**  That is either a
+          live traversal or one that died mid-flight, and the DB cannot tell
+          them apart; only elapsed silence can.  A live traversal writes as it
+          advances, so the newest ``created_at``/``updated_at`` across the
+          tree's stacks and resources serves as a proxy, and locks are cleared
+          only after ``stale_lock_grace_minutes`` of silence (compared against
+          the database's own clock, so conductor/DB skew cannot shorten the
+          window).  This cannot escape one trade-off -- a node whose
+          SoftwareDeployment is legitimately still running writes nothing
+          while it waits -- so it stays off by default and the option
+          documents a floor well above a first old->new migration.
+
+        Best-effort and a no-op unless ``[cluster_heat] heat_db_connection``
+        is set; any failure is logged and never blocks the operation.
+        """
+        conn_url = cfg.CONF.cluster_heat.heat_db_connection
+        grace = cfg.CONF.cluster_heat.stale_lock_grace_minutes
+        if not conn_url:
+            return
+        engine = None
+        try:
+            import sqlalchemy
+
+            engine = sqlalchemy.create_engine(conn_url)
+            with engine.begin() as conn:
+                row = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT name FROM stack "
+                        "WHERE id = :sid AND deleted_at IS NULL"
+                    ),
+                    {"sid": stack_id},
+                ).fetchone()
+                if not row:
+                    return
+                prefix = row[0] + "%"
+
+                # Provably safe case, always enabled: convergence only stamps
+                # engine_id while a traversal is running, and a running
+                # traversal keeps its stack *_IN_PROGRESS. So if NO stack in
+                # the tree is in progress, every remaining stamp is garbage
+                # from a cancelled traversal and can be cleared with no
+                # heuristic and no waiting. This is the common real-world
+                # shape: a node's reconciler dies or never signals, Heat waits
+                # out the stack timeout, the update is cancelled, the tree
+                # lands *_FAILED with locks still set -- and every later
+                # upgrade then fails "is locked or does not exist" and never
+                # gets as far as migrating anything.
+                in_progress = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT COUNT(*) FROM stack "
+                        "WHERE name LIKE :prefix AND deleted_at IS NULL "
+                        "AND status = 'IN_PROGRESS'"
+                    ),
+                    {"prefix": prefix},
+                ).scalar()
+
+                quiet_minutes = None
+                if in_progress:
+                    # Stacks still claim to be in progress. That is either a
+                    # live traversal or one that died mid-flight, and the DB
+                    # cannot tell them apart -- only elapsed silence can, which
+                    # is a heuristic, so it stays opt-in.
+                    if not grace or grace <= 0:
+                        LOG.info(
+                            "Stack tree %s has %s stack(s) IN_PROGRESS; not "
+                            "touching resource convergence locks "
+                            "([cluster_heat] stale_lock_grace_minutes is off)",
+                            row[0],
+                            in_progress,
+                        )
+                        return
+                activity = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT GREATEST("
+                        "  COALESCE(MAX(s.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(s.created_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.created_at), '1970-01-01')"
+                        ") AS last_activity,"
+                        " TIMESTAMPDIFF(MINUTE, GREATEST("
+                        "  COALESCE(MAX(s.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(s.created_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.updated_at), '1970-01-01'),"
+                        "  COALESCE(MAX(r.created_at), '1970-01-01')"
+                        "), UTC_TIMESTAMP()) AS quiet_minutes "
+                        "FROM stack s LEFT JOIN resource r "
+                        "  ON r.stack_id = s.id "
+                        "WHERE s.name LIKE :prefix AND s.deleted_at IS NULL"
+                    ),
+                    {"prefix": prefix},
+                ).fetchone()
+                quiet_minutes = (activity[1] if activity else None) or 0
+                if in_progress and quiet_minutes < grace:
+                    LOG.info(
+                        "Stack tree %s has %s stack(s) IN_PROGRESS and last "
+                        "changed %s minute(s) ago (grace %s); leaving resource "
+                        "convergence locks alone -- a traversal may still be "
+                        "running (stack_lock is always empty under "
+                        "convergence and proves nothing)",
+                        row[0],
+                        in_progress,
+                        quiet_minutes,
+                        grace,
+                    )
+                    return
+
+                locked = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT r.id, r.name, r.status, s.name AS stack "
+                        "FROM resource r JOIN stack s ON r.stack_id = s.id "
+                        "WHERE s.name LIKE :prefix AND s.deleted_at IS NULL "
+                        "AND r.engine_id IS NOT NULL"
+                    ),
+                    {"prefix": prefix},
+                ).fetchall()
+                if not locked:
+                    return
+
+                conn.execute(
+                    sqlalchemy.text(
+                        "UPDATE resource r JOIN stack s ON r.stack_id = s.id "
+                        "SET r.engine_id = NULL "
+                        "WHERE s.name LIKE :prefix AND s.deleted_at IS NULL "
+                        "AND r.engine_id IS NOT NULL"
+                    ),
+                    {"prefix": prefix},
+                )
+                LOG.warning(
+                    "Cleared %s stale resource convergence lock(s) in stack "
+                    "tree %s left by a cancelled/dead traversal (%s): %s. "
+                    "Without this the next update fails with 'is locked or "
+                    "does not exist', re-strands them, and never gets far "
+                    "enough to migrate anything.",
+                    len(locked),
+                    row[0],
+                    "no stack IN_PROGRESS" if not in_progress
+                    else "tree silent for %s min, grace %s" % (
+                        quiet_minutes, grace),
+                    [(r[0], r[3], r[1], r[2]) for r in locked],
+                )
+        except Exception as e:
+            LOG.warning(
+                "Could not clear stale convergence locks for stack %s: %s; if "
+                "this update fails with '<resource> is locked or does not "
+                "exist', run the manual runbook UPDATE against the heat DB",
+                stack_id,
+                e,
+            )
+        finally:
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
+
     def _recover_dropped_group_param_values(self, osc, stack_id, raw_parameters):
         """Recover values for params that retained RG members still reference.
 
@@ -818,10 +1032,13 @@ class HeatDriver(driver.Driver):
     def _prepare_stack_for_template_update(self, osc, stack_id):
         """Mark problematic resources unhealthy before a template update.
 
-        Handles four cases:
+        Handles five cases:
         0. NULL resource.updated_at rows backfilled directly in the Heat DB
            (only when [cluster_heat] heat_db_connection is configured) --
            they abort the whole update with a datetime/None comparison error.
+        0b. Stale ``resource.engine_id`` convergence locks left by a cancelled
+           traversal (same option; gated on no live stack_lock) -- they fail
+           every later update with "is locked or does not exist".
         1. Per-node ``*_config_deployment`` SoftwareDeployments left
            ``*_FAILED`` or ``*_IN_PROGRESS`` by a prior failed/timed-out update
            -- settled to COMPLETE first so the convergence engine UPDATES them in
@@ -834,6 +1051,7 @@ class HeatDriver(driver.Driver):
            crash Octavia's Heat plugin on datetime comparison
         """
         self._backfill_null_resource_timestamps(osc, stack_id)
+        self._clear_stale_convergence_locks(osc, stack_id)
         self._clear_orphaned_software_deployments(osc, stack_id)
         for group_name, config_name in (
             ("kube_masters", "master_config"),
@@ -859,6 +1077,7 @@ class HeatDriver(driver.Driver):
         ResourceGroup update).
         """
         self._backfill_null_resource_timestamps(osc, stack_id)
+        self._clear_stale_convergence_locks(osc, stack_id)
         self._clear_orphaned_software_deployments(osc, stack_id)
         self._mark_failed_nested_resources_unhealthy(osc, stack_id)
 
@@ -943,8 +1162,10 @@ class HeatDriver(driver.Driver):
         idempotent and does not churn the stored file set.
 
         Returns ``(template, aliased)`` where ``aliased`` maps each rewritten
-        group name to the original (pre-alias) child key, so the pin step can
-        restore genuine pre-migration content under that key.
+        group name to ``(original child key, alias key)`` -- the original so
+        the pin step can restore genuine pre-migration content under it, and
+        the alias so laggard detection can tell migrated members from
+        unmigrated ones regardless of which older key they carry.
         """
         if isinstance(template, dict):
             parsed = copy.deepcopy(template)
@@ -1002,7 +1223,15 @@ class HeatDriver(driver.Driver):
             resource_def["type"] = alias_ref
             tpl_files[alias_ref] = tpl_files[child_ref]
             tpl_files.pop(child_ref, None)
-            aliased[group_name] = child_ref
+            # (original key, alias key). The alias is what a migrated member
+            # must point at; anything else is a laggard -- including members
+            # created by an OLDER MAGNUM, whose child ref carries that
+            # release's venv path (e.g. .../magnum-21.2.12/.../kubemaster.yaml)
+            # and so matches neither key. Those need no pin (a different key
+            # cannot be overwritten by this update's files, so their stored
+            # content survives) but they are still unmigrated and must be
+            # reported as such.
+            aliased[group_name] = (child_ref, alias_ref)
             changed = True
             LOG.info(
                 "Rolling-migration alias %s -> %s for group %s",
@@ -1040,27 +1269,78 @@ class HeatDriver(driver.Driver):
         child template.  Fetch one and pin it under the original key, which
         overrides any polluted content and makes recovery independent of what
         the stored parent files contain (and of convergence mode).
+
+        Also reports the migration LAGGARDS -- members still defined with the
+        pre-migration child type.  A member's ``*_COMPLETE`` status is NOT
+        evidence that it migrated: Heat's rolling update re-renders members
+        outside the current batch with their EXISTING definition, so when a
+        batch fails the untouched members still reach ``UPDATE_COMPLETE``
+        while pinned to the old child template.  (Verified live on a probe
+        ResourceGroup: with member 1 forced to fail, member 0 finished
+        ``UPDATE_COMPLETE`` on the old child while members 1 and 2 moved to
+        the alias.)  Nothing else in the stack surfaces that split, so log it
+        -- an operator reading only stack status cannot otherwise tell a fully
+        migrated cluster from a half-migrated one.
+
+        No laggard is ever marked unhealthy here.  Switching a member to the
+        alias is an IN-PLACE nested-stack update (verified live: member
+        physical ids are unchanged across an alias switch, status
+        ``UPDATE_COMPLETE``), and a plain retry converges the stragglers once
+        whatever failed the batch is fixed.  Marking would force a REPLACE and
+        needlessly rebuild the node's VM.
+
+        Returns ``{group_name: [laggard member names]}``.
         """
-        for group_name, orig_ref in (aliased or {}).items():
+        laggards = {}
+        pinned = set()
+        for group_name, refs in (aliased or {}).items():
+            orig_ref, alias_ref = refs
             try:
                 group = osc.heat().resources.get(parent_stack_id, group_name)
                 group_stack_id = getattr(group, "physical_resource_id", None)
                 if not group_stack_id:
                     continue
 
-                # Pick a member still defined with the original child type
-                # (i.e. not yet migrated); its stored child template is the
-                # authoritative pre-migration content.  Robust to partially
-                # migrated groups, where some members already use the alias.
+                # Any member not pointing at the alias is unmigrated.  Two
+                # shapes: the original key (same Magnum release, template
+                # content changed) and an older release's venv path (e.g.
+                # .../magnum-21.2.12/.../kubemaster.yaml).  Only the first can
+                # have its stored content clobbered by this update's file
+                # merge, so only that one needs pinning -- but both are
+                # laggards and both must be reported.
                 group_tmpl = osc.heat().stacks.template(group_stack_id)
                 member_defs = group_tmpl.get("resources") or {}
-                target = None
-                for mname, mdef in member_defs.items():
-                    if (mdef or {}).get("type") == orig_ref:
-                        target = mname
-                        break
-                if target is None:
+                behind = sorted(
+                    mname
+                    for mname, mdef in member_defs.items()
+                    if (mdef or {}).get("type") != alias_ref
+                )
+                if not behind:
                     continue
+                laggards[group_name] = behind
+                LOG.info(
+                    "Rolling migration: %s of %s %s members are still on a "
+                    "pre-migration child template (target alias %s); members "
+                    "%s; this update should migrate them in place",
+                    len(behind),
+                    len(member_defs),
+                    group_name,
+                    alias_ref,
+                    ", ".join(behind),
+                )
+
+                on_orig = sorted(
+                    mname
+                    for mname in behind
+                    if (member_defs.get(mname) or {}).get("type") == orig_ref
+                )
+                if not on_orig:
+                    # Laggards exist but none share the original key, so the
+                    # file merge cannot overwrite what they validate against.
+                    # Nothing to pin; not a failure.
+                    pinned.add(group_name)
+                    continue
+                target = on_orig[0]
 
                 member_stack_id = None
                 for res in osc.heat().resources.list(group_stack_id):
@@ -1074,6 +1354,7 @@ class HeatDriver(driver.Driver):
 
                 old_child = osc.heat().stacks.template(member_stack_id)
                 tpl_files[orig_ref] = json.dumps(old_child)
+                pinned.add(group_name)
                 LOG.info(
                     "Pinned pre-migration child %s for group %s from member "
                     "%s (%s)",
@@ -1091,6 +1372,25 @@ class HeatDriver(driver.Driver):
                     orig_ref,
                     e,
                 )
+
+        # The alias step removed the original key from the files we send, so an
+        # unpinned laggard validates against whatever content is already stored
+        # under that key -- after a prior attempt that is the NEW child, and the
+        # retained member definitions fail with "Unknown Property <dropped>".
+        # Not raised: when the new template dropped no property the update still
+        # succeeds, and blocking a valid upgrade is worse than a loud log.
+        unpinned = sorted(set(laggards) - pinned)
+        if unpinned:
+            LOG.error(
+                "Rolling migration: could not pin the pre-migration child "
+                "template for group(s) %s which still have unmigrated members "
+                "%s. If this update fails with 'Unknown Property', the stored "
+                "child template under the original key is the new one; the "
+                "member stacks still hold the correct pre-migration content.",
+                ", ".join(unpinned),
+                {g: laggards[g] for g in unpinned},
+            )
+        return laggards
 
     @abc.abstractmethod
     def get_template_definition(self):
@@ -1113,35 +1413,46 @@ class HeatDriver(driver.Driver):
     def update_nodegroup(self, context, cluster, nodegroup):
         # min/max node count changes only need the DB save. The labels may
         # additionally carry per-nodegroup node metadata
-        # (node_labels/node_taints), which must reach the nodegroup's
-        # heat-params so the node-side reconciler converges it.
+        # (node_labels/node_taints), and flavor_id may have changed to trigger
+        # an in-place Nova resize of the pool — both must reach the
+        # nodegroup's heat-params (the reconciler converges metadata; Heat
+        # resizes each server on the flavor delta).
         nodegroup.save()
         if nodegroup.stack_id:
-            self._sync_node_metadata_params(context, cluster, nodegroup)
+            self._sync_nodegroup_params(context, cluster, nodegroup)
 
-    def _sync_node_metadata_params(self, context, cluster, nodegroup):
-        """Converge the stack's node_labels/node_taints params to the labels.
+    def _sync_nodegroup_params(self, context, cluster, nodegroup):
+        """Converge the stack's node_labels/node_taints and flavor params.
 
-        Deliberately state-driven (desired labels vs live stack parameters)
+        Deliberately state-driven (desired values vs live stack parameters)
         instead of relying on OVO changed-field tracking across the RPC
-        boundary — a missed change signal would silently strand the metadata
+        boundary — a missed change signal would silently strand the change
         in the DB. The stack read also makes this idempotent and
         drift-healing; a min/max-only patch reads the stack and returns
         without an update.
 
         The update itself mirrors _resize_stack: parameters-only with
         ``existing: True`` so every unrelated parameter is preserved and only
-        the deployments whose input actually changed re-fire. For the default
-        worker nodegroup this targets the cluster stack (kubemaster ignores
-        these params, so masters are untouched); for extra nodegroups it
-        targets their own stack.
+        the deployments/resources whose input actually changed re-fire. For
+        the default worker nodegroup this targets the cluster stack (kubemaster
+        ignores the minion_flavor param, so masters are untouched); for extra
+        nodegroups it targets their own stack.
+
+        Changing ``minion_flavor``/``master_flavor`` re-evaluates the
+        kube_minions/kube_masters ResourceGroup: each server's flavor property
+        changes, which Heat applies as a Nova resize (the server's default
+        flavor_update_policy), rolled one batch at a time by the group's
+        rolling_update policy. Node metadata is unchanged content, so the
+        reconciler SoftwareDeployments do not re-fire.
 
         Pre-metadata stacks (template without the node_labels param) are
         fine as long as no metadata is requested — a min/max-only patch on an
         old cluster must keep working. Only when metadata IS requested on
         such a stack do we reject with an actionable message instead of a
         heat 400 — the cluster must first be updated to a template that
-        carries the parameters (any cluster upgrade does this).
+        carries the parameters (any cluster upgrade does this). The flavor
+        param always exists in the template, so it is converged only when the
+        live stack actually exposes it (drift-safe on very old stacks).
         """
         labels = nodegroup.labels or {}
         desired = {
@@ -1155,13 +1466,24 @@ class HeatDriver(driver.Driver):
         if missing:
             if not any(desired.values()):
                 # Old stack, no metadata wanted — nothing to converge.
-                return
-            raise exception.InvalidParameterValue(
-                "the heat stack of nodegroup %s predates node metadata "
-                "support (missing parameters: %s); update/upgrade the "
-                "cluster to refresh its template before patching "
-                "node_labels/node_taints" % (nodegroup.name,
-                                             ", ".join(sorted(missing))))
+                # (flavor convergence below is independent of this guard.)
+                desired = {}
+            else:
+                raise exception.InvalidParameterValue(
+                    "the heat stack of nodegroup %s predates node metadata "
+                    "support (missing parameters: %s); update/upgrade the "
+                    "cluster to refresh its template before patching "
+                    "node_labels/node_taints" % (nodegroup.name,
+                                                 ", ".join(sorted(missing))))
+        # Flavor rides the same parameters-only update. Role picks the param
+        # name (kubecluster.yaml: masters read master_flavor, minions read
+        # minion_flavor). Only converge when the stack exposes the param.
+        flavor_param = ('master_flavor' if nodegroup.role == 'master'
+                        else 'minion_flavor')
+        if nodegroup.flavor_id and flavor_param in stack_params:
+            desired[flavor_param] = str(nodegroup.flavor_id)
+        if not desired:
+            return
         current = {p: str(stack_params.get(p) or '') for p in desired}
         if current == desired:
             return
@@ -1171,7 +1493,7 @@ class HeatDriver(driver.Driver):
             "disable_rollback": True,
         }
         LOG.info(
-            "Updating node metadata params on nodegroup %s stack %s: %s",
+            "Updating nodegroup %s stack %s params: %s",
             nodegroup.uuid, nodegroup.stack_id, desired)
         osc.heat().stacks.update(nodegroup.stack_id, **fields)
 

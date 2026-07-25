@@ -25,6 +25,7 @@ from magnum.api.controllers import base
 from magnum.api.controllers import link
 from magnum.api.controllers.v1 import collection
 from magnum.api.controllers.v1 import types
+from magnum.api import attr_validator
 from magnum.api import expose
 from magnum.api import utils as api_utils
 from magnum.common import exception
@@ -313,11 +314,13 @@ class NodeGroupPatchType(types.JsonPatchType):
 
     @staticmethod
     def internal_attrs():
-        # Allow updating min/max_node_count and labels (labels carry the
-        # per-nodegroup node_labels/node_taints node metadata; the heat
-        # driver pushes changed metadata to the nodegroup stack).
+        # Allow updating min/max_node_count, labels and flavor_id. labels
+        # carry the per-nodegroup node_labels/node_taints node metadata;
+        # flavor_id drives an in-place Nova resize of the pool. Both reach
+        # the nodegroup stack as parameters-only updates (the heat driver
+        # pushes the changed value; see _sync_nodegroup_params).
         internal_attrs = ["/name", "/cluster_id", "/project_id",
-                          "/docker_volume_size", "/flavor_id",
+                          "/docker_volume_size",
                           "/image_id", "/node_addresses", "/node_count",
                           "/role", "/is_default", "/stack_id", "/status",
                           "/status_reason", "/version"]
@@ -496,19 +499,24 @@ class NodeGroupController(base.Controller):
         """
         cluster = _get_cluster_resource(cluster_id,
                                         'nodegroup:update_all_projects')
-        nodegroup, needs_resize, labels_changed = self._patch(
+        nodegroup, needs_resize, labels_changed, flavor_changed = self._patch(
             cluster, nodegroup_id, patch)
-        if needs_resize and labels_changed:
-            # A labels change rides a params-only stack update while a resize
-            # changes the group size; combining them in one heat update would
-            # entangle two failure domains. Trivial to do as two PATCHes.
+        if needs_resize and (labels_changed or flavor_changed):
+            # labels and flavor_id each ride a params-only stack update while
+            # a resize changes the group size; combining them in one heat
+            # update would entangle two failure domains. A flavor change is an
+            # in-place Nova resize of every existing node — mixing that with a
+            # node-count change churns two resource sets at once. Trivial to do
+            # as two PATCHes.
             raise exception.InvalidParameterValue(
-                "labels cannot be updated together with a node count "
-                "change; update labels and counts in separate requests")
+                "labels and flavor_id cannot be updated together with a node "
+                "count change; update them in separate requests")
         if needs_resize:
             pecan.request.rpcapi.cluster_resize_async(
                 cluster, nodegroup.node_count, None, nodegroup)
         else:
+            # Params-only path: converges node metadata and/or flavor_id onto
+            # the nodegroup stack (see driver.update_nodegroup).
             pecan.request.rpcapi.nodegroup_update_async(cluster, nodegroup)
         return NodeGroup.convert(nodegroup)
 
@@ -535,6 +543,7 @@ class NodeGroupController(base.Controller):
         policy.enforce(context, 'nodegroup:update', action='nodegroup:update')
         nodegroup = objects.NodeGroup.get(context, cluster.uuid, nodegroup_id)
         old_node_count = nodegroup.node_count
+        old_flavor = nodegroup.flavor_id
         old_labels = dict(nodegroup.labels or {})
 
         try:
@@ -571,5 +580,14 @@ class NodeGroupController(base.Controller):
             _validate_version_skew(cluster, nodegroup.labels)
             _validate_node_metadata(nodegroup.name, nodegroup.labels)
 
+        flavor_changed = nodegroup.flavor_id != old_flavor
+        if flavor_changed:
+            # Fail fast on a non-existent flavor: the change rides a
+            # parameters-only stack update that would otherwise wedge the
+            # stack in UPDATE_FAILED when Nova rejects the flavor mid-resize.
+            from magnum.common import clients
+            osc = clients.OpenStackClients(context)
+            attr_validator.validate_flavor(osc, nodegroup.flavor_id)
+
         needs_resize = nodegroup.node_count != old_node_count
-        return nodegroup, needs_resize, labels_changed
+        return nodegroup, needs_resize, labels_changed, flavor_changed

@@ -48,49 +48,123 @@ def create_trustee_and_trust(osc, cluster):
             cluster_uuid=cluster.uuid)
 
 
-def _recreate_trust(osc, context, cluster):
-    """Recreate a missing trust delegating to the cluster's existing trustee.
+def _admin_keystone():
+    return clients.OpenStackClients(mag_ctx.make_admin_context()).keystone()
 
-    Used only when the trust is genuinely gone (e.g. the trustor user was
-    *deleted*, not merely disabled). The current request user becomes the new
-    trustor, so the operator running the upgrade must hold the roles the
-    cluster needs (``create_trust`` delegates ``context.roles`` or
-    ``CONF.trust.roles``). The new ``trust_id`` is persisted before the Heat
-    update so it propagates through heat-params into the node cloud.conf.
+
+def _user_usable(admin_kst, user_id):
+    """Whether a Keystone user still exists and is enabled.
+
+    Returns ``(usable, detail)``.  A user that cannot be looked up at all is
+    reported as usable so that a Keystone hiccup never triggers a needless
+    trust rebuild -- only a definite NotFound / disabled answer does.
+    """
+    if not user_id:
+        return False, 'no user id recorded'
+    try:
+        user = admin_kst.get_user(user_id)
+    except ka_exception.NotFound:
+        return False, 'user %s no longer exists' % user_id
+    except Exception as e:
+        LOG.warning('Could not look up user %s (%s); assuming it is fine',
+                    user_id, e)
+        return True, None
+    if getattr(user, 'enabled', True) is False:
+        return False, 'user %s is disabled' % user_id
+    return True, None
+
+
+def _recreate_trust(osc, context, cluster, reason='trust missing'):
+    """Rebuild the cluster's trust with the upgrade caller as trustor.
+
+    Used when the trust cannot be redeemed and cannot be repaired in place --
+    the trust is gone, or its trustor user was deleted/disabled so there is no
+    longer anyone to re-grant roles to.  The new ``trust_id`` is persisted
+    before the Heat update so it propagates through heat-params into the node
+    cloud.conf, and the in-cluster OCCM / CSI / auto-healer pick it up.
+
+    Two things this does NOT inherit from the caller, both deliberate:
+
+    * **Project.** ``create_trust`` scopes a trust to the caller's project, but
+      this path normally runs as an operator scoped to the admin project while
+      the cluster lives in a tenant project.  The trust's project is what the
+      in-cluster cloud controllers provision into, so it is pinned to
+      ``cluster.project_id``; inheriting the caller's would silently move the
+      cluster's load balancers and volumes into the operator's project.
+    * **Roles.** The caller is typically an admin, and delegating ``admin``
+      would leave every healed cluster holding admin on its project forever.
+      ``CONF.trust.recreate_roles`` (a minimal, sufficient set) is delegated
+      instead, unless ``CONF.trust.roles`` pins an explicit list.
+
+    The caller must hold those roles on the cluster's project for Keystone to
+    let the trust be redeemed, so they are granted first when
+    ``CONF.trust.heal_trustor_roles`` is on.  The result is then proven by
+    redeeming a trust-scoped token: a trust that does not resolve to the
+    cluster's project is discarded rather than written to the cluster row,
+    because persisting a dead trust would overwrite the old one and destroy the
+    evidence needed to repair it by hand.
     """
     old_trust_id = cluster.trust_id
-    # create_trust scopes the new trust to the CALLER's project. Recreating
-    # from a token scoped elsewhere (e.g. an admin on the service project)
-    # would delegate the WRONG project to the cluster's trustee -- the
-    # in-cluster cloud controllers would then create LBs/volumes in that
-    # project. Refuse with an actionable message instead.
-    if context.project_id != cluster.project_id:
-        LOG.error(
-            'Cluster %s trust must be recreated, but the request is scoped '
-            'to project %s while the cluster belongs to project %s. Re-run '
-            'this operation with a token scoped to the cluster project '
-            '(e.g. --os-project-id %s) by a user holding the roles to '
-            'delegate (%s).',
-            cluster.uuid, context.project_id, cluster.project_id,
-            cluster.project_id,
-            CONF.trust.roles or 'the caller\'s roles on that project')
-        raise exception.TrusteeOrTrustToClusterFailed(
-            cluster_uuid=cluster.uuid)
+    roles = CONF.trust.roles or CONF.trust.recreate_roles
+    admin_kst = _admin_keystone()
+
+    if CONF.trust.heal_trustor_roles:
+        for role_id, role_name in admin_kst.find_role_ids(roles):
+            try:
+                admin_kst.grant_role(role_id, context.user_id,
+                                     cluster.project_id)
+            except Exception as e:
+                LOG.warning(
+                    'Cluster %s: could not grant role %s to the new trustor '
+                    '%s on project %s: %s', cluster.uuid, role_name,
+                    context.user_id, cluster.project_id, e)
+
     try:
-        trust = osc.keystone().create_trust(cluster.trustee_user_id)
+        trust = osc.keystone().create_trust(
+            cluster.trustee_user_id,
+            project_id=cluster.project_id,
+            roles=roles)
     except Exception:
         LOG.exception(
-            'Failed to recreate trust for cluster %s (trustee %s, trustor %s)',
-            cluster.uuid, cluster.trustee_user_id, context.user_id)
+            'Failed to recreate trust for cluster %s (%s; trustee %s, new '
+            'trustor %s, project %s, roles %s)',
+            cluster.uuid, reason, cluster.trustee_user_id, context.user_id,
+            cluster.project_id, roles)
+        raise exception.TrusteeOrTrustToClusterFailed(
+            cluster_uuid=cluster.uuid)
+
+    # Prove it works before adopting it.
+    try:
+        proj, _user = osc.keystone().verify_trust_redeemable(
+            cluster.trustee_user_id, cluster.trustee_password, trust.id)
+    except Exception as e:
+        LOG.error(
+            'Cluster %s: rebuilt trust %s cannot be redeemed by trustee %s '
+            '(%s). Keeping the old trust_id %s so the cluster can still be '
+            'repaired by hand; the unusable trust is left in Keystone for '
+            'inspection.',
+            cluster.uuid, trust.id, cluster.trustee_user_id, e, old_trust_id)
+        raise exception.TrusteeOrTrustToClusterFailed(
+            cluster_uuid=cluster.uuid)
+    if proj != cluster.project_id:
+        LOG.error(
+            'Cluster %s: rebuilt trust %s resolves to project %s, not the '
+            'cluster project %s; refusing to adopt it (the cluster would '
+            'provision load balancers and volumes into the wrong project).',
+            cluster.uuid, trust.id, proj, cluster.project_id)
         raise exception.TrusteeOrTrustToClusterFailed(
             cluster_uuid=cluster.uuid)
 
     cluster.trust_id = trust.id
+    # Record the new trustor so a later heal evaluates the identity that is
+    # actually backing the trust, not the deleted user it replaced.
+    cluster.user_id = context.user_id
     cluster.save()
     LOG.warning(
-        'Recreated missing trust for cluster %s: trustor is now %s, '
-        'trust_id %s -> %s',
-        cluster.uuid, context.user_id, old_trust_id, trust.id)
+        'Rebuilt trust for cluster %s (%s): trustor is now %s, project %s, '
+        'roles %s, trust_id %s -> %s (verified redeemable)',
+        cluster.uuid, reason, context.user_id, cluster.project_id, roles,
+        old_trust_id, trust.id)
     return True
 
 
@@ -140,8 +214,21 @@ def ensure_trust(osc, context, cluster):
        401/403. Fixed by re-granting the trust's delegated roles to the
        trustor (gated by ``CONF.trust.heal_trustor_roles``).
 
-    2. **Trust missing (rare).** The trust is genuinely gone (trustor user
-       deleted). Recreated with the upgrade caller as the new trustor.
+    2. **Trust missing.** The trust is genuinely gone. Rebuilt with the
+       upgrade caller as the new trustor.
+
+    3. **Trustor user deleted or disabled (the hard-wedge case).** A Keystone
+       trust dies with its trustor, and case 1's re-grant cannot help because
+       there is nobody left to grant roles to -- every grant just fails and the
+       upgrade proceeds still broken. Detected up front by looking the trustor
+       up as admin, and repaired by the same rebuild as case 2 (gated by
+       ``CONF.trust.heal_dead_trustor``). This is what a federated OIDC creator
+       being reprovisioned leaves behind: delete still works because it falls
+       back to the admin context, but upgrade and resize do not.
+
+    The **trustee** (the cluster's own service account) is checked first. If it
+    is gone there is nothing to delegate to and no rebuild is possible, so the
+    cluster is reported for manual repair rather than silently left alone.
 
     The trust is read **as the trustee** -- the upgrade caller is not a party
     to the trust, and a project-scoped admin token cannot read another user's
@@ -158,9 +245,48 @@ def ensure_trust(osc, context, cluster):
     if not cluster.trustee_user_id:
         return False
 
+    admin_kst = _admin_keystone()
+
+    # The trustee is the identity every rebuild delegates TO. If it is gone,
+    # no repair here is possible -- say so loudly instead of failing later
+    # with an opaque 401 from the conductor and from every in-cluster
+    # controller.
+    trustee_ok, trustee_detail = _user_usable(admin_kst,
+                                              cluster.trustee_user_id)
+    if not trustee_ok:
+        LOG.error(
+            'Cluster %s: its trustee (service account) is unusable -- %s. The '
+            'trust cannot be repaired automatically; the cluster needs a new '
+            'trustee created and grafted onto its row before upgrade or '
+            'resize will work.',
+            cluster.uuid, trustee_detail)
+        return False
+
     # No trust recorded at all -> create one.
     if not cluster.trust_id:
-        return _recreate_trust(osc, context, cluster)
+        return _recreate_trust(osc, context, cluster,
+                               reason='no trust recorded')
+
+    # A trust dies with its trustor, so a deleted/disabled trustor is
+    # terminal for the existing trust no matter what the trust row says.
+    # Check before reading the trust: the read can succeed and lead to a
+    # role re-grant against a user that no longer exists, which fails every
+    # grant and leaves the cluster just as broken.
+    trustor_ok, trustor_detail = _user_usable(admin_kst, cluster.user_id)
+    if not trustor_ok:
+        if not CONF.trust.heal_dead_trustor:
+            LOG.error(
+                'Cluster %s: trustor unusable (%s) so its trust cannot be '
+                'redeemed, and [trust] heal_dead_trustor is off. Upgrade and '
+                'resize will fail 401/403 until the trust is rebuilt by hand.',
+                cluster.uuid, trustor_detail)
+            return False
+        LOG.warning(
+            'Cluster %s: trustor unusable (%s); rebuilding its trust with the '
+            'upgrade caller %s as trustor',
+            cluster.uuid, trustor_detail, context.user_id)
+        return _recreate_trust(osc, context, cluster,
+                               reason='trustor %s' % trustor_detail)
 
     try:
         trust = osc.keystone().get_trust_as_trustee(

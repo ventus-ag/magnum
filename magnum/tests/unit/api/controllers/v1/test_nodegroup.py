@@ -20,6 +20,7 @@ from oslo_utils import timeutils
 from oslo_utils import uuidutils
 
 from magnum.api.controllers.v1 import nodegroup as api_nodegroup
+from magnum.common import exception
 from magnum.conductor import api as rpcapi
 import magnum.conf
 from magnum import objects
@@ -646,6 +647,58 @@ class TestPatch(NodeGroupControllerTest):
                                    expect_errors=True)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(409, response.status_code)
+        self.assertIsNotNone(response.json['errors'])
+
+    @mock.patch('magnum.api.attr_validator.validate_flavor')
+    @mock.patch('oslo_utils.timeutils.utcnow')
+    def test_replace_flavor_id_ok(self, mock_utcnow, mock_validate_flavor):
+        # A flavor_id change is accepted (no longer an internal attr) and
+        # rides the params-only nodegroup_update path (not a resize).
+        test_time = datetime.datetime(2000, 1, 1, 0, 0)
+        mock_utcnow.return_value = test_time
+
+        response = self.patch_json(self.url + self.nodegroup.uuid,
+                                   [{'path': '/flavor_id',
+                                     'value': 'new_flavor',
+                                     'op': 'replace'}])
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(202, response.status_code)
+        mock_validate_flavor.assert_called_once()
+        self.mock_ng_update.assert_called_once()
+
+        response = self.get_json(self.url + self.nodegroup.uuid)
+        self.assertEqual('new_flavor', response['flavor_id'])
+
+    @mock.patch('magnum.api.attr_validator.validate_flavor')
+    def test_replace_flavor_id_invalid(self, mock_validate_flavor):
+        mock_validate_flavor.side_effect = exception.FlavorNotFound(
+            flavor='new_flavor')
+        response = self.patch_json(self.url + self.nodegroup.uuid,
+                                   [{'path': '/flavor_id',
+                                     'value': 'new_flavor',
+                                     'op': 'replace'}],
+                                   expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(400, response.status_code)
+        self.assertIsNotNone(response.json['errors'])
+
+    @mock.patch('magnum.api.attr_validator.validate_flavor')
+    def test_replace_flavor_id_with_resize_rejected(self,
+                                                    mock_validate_flavor):
+        # A flavor change (in-place resize) may not be combined with a
+        # node-count change (group resize) in one request. Raising
+        # min_node_count above the current count is what bumps node_count,
+        # so it doubles as the resize trigger here.
+        response = self.patch_json(self.url + self.nodegroup.uuid,
+                                   [{'path': '/flavor_id',
+                                     'value': 'new_flavor',
+                                     'op': 'replace'},
+                                    {'path': '/min_node_count',
+                                     'value': 4,
+                                     'op': 'replace'}],
+                                   expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(400, response.status_code)
         self.assertIsNotNone(response.json['errors'])
 
     @mock.patch('oslo_utils.timeutils.utcnow')
