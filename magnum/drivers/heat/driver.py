@@ -1162,8 +1162,10 @@ class HeatDriver(driver.Driver):
         idempotent and does not churn the stored file set.
 
         Returns ``(template, aliased)`` where ``aliased`` maps each rewritten
-        group name to the original (pre-alias) child key, so the pin step can
-        restore genuine pre-migration content under that key.
+        group name to ``(original child key, alias key)`` -- the original so
+        the pin step can restore genuine pre-migration content under it, and
+        the alias so laggard detection can tell migrated members from
+        unmigrated ones regardless of which older key they carry.
         """
         if isinstance(template, dict):
             parsed = copy.deepcopy(template)
@@ -1221,7 +1223,15 @@ class HeatDriver(driver.Driver):
             resource_def["type"] = alias_ref
             tpl_files[alias_ref] = tpl_files[child_ref]
             tpl_files.pop(child_ref, None)
-            aliased[group_name] = child_ref
+            # (original key, alias key). The alias is what a migrated member
+            # must point at; anything else is a laggard -- including members
+            # created by an OLDER MAGNUM, whose child ref carries that
+            # release's venv path (e.g. .../magnum-21.2.12/.../kubemaster.yaml)
+            # and so matches neither key. Those need no pin (a different key
+            # cannot be overwritten by this update's files, so their stored
+            # content survives) but they are still unmigrated and must be
+            # reported as such.
+            aliased[group_name] = (child_ref, alias_ref)
             changed = True
             LOG.info(
                 "Rolling-migration alias %s -> %s for group %s",
@@ -1283,38 +1293,54 @@ class HeatDriver(driver.Driver):
         """
         laggards = {}
         pinned = set()
-        for group_name, orig_ref in (aliased or {}).items():
+        for group_name, refs in (aliased or {}).items():
+            orig_ref, alias_ref = refs
             try:
                 group = osc.heat().resources.get(parent_stack_id, group_name)
                 group_stack_id = getattr(group, "physical_resource_id", None)
                 if not group_stack_id:
                     continue
 
-                # Members still defined with the original child type (i.e. not
-                # yet migrated).  Their stored child template is the
-                # authoritative pre-migration content.  Robust to partially
-                # migrated groups, where some members already use the alias.
+                # Any member not pointing at the alias is unmigrated.  Two
+                # shapes: the original key (same Magnum release, template
+                # content changed) and an older release's venv path (e.g.
+                # .../magnum-21.2.12/.../kubemaster.yaml).  Only the first can
+                # have its stored content clobbered by this update's file
+                # merge, so only that one needs pinning -- but both are
+                # laggards and both must be reported.
                 group_tmpl = osc.heat().stacks.template(group_stack_id)
                 member_defs = group_tmpl.get("resources") or {}
-                on_orig = [
+                behind = sorted(
                     mname
                     for mname, mdef in member_defs.items()
-                    if (mdef or {}).get("type") == orig_ref
-                ]
-                if not on_orig:
+                    if (mdef or {}).get("type") != alias_ref
+                )
+                if not behind:
                     continue
-                laggards[group_name] = sorted(on_orig)
+                laggards[group_name] = behind
                 LOG.info(
-                    "Rolling migration: %s of %s %s members are still on the "
-                    "pre-migration child template %s (%s); this update should "
-                    "migrate them in place",
-                    len(on_orig),
+                    "Rolling migration: %s of %s %s members are still on a "
+                    "pre-migration child template (target alias %s); members "
+                    "%s; this update should migrate them in place",
+                    len(behind),
                     len(member_defs),
                     group_name,
-                    orig_ref,
-                    ", ".join(sorted(on_orig)),
+                    alias_ref,
+                    ", ".join(behind),
                 )
-                target = sorted(on_orig)[0]
+
+                on_orig = sorted(
+                    mname
+                    for mname in behind
+                    if (member_defs.get(mname) or {}).get("type") == orig_ref
+                )
+                if not on_orig:
+                    # Laggards exist but none share the original key, so the
+                    # file merge cannot overwrite what they validate against.
+                    # Nothing to pin; not a failure.
+                    pinned.add(group_name)
+                    continue
+                target = on_orig[0]
 
                 member_stack_id = None
                 for res in osc.heat().resources.list(group_stack_id):
