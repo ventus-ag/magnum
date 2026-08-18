@@ -109,6 +109,18 @@ class Handler(object):
                                                                   cluster)
             cluster_driver.update_nodegroup(context, cluster, nodegroup)
             nodegroup.save()
+            if nodegroup.is_default and nodegroup.flavor_id:
+                # Mirror a flavor change onto the cluster's creation-time
+                # fields so GET /clusters/<id> reports the live flavor. A
+                # NULL nodegroup flavor (metadata-only patch on a template
+                # -default nodegroup) must never erase the cluster's value.
+                if nodegroup.role == 'master':
+                    if cluster.master_flavor_id != nodegroup.flavor_id:
+                        cluster.master_flavor_id = nodegroup.flavor_id
+                        cluster.save()
+                elif cluster.flavor_id != nodegroup.flavor_id:
+                    cluster.flavor_id = nodegroup.flavor_id
+                    cluster.save()
         except Exception as e:
             nodegroup.status = fields.ClusterStatus.UPDATE_FAILED
             nodegroup.status_reason = six.text_type(e)

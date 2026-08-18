@@ -1558,7 +1558,10 @@ class HeatDriver(driver.Driver):
             'node_labels': str(labels.get('node_labels') or ''),
             'node_taints': str(labels.get('node_taints') or ''),
         }
-        osc = self._get_cluster_osc(context, cluster)
+        # Stack-mutating path: never fall back to the admin client, or the
+        # SoftwareConfig rows land in the service tenant (see _get_cluster_osc).
+        osc = self._get_cluster_osc(context, cluster,
+                                    allow_admin_fallback=False)
         stack = osc.heat().stacks.get(nodegroup.stack_id)
         stack_params = stack.parameters or {}
         missing = [p for p in desired if p not in stack_params]
@@ -1586,11 +1589,22 @@ class HeatDriver(driver.Driver):
         current = {p: str(stack_params.get(p) or '') for p in desired}
         if current == desired:
             return
+        if (desired.get(flavor_param)
+                and current.get(flavor_param) != desired[flavor_param]
+                and 'update_max_batch_size' in stack_params):
+            # A flavor delta reboots every node in the group (in-place Nova
+            # resize). The stack may still carry a batch size >1 from a prior
+            # upgrade; pin to 1 so members roll serially — a parallel master
+            # reboot would drop etcd quorum.
+            desired['update_max_batch_size'] = '1'
         fields = {
             "parameters": desired,
             "existing": True,
             "disable_rollback": True,
+            # Batch-1 rolls converge serially; scale the budget by node count.
+            "timeout_mins": self._get_update_timeout(cluster),
         }
+        self._prepare_stack_for_params_update(osc, nodegroup.stack_id)
         LOG.info(
             "Updating nodegroup %s stack %s params: %s",
             nodegroup.uuid, nodegroup.stack_id, desired)
