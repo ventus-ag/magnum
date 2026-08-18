@@ -418,6 +418,20 @@ class HeatStackCredentialsInvalid(MagnumException):
                 "user_creds row.")
 
 
+class ClusterServiceAccountKeysUnavailable(MagnumException):
+    message = _("The service account keypair of cluster %(cluster_uuid)s "
+                "could not be recovered from its Heat stack (%(reason)s). "
+                "Those keys sign and verify every ServiceAccount token in the "
+                "cluster and must stay identical on every master for its "
+                "whole life. Generating a replacement here would give any "
+                "node built by this update a keypair the existing masters do "
+                "not have, so roughly one in every N API calls would fail "
+                "with 401 Unauthorized for as long as the cluster lives. "
+                "Refusing the update instead. Set [cluster_heat] "
+                "heat_db_connection so the stored keypair can be read back, "
+                "or supply it explicitly.")
+
+
 class CertificatesToClusterFailed(MagnumException):
     message = _("Failed to create certificates for Cluster: %(cluster_uuid)s")
 

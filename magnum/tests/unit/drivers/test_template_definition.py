@@ -13,6 +13,7 @@
 # under the License.
 
 import abc
+import json
 from neutronclient.common import exceptions as n_exception
 from unittest import mock
 
@@ -390,6 +391,122 @@ class AtomicK8sTemplateDefinitionTestCase(BaseK8sTemplateDefinitionTestCase):
         self.assertEqual('rotation-id', extra_params['ca_rotation_id'])
         self.assertNotIn('kube_service_account_key', extra_params)
         self.assertNotIn('kube_service_account_private_key', extra_params)
+        mock_generate_csr_and_key.assert_not_called()
+
+    def _service_account_definition(self, stack_id, parameters=None,
+                                    stack_error=None):
+        definition = k8sa_tdef.AtomicK8sTemplateDefinition()
+        mock_cluster = mock.MagicMock(uuid='cluster-uuid', stack_id=stack_id)
+        mock_osc = mock.MagicMock()
+        if stack_error is not None:
+            mock_osc.heat.return_value.stacks.get.side_effect = stack_error
+        else:
+            mock_osc.heat.return_value.stacks.get.return_value = (
+                mock.MagicMock(parameters=parameters or {}))
+        definition.get_osc = mock.MagicMock(return_value=mock_osc)
+        return definition, mock_cluster
+
+    @mock.patch('magnum.common.x509.operations.generate_csr_and_key')
+    def test_set_service_account_params_generates_only_on_create(
+            self, mock_generate_csr_and_key):
+        # A cluster with no stack yet is a genuine create: there is nothing to
+        # preserve, so minting the cluster's keypair here is correct.
+        mock_generate_csr_and_key.return_value = {
+            'public_key': 'new-public',
+            'private_key': 'new-private',
+        }
+        definition, mock_cluster = self._service_account_definition(None)
+
+        extra_params = {}
+        definition._set_service_account_params(
+            mock.MagicMock(), mock_cluster, extra_params)
+
+        self.assertEqual('new-public',
+                         extra_params['kube_service_account_key'])
+        self.assertEqual('new-private',
+                         extra_params['kube_service_account_private_key'])
+        self.assertEqual('', extra_params['ca_rotation_id'])
+
+    @mock.patch('magnum.common.x509.operations.generate_csr_and_key')
+    def test_set_service_account_params_reuses_readable_stack_values(
+            self, mock_generate_csr_and_key):
+        definition, mock_cluster = self._service_account_definition(
+            'stack-id',
+            parameters={
+                'ca_rotation_id': 'rotation-id',
+                'kube_service_account_key': 'stored-public',
+                'kube_service_account_private_key': 'stored-private',
+            })
+
+        extra_params = {}
+        definition._set_service_account_params(
+            mock.MagicMock(), mock_cluster, extra_params)
+
+        self.assertEqual('stored-public',
+                         extra_params['kube_service_account_key'])
+        self.assertEqual('stored-private',
+                         extra_params['kube_service_account_private_key'])
+        mock_generate_csr_and_key.assert_not_called()
+
+    @mock.patch('magnum.drivers.heat.template_def'
+                '.recover_service_account_params_from_db')
+    @mock.patch('magnum.common.x509.operations.generate_csr_and_key')
+    def test_set_service_account_params_recovers_from_heat_db(
+            self, mock_generate_csr_and_key, mock_recover):
+        # The parameters are declared hidden, so the Heat API masks them and
+        # the stored pair can only come from heat's own database.
+        mock_recover.return_value = ('db-public', 'db-private', 'db-rotation')
+        definition, mock_cluster = self._service_account_definition(
+            'stack-id',
+            parameters={
+                'ca_rotation_id': '',
+                'kube_service_account_key': '******',
+                'kube_service_account_private_key': '******',
+            })
+
+        extra_params = {}
+        definition._set_service_account_params(
+            mock.MagicMock(), mock_cluster, extra_params)
+
+        self.assertEqual('db-public',
+                         extra_params['kube_service_account_key'])
+        self.assertEqual('db-private',
+                         extra_params['kube_service_account_private_key'])
+        self.assertEqual('db-rotation', extra_params['ca_rotation_id'])
+        mock_generate_csr_and_key.assert_not_called()
+
+    @mock.patch('magnum.drivers.heat.template_def'
+                '.recover_service_account_params_from_db')
+    @mock.patch('magnum.common.x509.operations.generate_csr_and_key')
+    def test_set_service_account_params_raises_when_unrecoverable(
+            self, mock_generate_csr_and_key, mock_recover):
+        # Generating a replacement for an existing cluster would hand any node
+        # this update builds a keypair the other masters do not have, so every
+        # token minted by one side is rejected with 401 by the other. Fail the
+        # update instead.
+        mock_recover.return_value = (None, None, None)
+        definition, mock_cluster = self._service_account_definition(
+            'stack-id', stack_error=Exception('heat is unreachable'))
+
+        self.assertRaises(
+            exception.ClusterServiceAccountKeysUnavailable,
+            definition._set_service_account_params,
+            mock.MagicMock(), mock_cluster, {})
+        mock_generate_csr_and_key.assert_not_called()
+
+    @mock.patch('magnum.drivers.heat.template_def'
+                '.recover_service_account_params_from_db')
+    @mock.patch('magnum.common.x509.operations.generate_csr_and_key')
+    def test_set_service_account_params_raises_when_stack_lacks_keys(
+            self, mock_generate_csr_and_key, mock_recover):
+        mock_recover.return_value = (None, None, None)
+        definition, mock_cluster = self._service_account_definition(
+            'stack-id', parameters={'ca_rotation_id': ''})
+
+        self.assertRaises(
+            exception.ClusterServiceAccountKeysUnavailable,
+            definition._set_service_account_params,
+            mock.MagicMock(), mock_cluster, {})
         mock_generate_csr_and_key.assert_not_called()
 
     @mock.patch('magnum.common.clients.OpenStackClients')
@@ -2223,3 +2340,84 @@ class UbuntuMesosTemplateDefinitionTestCase(base.TestCase):
                          self.mock_cluster.default_ng_worker.node_addresses)
         self.assertEqual(expected_master_addresses,
                          self.mock_cluster.default_ng_master.node_addresses)
+
+
+class ServiceAccountEnvironmentTestCase(base.TestCase):
+    """Parsing the keypair out of a raw_template environment row."""
+
+    # Shapes taken from a real heat DB row: values are PEM with the newlines
+    # left escaped, which is exactly the form extra_params carries.
+    PUBLIC = '-----BEGIN PUBLIC KEY-----\\nAAAA\\n-----END PUBLIC KEY-----\\n'
+    PRIVATE = ('-----BEGIN RSA PRIVATE KEY-----\\nBBBB\\n'
+               '-----END RSA PRIVATE KEY-----\\n')
+
+    def test_reads_parameters_from_json_text(self):
+        environment = json.dumps({'parameters': {
+            'kube_service_account_key': self.PUBLIC,
+            'kube_service_account_private_key': self.PRIVATE,
+            'ca_rotation_id': 'rotation',
+        }})
+        public, private, rotation = (
+            cmn_tdef._service_account_params_from_environment(environment))
+        self.assertEqual(self.PUBLIC, public)
+        self.assertEqual(self.PRIVATE, private)
+        self.assertEqual('rotation', rotation)
+
+    def test_reads_parameters_from_bytes_and_dict(self):
+        payload = {'parameters': {
+            'kube_service_account_key': self.PUBLIC,
+            'kube_service_account_private_key': self.PRIVATE,
+        }}
+        as_bytes = json.dumps(payload).encode('utf-8')
+        for environment in (payload, as_bytes):
+            public, private, _rotation = (
+                cmn_tdef._service_account_params_from_environment(environment))
+            self.assertEqual(self.PUBLIC, public)
+            self.assertEqual(self.PRIVATE, private)
+
+    def test_masked_values_are_not_treated_as_recovered(self):
+        environment = json.dumps({'parameters': {
+            'kube_service_account_key': '******',
+            'kube_service_account_private_key': '******',
+        }})
+        public, private, _rotation = (
+            cmn_tdef._service_account_params_from_environment(environment))
+        self.assertIsNone(public)
+        self.assertIsNone(private)
+
+    def test_encrypted_parameters_are_not_recovered(self):
+        # With heat's encrypt_parameters_and_properties the stored value is
+        # ciphertext; installing that as a key would break every master.
+        environment = json.dumps({
+            'encrypted_param_names': ['kube_service_account_private_key'],
+            'parameters': {
+                'kube_service_account_key': self.PUBLIC,
+                'kube_service_account_private_key': 'gAAAAABkciphertext',
+            },
+        })
+        public, private, _rotation = (
+            cmn_tdef._service_account_params_from_environment(environment))
+        self.assertEqual(self.PUBLIC, public)
+        self.assertIsNone(private)
+
+    def test_non_pem_values_are_rejected(self):
+        environment = json.dumps({'parameters': {
+            'kube_service_account_key': 'gAAAAABkciphertext',
+            'kube_service_account_private_key': 'gAAAAABkalsociphertext',
+        }})
+        self.assertEqual(
+            (None, None, None),
+            cmn_tdef._service_account_params_from_environment(environment))
+
+    def test_unusable_input_yields_nothing(self):
+        for environment in (None, '', 'not json', '[]', '{"parameters": []}'):
+            self.assertEqual(
+                (None, None, None),
+                cmn_tdef._service_account_params_from_environment(environment))
+
+    def test_recover_is_a_no_op_without_db_connection(self):
+        # heat_db_connection defaults to unset; recovery must then be silent
+        # rather than raising, so the caller can fall back.
+        self.assertEqual(
+            (None, None, None),
+            cmn_tdef.recover_service_account_params_from_db('stack-id'))

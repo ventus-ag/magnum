@@ -13,6 +13,7 @@
 # under the License.
 import abc
 import ast
+import json
 
 from oslo_log import log as logging
 from oslo_utils import strutils
@@ -25,6 +26,8 @@ from magnum.common import exception
 from magnum.common import keystone
 from magnum.common import nova
 from magnum.common import utils
+from magnum.common.x509 import operations as x509
+from magnum.i18n import _
 import magnum.conf
 
 from requests import exceptions as req_exceptions
@@ -48,6 +51,215 @@ def get_unmasked_heat_parameter(parameters, key, default=None):
     if is_masked_heat_parameter(value):
         return default
     return value
+
+
+def recover_service_account_params_from_db(stack_id):
+    """Read a stack's stored service account keypair straight from heat's DB.
+
+    ``kube_service_account_key`` and ``kube_service_account_private_key`` are
+    declared ``hidden: true`` in the templates, so ``stacks.get()`` returns
+    ``'******'`` for them -- the Heat API can never hand the real values back.
+    The stored parameters live in ``raw_template.environment``, which is where
+    this looks, falling back to the nested ``kube_masters`` stacks that carry
+    the same values.
+
+    Returns ``(public_key, private_key, ca_rotation_id)``; any element may be
+    ``None``. Best-effort: without ``[cluster_heat] heat_db_connection`` (or on
+    any failure) it returns ``(None, None, None)`` and the caller decides.
+    """
+    conn_url = CONF.cluster_heat.heat_db_connection
+    if not conn_url or not stack_id:
+        return None, None, None
+
+    engine = None
+    try:
+        import sqlalchemy
+
+        engine = sqlalchemy.create_engine(conn_url)
+        with engine.connect() as conn:
+            row = conn.execute(
+                sqlalchemy.text(
+                    "SELECT s.name, rt.environment FROM stack s "
+                    "JOIN raw_template rt ON rt.id = s.raw_template_id "
+                    "WHERE s.id = :sid AND s.deleted_at IS NULL"
+                ),
+                {"sid": stack_id},
+            ).fetchone()
+            if not row:
+                return None, None, None
+
+            stack_name, environment = row[0], row[1]
+            found = _service_account_params_from_environment(environment)
+            if found[0] and found[1]:
+                return found
+
+            # The root stack's copy can be missing on a tree whose parameters
+            # were rewritten; every kube_masters member carries the same pair.
+            # Only master stacks hold it, and a large tree (minion members,
+            # software deployments) has far more than 50 nested stacks, so
+            # scan kube_masters rows specifically.
+            rows = conn.execute(
+                sqlalchemy.text(
+                    "SELECT rt.environment FROM stack s "
+                    "JOIN raw_template rt ON rt.id = s.raw_template_id "
+                    "WHERE s.name LIKE :prefix "
+                    "AND s.name LIKE '%-kube_masters-%' "
+                    "AND s.deleted_at IS NULL "
+                    "LIMIT 50"
+                ),
+                {"prefix": stack_name + "-%"},
+            ).fetchall()
+            for nested in rows:
+                found = _service_account_params_from_environment(nested[0])
+                if found[0] and found[1]:
+                    return found
+    except Exception as exc:
+        LOG.warning('Could not read the stored service account keypair of '
+                    'stack %s from the heat DB: %s', stack_id, exc)
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+    return None, None, None
+
+
+def _service_account_params_from_environment(environment):
+    """Pull the service account keypair out of a raw_template environment."""
+    if not environment:
+        return None, None, None
+    try:
+        if isinstance(environment, (bytes, bytearray)):
+            environment = environment.decode('utf-8')
+        if isinstance(environment, six.string_types):
+            environment = json.loads(environment)
+    except (ValueError, UnicodeDecodeError):
+        return None, None, None
+    if not isinstance(environment, dict):
+        return None, None, None
+
+    parameters = environment.get('parameters') or {}
+    if not isinstance(parameters, dict):
+        return None, None, None
+
+    # With heat's encrypt_parameters_and_properties enabled the stored value is
+    # ciphertext, not the key. Handing that back would install unusable SA
+    # material on every master, which is worse than not recovering at all.
+    encrypted = environment.get('encrypted_param_names') or []
+    if not isinstance(encrypted, list):
+        encrypted = []
+
+    public = _usable_pem_parameter(
+        parameters, 'kube_service_account_key', encrypted)
+    private = _usable_pem_parameter(
+        parameters, 'kube_service_account_private_key', encrypted)
+    rotation_id = get_unmasked_heat_parameter(parameters, 'ca_rotation_id')
+    return public, private, rotation_id
+
+
+def _usable_pem_parameter(parameters, name, encrypted_param_names):
+    """Return a stored parameter only if it is plainly a PEM document."""
+    if name in encrypted_param_names:
+        LOG.debug('Heat parameter %s is stored encrypted; cannot recover it '
+                  'from the database.', name)
+        return None
+    value = get_unmasked_heat_parameter(parameters, name)
+    if not value or not isinstance(value, six.string_types):
+        return None
+    if not value.lstrip().startswith('-----BEGIN'):
+        LOG.debug('Heat parameter %s does not look like PEM material; '
+                  'refusing to treat it as a recovered key.', name)
+        return None
+    return value
+
+
+def set_service_account_params(heat_client, cluster, extra_params):
+    """Resolve the cluster's service account keypair into ``extra_params``.
+
+    The keypair signs and verifies every ServiceAccount token in the cluster.
+    It is established at creation and must remain IDENTICAL on every master
+    for the cluster's whole life: a master built with a different pair issues
+    tokens the other apiservers reject with 401, and since client-go pins a
+    long-lived connection to one backend, workloads then break permanently
+    depending on which master they landed on.
+
+    So a new pair is generated for a cluster CREATE only. For an existing
+    cluster the stored pair is recovered -- from the Heat API when it is
+    readable, otherwise straight from heat's DB, since the parameters are
+    ``hidden`` and the API masks them. When the values are provably present but
+    unreadable, they are omitted so an ``existing=True`` update preserves them
+    (that is what makes a params-only resize safe without DB access). Only when
+    the pair can neither be read nor safely preserved does this raise, because
+    the alternative -- silently minting a replacement -- splits the control
+    plane for the rest of the cluster's life.
+    """
+    if not cluster.stack_id:
+        extra_params.setdefault('ca_rotation_id', '')
+        _generate_service_account_params(extra_params)
+        return
+
+    reason = _('the stack could not be read')
+    masked = False
+    try:
+        stack = heat_client.stacks.get(cluster.stack_id)
+        stack_params = stack.parameters or {}
+        extra_params['ca_rotation_id'] = stack_params.get('ca_rotation_id', '')
+
+        public = get_unmasked_heat_parameter(
+            stack_params, 'kube_service_account_key')
+        private = get_unmasked_heat_parameter(
+            stack_params, 'kube_service_account_private_key')
+        if public and private:
+            extra_params['kube_service_account_key'] = public
+            extra_params['kube_service_account_private_key'] = private
+            return
+
+        masked = (
+            is_masked_heat_parameter(
+                stack_params.get('kube_service_account_key')) or
+            is_masked_heat_parameter(
+                stack_params.get('kube_service_account_private_key')))
+        reason = (_('Heat masks them because they are declared hidden')
+                  if masked
+                  else _('the stack does not carry them'))
+    except Exception as exc:
+        reason = _('reading the stack failed: %s') % exc
+
+    public, private, rotation_id = recover_service_account_params_from_db(
+        cluster.stack_id)
+    if public and private:
+        LOG.debug('Recovered the stored service account keypair of cluster '
+                  '%s from the heat DB.', cluster.uuid)
+        extra_params['kube_service_account_key'] = public
+        extra_params['kube_service_account_private_key'] = private
+        if rotation_id is not None and not extra_params.get('ca_rotation_id'):
+            extra_params['ca_rotation_id'] = rotation_id
+        return
+
+    if masked:
+        # The stack demonstrably holds the real values; Heat is only hiding
+        # them from us. Leaving the parameters unset makes an existing=True
+        # update reuse them, which covers the params-only paths (resize).
+        # A full-template update cannot preserve them this way, hence the
+        # warning: configure heat_db_connection to close that gap.
+        LOG.warning('Service account keys for cluster %s are masked in Heat '
+                    'output and [cluster_heat] heat_db_connection is not '
+                    'usable, so they can only be preserved implicitly. A '
+                    'full-template update cannot carry them across and any '
+                    'node it builds would get a fresh keypair, splitting '
+                    'ServiceAccount token trust across the masters. Set '
+                    'heat_db_connection to remove this risk.', cluster.uuid)
+        return
+
+    raise exception.ClusterServiceAccountKeysUnavailable(
+        cluster_uuid=cluster.uuid, reason=reason)
+
+
+def _generate_service_account_params(extra_params):
+    csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
+    extra_params['kube_service_account_key'] = (
+        csr_keys["public_key"].replace("\n", "\\n"))
+    extra_params['kube_service_account_private_key'] = (
+        csr_keys["private_key"].replace("\n", "\\n"))
 
 
 def omit_masked_heat_parameters(parameters):

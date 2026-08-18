@@ -132,46 +132,11 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                     ca_cert.get_private_key_passphrase()).replace("\n", "\\n")
 
     def _set_service_account_params(self, context, cluster, extra_params):
-        if cluster.stack_id:
-            try:
-                stack = self.get_osc(context).heat().stacks.get(
-                    cluster.stack_id)
-                stack_params = stack.parameters or {}
-                extra_params['ca_rotation_id'] = stack_params.get(
-                    'ca_rotation_id', '')
-                service_account_key = template_def.get_unmasked_heat_parameter(
-                    stack_params,
-                    'kube_service_account_key')
-                service_account_private_key = (
-                    template_def.get_unmasked_heat_parameter(
-                        stack_params,
-                    'kube_service_account_private_key')
-                )
-                if service_account_key and service_account_private_key:
-                    extra_params['kube_service_account_key'] = (
-                        service_account_key)
-                    extra_params['kube_service_account_private_key'] = (
-                        service_account_private_key)
-                    return
-                if (template_def.is_masked_heat_parameter(
-                        stack_params.get('kube_service_account_key')) or
-                        template_def.is_masked_heat_parameter(
-                            stack_params.get(
-                                'kube_service_account_private_key'))):
-                    LOG.debug('Service account keys for cluster %s are '
-                              'masked in Heat output; preserving existing '
-                              'stack values.', cluster.uuid)
-                    return
-            except Exception as exc:
-                LOG.debug('Falling back to newly generated service account '
-                          'keys for cluster %s: %s', cluster.uuid, exc)
-
-        extra_params.setdefault('ca_rotation_id', '')
-        csr_keys = x509.generate_csr_and_key(u"Kubernetes Service Account")
-        extra_params['kube_service_account_key'] = (
-            csr_keys["public_key"].replace("\n", "\\n"))
-        extra_params['kube_service_account_private_key'] = (
-            csr_keys["private_key"].replace("\n", "\\n"))
+        # Shared with the Fedora driver: a new keypair is minted for a cluster
+        # CREATE only, and an existing cluster's pair is recovered rather than
+        # replaced. See template_def.set_service_account_params.
+        template_def.set_service_account_params(
+            self.get_osc(context).heat(), cluster, extra_params)
 
     def _get_keystone_auth_default_policy(self, extra_params):
         # NOTE(flwang): This purpose of this function is to make the default
