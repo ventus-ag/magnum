@@ -15,6 +15,7 @@ import json
 
 from oslo_log import log as logging
 from oslo_utils import strutils
+from oslo_utils import timeutils
 
 from magnum.common import utils
 from magnum.conductor import k8s_api as k8s
@@ -63,7 +64,8 @@ class K8sMonitor(monitors.MonitorBase):
         self.data['pods'] = self._parse_pod_info(pods)
 
     def poll_health_status(self):
-        if self._is_magnum_auto_healer_running():
+        if (self._is_magnum_auto_healer_running() or
+                self._has_fresh_external_health_report()):
             return
 
         k8s_api = k8s.create_k8s_api(self.context, self.cluster)
@@ -82,6 +84,26 @@ class K8sMonitor(monitors.MonitorBase):
         auto_healing_enabled = strutils.bool_from_string(auto_healing)
         controller = self.cluster.labels.get("auto_healing_controller")
         return (auto_healing_enabled and controller == "magnum-auto-healer")
+
+    def _has_fresh_external_health_report(self):
+        auto_healing = self.cluster.labels.get("auto_healing_enabled")
+        if not strutils.bool_from_string(auto_healing):
+            return False
+
+        controller = self.cluster.labels.get("auto_healing_controller")
+        if controller and controller != "magnum-auto-healer":
+            return False
+
+        reason = self.cluster.health_status_reason or {}
+        try:
+            reported_at = timeutils.parse_isotime(reason.get('updated_at'))
+        except (TypeError, ValueError):
+            return False
+
+        max_age = max(CONF.kubernetes.health_polling_interval * 2, 60)
+        age = timeutils.delta_seconds(
+            reported_at, timeutils.utcnow(with_timezone=True))
+        return -max_age <= age <= max_age
 
     def _is_cluster_accessible(self):
         if self.cluster.master_lb_enabled:

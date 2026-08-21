@@ -617,7 +617,7 @@ parameters:
     type: string
     description: >
       The service to be deployed for auto-healing.
-    default: "draino"
+    default: "magnum-auto-healer"
 
   auto_scaling_enabled:
     type: boolean

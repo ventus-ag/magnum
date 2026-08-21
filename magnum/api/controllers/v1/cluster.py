@@ -44,6 +44,18 @@ from magnum.objects import fields
 
 LOG = logging.getLogger(__name__)
 CONF = magnum.conf.CONF
+DEFAULT_AUTO_HEALING_CONTROLLER = 'magnum-auto-healer'
+
+
+def _normalize_auto_healing_labels(labels):
+    if labels == wtypes.Unset:
+        labels = {}
+    labels = dict(labels or {})
+    enabled = strutils.bool_from_string(
+        labels.get('auto_healing_enabled'))
+    if enabled and not labels.get('auto_healing_controller'):
+        labels['auto_healing_controller'] = DEFAULT_AUTO_HEALING_CONTROLLER
+    return labels
 
 
 class ClusterID(wtypes.Base):
@@ -533,14 +545,15 @@ class ClustersController(base.Controller):
 
         # If labels is not present, use cluster_template value
         if cluster.labels == wtypes.Unset or not cluster.labels:
-            cluster.labels = cluster_template.labels
+            cluster.labels = dict(cluster_template.labels or {})
         else:
             # If labels are provided check if the user wishes to merge
             # them with the values from the cluster template.
             if cluster.merge_labels:
-                labels = cluster_template.labels
+                labels = dict(cluster_template.labels or {})
                 labels.update(cluster.labels)
                 cluster.labels = labels
+        cluster.labels = _normalize_auto_healing_labels(cluster.labels)
 
         cinder_csi_enabled = cluster.labels.get('cinder_csi_enabled', True)
         if (cluster_template.volume_driver == 'cinder' and
@@ -650,6 +663,13 @@ class ClustersController(base.Controller):
                                                               patch))
         except api_utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
+
+        labels_touched = any(
+            p['path'] == '/labels' or p['path'].startswith('/labels/')
+            for p in patch)
+        if labels_touched:
+            new_cluster.labels = _normalize_auto_healing_labels(
+                new_cluster.labels)
 
         # NOTE(ttsiouts): magnum.objects.Cluster.node_count will be a
         # property so we won't be able to store it in the object. So
