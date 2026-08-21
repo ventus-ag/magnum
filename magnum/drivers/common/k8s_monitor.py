@@ -95,15 +95,14 @@ class K8sMonitor(monitors.MonitorBase):
             return False
 
         reason = self.cluster.health_status_reason or {}
-        try:
-            reported_at = timeutils.parse_isotime(reason.get('updated_at'))
-        except (TypeError, ValueError):
+        reported_at = self.cluster.updated_at
+        if 'updated_at' not in reason or reported_at is None:
             return False
 
         max_age = max(CONF.kubernetes.health_polling_interval * 2, 60)
         age = timeutils.delta_seconds(
             reported_at, timeutils.utcnow(with_timezone=True))
-        return -max_age <= age <= max_age
+        return abs(age) <= max_age
 
     def _is_cluster_accessible(self):
         if self.cluster.master_lb_enabled:
