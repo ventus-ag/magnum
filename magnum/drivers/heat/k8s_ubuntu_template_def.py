@@ -33,6 +33,31 @@ LOG = logging.getLogger(__name__)
 class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
     """Kubernetes template for a Ubuntu"""
 
+    addon_label_params = ('kube_tag', 'container_infra_prefix',
+                          'heat_container_agent_tag',
+                          'availability_zone',
+                          'container_runtime',
+                          'manila_csi_enabled',
+                          'cinder_csi_enabled',
+                          'gpu_operator_enabled',
+                          'keystone_auth_enabled',
+                          'metrics_server_enabled',
+                          'selinux_mode',
+                          'auto_healing_enabled', 'auto_scaling_enabled',
+                          'auto_healing_controller',
+                          'min_node_count', 'max_node_count',
+                          'use_podman', 'kube_image_digest',
+                          # Reconciler binary pinning
+                          'reconciler_version',
+                          'reconciler_binary_url',
+                          'reconciler_binary_url_sha256')
+
+    def label_derived_params(self):
+        return (super(K8sUbuntuTemplateDefinition,
+                      self).label_derived_params() |
+                frozenset(self.addon_label_params) |
+                {'cloud_provider_enabled'})
+
     def __init__(self):
         super(K8sUbuntuTemplateDefinition, self).__init__()
         self.add_parameter('docker_storage_driver',
@@ -68,28 +93,9 @@ class K8sUbuntuTemplateDefinition(k8s_template_def.K8sTemplateDefinition):
                 '"cloud_provider_enabled" label is set to true.'))
         extra_params['cloud_provider_enabled'] = cloud_provider_enabled
 
-        label_list = ['kube_tag', 'container_infra_prefix',
-                      'heat_container_agent_tag',
-                      'availability_zone',
-                      'container_runtime',
-                      'manila_csi_enabled',
-                      'cinder_csi_enabled',
-                      'gpu_operator_enabled',
-                      'keystone_auth_enabled',
-                      'metrics_server_enabled',
-                      'selinux_mode',
-                      'auto_healing_enabled', 'auto_scaling_enabled',
-                      'auto_healing_controller',
-                      'min_node_count', 'max_node_count',
-                      'use_podman', 'kube_image_digest',
-                      # Reconciler binary pinning (see k8s_fedora_template_def)
-                      'reconciler_version',
-                      'reconciler_binary_url',
-                      'reconciler_binary_url_sha256']
-
         labels = self._get_relevant_labels(cluster, kwargs)
 
-        for label in label_list:
+        for label in self.addon_label_params:
             label_value = labels.get(label)
             if label_value:
                 extra_params[label] = label_value

@@ -305,6 +305,13 @@ parameters:
     description: >
       additional options to be passed to the kube proxy
 
+  kube_files:
+    type: string
+    description: >
+      base64 JSON {name: content} built from the kube_file_<name> labels;
+      written to /etc/kubernetes/files/<name> on every node
+    default: ""
+
   octavia_enabled:
     type: boolean
     description: >
@@ -480,6 +487,7 @@ resources:
         - name: NODE_LABELS
         - name: NODE_TAINTS
         - name: KUBEPROXY_OPTIONS
+        - name: KUBE_FILES
         - name: OCTAVIA_ENABLED
         - name: KUBE_SERVICE_ACCOUNT_KEY
         - name: KUBE_SERVICE_ACCOUNT_PRIVATE_KEY
@@ -561,6 +569,7 @@ resources:
         NODE_LABELS: { get_param: node_labels }
         NODE_TAINTS: { get_param: node_taints }
         KUBEPROXY_OPTIONS: { get_param: kubeproxy_options }
+        KUBE_FILES: { get_param: kube_files }
         OCTAVIA_ENABLED: { get_param: octavia_enabled }
         KUBE_SERVICE_ACCOUNT_KEY: { get_param: kube_service_account_key }
         KUBE_SERVICE_ACCOUNT_PRIVATE_KEY: { get_param: kube_service_account_private_key }

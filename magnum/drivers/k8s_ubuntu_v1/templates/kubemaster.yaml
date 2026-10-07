@@ -335,6 +335,26 @@ parameters:
     description: >
       additional options to be passed to the kube proxy
 
+  kubescheduler_options:
+    type: string
+    description: >
+      additional options to be passed to the kube scheduler
+    default: ""
+
+  kube_scheduler_scoring_strategy:
+    type: string
+    description: >
+      kube-scheduler NodeResourcesFit scoring strategy: "" (scheduler
+      default), LeastAllocated, or MostAllocated (bin-packing)
+    default: ""
+
+  kube_files:
+    type: string
+    description: >
+      base64 JSON {name: content} built from the kube_file_<name> labels;
+      written to /etc/kubernetes/files/<name> on every node
+    default: ""
+
   octavia_enabled:
     type: boolean
     description: >
@@ -398,6 +418,13 @@ parameters:
     type: boolean
     description: >
       true if the cinder csi plugin feature should be enabled
+
+  cinder_csi_default_storage_class:
+    type: string
+    description: >
+      Cinder CSI StorageClass marked default: auto (only when no other
+      default exists), delete, retain or none
+    default: ""
 
   gpu_operator_enabled:
     type: boolean
@@ -778,6 +805,9 @@ resources:
         - name: KUBEAPI_OPTIONS
         - name: KUBECONTROLLER_OPTIONS
         - name: KUBEPROXY_OPTIONS
+        - name: KUBESCHEDULER_OPTIONS
+        - name: KUBE_SCHEDULER_SCORING_STRATEGY
+        - name: KUBE_FILES
         - name: OCTAVIA_ENABLED
         - name: KUBE_SERVICE_ACCOUNT_KEY
         - name: KUBE_SERVICE_ACCOUNT_PRIVATE_KEY
@@ -789,6 +819,7 @@ resources:
         - name: AUTO_SCALING_ENABLED
         - name: MANILA_CSI_ENABLED
         - name: CINDER_CSI_ENABLED
+        - name: CINDER_CSI_DEFAULT_STORAGE_CLASS
         - name: GPU_OPERATOR_ENABLED
         - name: MIN_NODE_COUNT
         - name: MAX_NODE_COUNT
@@ -873,6 +904,9 @@ resources:
         KUBEAPI_OPTIONS: { get_param: kubeapi_options }
         KUBECONTROLLER_OPTIONS: { get_param: kubecontroller_options }
         KUBEPROXY_OPTIONS: { get_param: kubeproxy_options }
+        KUBESCHEDULER_OPTIONS: { get_param: kubescheduler_options }
+        KUBE_SCHEDULER_SCORING_STRATEGY: { get_param: kube_scheduler_scoring_strategy }
+        KUBE_FILES: { get_param: kube_files }
         OCTAVIA_ENABLED: { get_param: octavia_enabled }
         KUBE_SERVICE_ACCOUNT_KEY: { get_param: kube_service_account_key }
         KUBE_SERVICE_ACCOUNT_PRIVATE_KEY: { get_param: kube_service_account_private_key }
@@ -884,6 +918,7 @@ resources:
         AUTO_SCALING_ENABLED: { get_param: auto_scaling_enabled }
         MANILA_CSI_ENABLED: { get_param: manila_csi_enabled }
         CINDER_CSI_ENABLED: { get_param: cinder_csi_enabled }
+        CINDER_CSI_DEFAULT_STORAGE_CLASS: { get_param: cinder_csi_default_storage_class }
         GPU_OPERATOR_ENABLED: { get_param: gpu_operator_enabled }
         MIN_NODE_COUNT: { get_param: min_node_count }
         MAX_NODE_COUNT: { get_param: max_node_count }

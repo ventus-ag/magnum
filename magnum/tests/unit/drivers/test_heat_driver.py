@@ -10,16 +10,20 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import base64
+import json
 from unittest import mock
 from unittest.mock import patch
 
 from heatclient import exc as heatexc
 from oslo_utils import uuidutils
 
+from magnum.common import exception
 import magnum.conf
 from magnum.drivers.heat import driver as heat_driver
+from magnum.drivers.heat import k8s_template_def as k8s_tdef
 from magnum.drivers.heat import template_def as heat_tdef
-from magnum.drivers.k8s_fedora_atomic_v1 import driver as k8s_atomic_dr
+from magnum.drivers.k8s_fedora_coreos_v1 import driver as k8s_coreos_dr
 from magnum import objects
 from magnum.objects.fields import ClusterStatus as cluster_status
 from magnum.tests import base
@@ -129,10 +133,10 @@ class TestHeatPoller(base.TestCase):
         cluster_template = objects.ClusterTemplate(self.context,
                                                    **cluster_template_dict)
         mock_retrieve_cluster_template.return_value = cluster_template
-        mock_driver.return_value = k8s_atomic_dr.Driver()
+        mock_driver.return_value = k8s_coreos_dr.Driver()
         poller = heat_driver.HeatPoller(mock_openstack_client,
                                         mock.MagicMock(), cluster,
-                                        k8s_atomic_dr.Driver())
+                                        k8s_coreos_dr.Driver())
         poller.get_version_info = mock.MagicMock()
         return (cluster, poller)
 
@@ -771,6 +775,10 @@ class DummyKubernetesDriver(heat_driver.KubernetesDriver):
         super(DummyKubernetesDriver, self).__init__()
         self.definition = mock.MagicMock()
 
+    @property
+    def provides(self):
+        return []
+
     def get_template_definition(self):
         return self.definition
 
@@ -870,7 +878,8 @@ class TestHeatDriverResizeFlags(base.TestCase):
         self.assertIsNone(driver._fetch_ca_key(mock.sentinel.ctx, cluster))
 
     @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
-    def test_resize_stack_clears_stale_ca_rotation_id(self, mock_osc_cls):
+    def test_resize_stack_is_params_only_without_live_token(
+            self, mock_osc_cls):
         driver = DummyKubernetesDriver()
         driver.definition.get_scale_params.return_value = {
             'number_of_minions': 2,
@@ -886,7 +895,10 @@ class TestHeatDriverResizeFlags(base.TestCase):
                 'number_of_minions': 1,
             })
 
-        cluster = mock.MagicMock(uuid='cluster-uuid')
+        # Resize sends only the counts: the flags and ca_rotation_id are left
+        # to existing: True. A token is carried only when a master member
+        # holds one (see the in-flight test below).
+        cluster = mock.MagicMock(uuid='cluster-uuid', nodegroups=[])
         nodegroup = mock.MagicMock(
             stack_id='worker-stack-id',
             role='worker',
@@ -897,12 +909,107 @@ class TestHeatDriverResizeFlags(base.TestCase):
                              nodegroup=nodegroup, rollback=False)
 
         _, update_kwargs = osc.heat.return_value.stacks.update.call_args
-        self.assertEqual('', update_kwargs['parameters']['ca_rotation_id'])
-        self.assertFalse(update_kwargs['parameters']['is_upgrade'])
-        self.assertTrue(update_kwargs['parameters']['is_resize'])
+        self.assertEqual({'number_of_minions': 2},
+                         update_kwargs['parameters'])
 
     @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
-    def test_master_resize_cluster_update_clears_stale_ca_rotation_id(
+    def test_resize_stack_preserves_in_flight_ca_rotation_id(self,
+                                                             mock_osc_cls):
+        # A rotation writes its token to the MEMBER stacks only. Clearing it
+        # from a parent-driven update abandons the rotation mid-protocol: the
+        # nodes stop, the desired phase never advances, and every peer waiting
+        # at the dual-CA barrier burns its Heat timeout.
+        driver = DummyKubernetesDriver()
+        driver.definition.get_scale_params.return_value = {
+            'number_of_minions': 2,
+            'ca_rotation_id': '',
+        }
+        driver._get_stack_update_template_fields = mock.MagicMock(
+            return_value={})
+
+        osc = mock.MagicMock()
+        mock_osc_cls.return_value = osc
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={
+                'ca_rotation_id': 'live-rotation-id',
+                'number_of_minions': 1,
+            })
+
+        nodegroup = mock.MagicMock(
+            stack_id='worker-stack-id',
+            role='worker',
+            node_count=2,
+            is_default=True)
+        master = mock.MagicMock(stack_id='cluster-stack-id', role='master',
+                                is_default=True)
+        cluster = mock.MagicMock(uuid='cluster-uuid',
+                                 stack_id='cluster-stack-id',
+                                 nodegroups=[nodegroup, master])
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['member-0'])
+
+        driver._resize_stack(mock.sentinel.ctx, cluster, None, 2, None,
+                             nodegroup=nodegroup, rollback=False)
+
+        _, update_kwargs = osc.heat.return_value.stacks.update.call_args
+        self.assertEqual('live-rotation-id',
+                         update_kwargs['parameters']['ca_rotation_id'])
+
+    def test_live_ca_rotation_id_reads_master_members_only(self):
+        # Every rotation includes all masters, so workers are never read:
+        # on a large cluster that would be one Heat call per worker per update.
+        driver = DummyKubernetesDriver()
+        osc = mock.MagicMock()
+        stacks = {
+            'master-0': mock.MagicMock(parameters={'ca_rotation_id': ''}),
+            'master-1': mock.MagicMock(
+                parameters={'ca_rotation_id': 'from-master'}),
+            'worker-0': mock.MagicMock(
+                parameters={'ca_rotation_id': 'from-worker'}),
+        }
+        stacks_get = osc.heat.return_value.stacks.get
+        stacks_get.side_effect = lambda sid, **_kw: stacks[sid]
+
+        worker = mock.MagicMock(role='worker', stack_id='ng-stack',
+                                is_default=False, name='pool')
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True, name='default-master')
+        cluster = mock.MagicMock(uuid='cluster-uuid',
+                                 stack_id='cluster-stack',
+                                 nodegroups=[worker, master])
+        driver._get_nested_stack_ids = mock.MagicMock(
+            side_effect=lambda _osc, _parent, ng: (
+                ['master-0', 'master-1'] if ng.role == 'master'
+                else ['worker-0']))
+
+        self.assertEqual('from-master',
+                         driver._live_ca_rotation_id(osc, cluster))
+        stacks_get.assert_has_calls([
+            mock.call('master-0', resolve_outputs=False),
+            mock.call('master-1', resolve_outputs=False),
+        ])
+        self.assertEqual(2, stacks_get.call_count)
+
+        stacks['master-1'].parameters = {'ca_rotation_id': ''}
+        self.assertEqual('', driver._live_ca_rotation_id(osc, cluster))
+
+    def test_live_ca_rotation_id_is_best_effort(self):
+        # Reading the token must never fail a cluster update.
+        driver = DummyKubernetesDriver()
+        osc = mock.MagicMock()
+        osc.heat.return_value.stacks.get.side_effect = Exception('boom')
+        nodegroup = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                   is_default=True, name='default-master')
+        cluster = mock.MagicMock(uuid='cluster-uuid',
+                                 stack_id='cluster-stack',
+                                 nodegroups=[nodegroup])
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['member-0'])
+
+        self.assertEqual('', driver._live_ca_rotation_id(osc, cluster))
+
+    @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
+    def test_master_resize_cluster_update_sends_only_master_count(
             self, mock_osc_cls):
         driver = DummyKubernetesDriver()
         driver._get_stack_update_template_fields = mock.MagicMock(
@@ -937,13 +1044,281 @@ class TestHeatDriverResizeFlags(base.TestCase):
             mock.sentinel.ctx, cluster, resized_master, {})
 
         _, update_kwargs = osc.heat.return_value.stacks.update.call_args
-        self.assertEqual('', update_kwargs['parameters']['ca_rotation_id'])
-        self.assertEqual(3, update_kwargs['parameters']['number_of_masters'])
-        self.assertFalse(update_kwargs['parameters']['is_upgrade'])
-        self.assertTrue(update_kwargs['parameters']['is_resize'])
-        self.assertNotIn('password', update_kwargs['parameters'])
-        self.assertNotIn('kube_service_account_private_key',
+        self.assertEqual({'number_of_masters': 3},
                          update_kwargs['parameters'])
+
+
+class TestMemberOwnedParams(base.TestCase):
+    """Label reconfigure / CA rotation write to member stacks only; every
+    parent-driven update must carry those values or it reverts them."""
+
+    def _cluster(self, *nodegroups):
+        master = next(ng for ng in nodegroups if ng.role == 'master')
+        workers = [ng for ng in nodegroups
+                   if ng.role == 'worker' and ng.is_default]
+        return mock.MagicMock(uuid='cluster-uuid', stack_id='cluster-stack',
+                              nodegroups=list(nodegroups),
+                              default_ng_master=master,
+                              default_ng_worker=workers[0] if workers
+                              else None)
+
+    @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
+    def test_resize_stack_carries_label_reconfigured_member_params(
+            self, mock_osc_cls):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('kubeapi_options', 'metrics_server_enabled', 'kube_tag'))
+        driver.definition.get_scale_params.return_value = {
+            'number_of_minions': 2}
+        osc = mock.MagicMock()
+        mock_osc_cls.return_value = osc
+        root = mock.MagicMock(parameters={
+            'number_of_minions': 1, 'kubeapi_options': '',
+            'metrics_server_enabled': 'false', 'timestamp_upgrade': '',
+            'kube_tag': 'v1.30.0', 'ca_rotation_id': ''})
+        member = mock.MagicMock(parameters={
+            'kubeapi_options': '--oidc-client-id=headlamp',
+            'metrics_server_enabled': 'true',
+            'timestamp_upgrade': '2026-09-11T07:38:00',
+            'kube_tag': 'v1.31.0', 'ca_rotation_id': ''})
+        osc.heat.return_value.stacks.get.side_effect = (
+            lambda sid, **kw: root if sid == 'cluster-stack' else member)
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        worker = mock.MagicMock(role='worker', stack_id='cluster-stack',
+                                is_default=True, node_count=2)
+        cluster = self._cluster(master, worker)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['master-0'])
+
+        driver._resize_stack(mock.sentinel.ctx, cluster, None, 2, None,
+                             nodegroup=worker, rollback=False)
+
+        _, kwargs = osc.heat.return_value.stacks.update.call_args
+        params = kwargs['parameters']
+        self.assertEqual('--oidc-client-id=headlamp',
+                         params['kubeapi_options'])
+        self.assertEqual('true', params['metrics_server_enabled'])
+        self.assertEqual('2026-09-11T07:38:00', params['timestamp_upgrade'])
+        self.assertNotIn('kube_tag', params)
+        self.assertEqual(2, params['number_of_minions'])
+
+    def test_preserve_member_params_reads_the_target_nodegroup(self):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('kubelet_options',))
+        osc = mock.MagicMock()
+        stacks = {
+            'pool-0': mock.MagicMock(parameters={
+                'kubelet_options': '--max-pods=50',
+                'timestamp_upgrade': 'T-pool'}),
+            'master-0': mock.MagicMock(parameters={
+                'kubelet_options': '--from-master', 'ca_rotation_id': ''}),
+        }
+        osc.heat.return_value.stacks.get.side_effect = (
+            lambda sid, **kw: stacks[sid])
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        pool = mock.MagicMock(role='worker', stack_id='pool-stack',
+                              is_default=False)
+        cluster = self._cluster(master, pool)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            side_effect=lambda _osc, _parent, ng: (
+                ['pool-0'] if ng is pool else ['master-0']))
+        target = {'kubelet_options': '', 'timestamp_upgrade': '',
+                  'number_of_minions': 2}
+
+        params = {'number_of_minions': 3}
+        driver._preserve_member_params(mock.sentinel.ctx, osc, cluster,
+                                       params, 'pool-stack', target)
+        self.assertEqual('--max-pods=50', params['kubelet_options'])
+        self.assertEqual('T-pool', params['timestamp_upgrade'])
+
+        params = {'kubelet_options': '--explicit'}
+        driver._preserve_member_params(mock.sentinel.ctx, osc, cluster,
+                                       params, 'pool-stack', target)
+        self.assertEqual('--explicit', params['kubelet_options'])
+
+    def test_preserve_member_params_refreshes_hidden_ca_key(self):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset()
+        driver._fetch_ca_key = mock.MagicMock(return_value='NEWKEY')
+        driver._get_nested_stack_ids = mock.MagicMock(return_value=[])
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        cluster = self._cluster(master)
+
+        params = {}
+        driver._preserve_member_params(mock.sentinel.ctx, mock.MagicMock(),
+                                       cluster, params, 'cluster-stack',
+                                       {'ca_key': '******'})
+
+        self.assertEqual('NEWKEY', params['ca_key'])
+        driver._fetch_ca_key.assert_called_once_with(mock.sentinel.ctx,
+                                                     cluster)
+
+    def test_reconfigure_cluster_pushes_label_changes_without_rolling(self):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('kubeapi_options', 'kubelet_options', 'metrics_server_enabled',
+             'kube_tag', 'etcd_volume_size'))
+        driver._extract_template_definition = mock.MagicMock(
+            return_value=(None, {
+                'kubeapi_options': '--oidc-client-id=headlamp',
+                'kubelet_options': '--max-pods=50',
+                'metrics_server_enabled': 'true',
+                'kube_tag': 'v1.31.0', 'etcd_volume_size': 20,
+                'unset': None}, None))
+        driver._get_nested_stack_update_template_fields = mock.MagicMock(
+            return_value={'template': {}, 'files': {}})
+        driver._clear_orphaned_software_deployments = mock.MagicMock()
+        driver._config_backing_row_missing = mock.MagicMock(
+            return_value=False)
+        driver._get_update_timeout = mock.MagicMock(return_value=60)
+        driver._filter_params_for_template = mock.MagicMock(
+            side_effect=lambda params, template: params)
+        osc = mock.MagicMock()
+        driver._get_cluster_osc = mock.MagicMock(return_value=osc)
+        stacks = {
+            'master-0': mock.MagicMock(parameters={
+                'kubeapi_options': '', 'kubelet_options': '',
+                'metrics_server_enabled': 'false', 'kube_tag': 'v1.30.0',
+                'etcd_volume_size': '10', 'timestamp_upgrade': 'T0',
+                'ca_rotation_id': ''}),
+            'worker-0': mock.MagicMock(parameters={
+                'kubelet_options': '', 'kube_tag': 'v1.30.0',
+                'timestamp_upgrade': 'T0', 'reconciler_version': ''}),
+        }
+        osc.heat.return_value.stacks.get.side_effect = (
+            lambda sid, **kw: stacks[sid])
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        worker = mock.MagicMock(role='worker', stack_id='cluster-stack',
+                                is_default=True)
+        cluster = self._cluster(master, worker)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            side_effect=lambda _osc, _parent, ng: (
+                ['master-0'] if ng is master else ['worker-0']))
+
+        driver.reconfigure_cluster(mock.sentinel.ctx, cluster)
+
+        updates = {c[0][0]: c[1] for c in
+                   osc.heat.return_value.stacks.update.call_args_list}
+        master_params = updates['master-0']['parameters']
+        self.assertEqual('--oidc-client-id=headlamp',
+                         master_params['kubeapi_options'])
+        self.assertEqual('true', master_params['metrics_server_enabled'])
+        self.assertEqual('T0', master_params['timestamp_upgrade'])
+        self.assertEqual('v1.30.0', master_params['kube_tag'])
+        self.assertEqual('10', master_params['etcd_volume_size'])
+        # Workers: only the changed worker-relevant param, no template push.
+        self.assertEqual({'kubelet_options': '--max-pods=50'},
+                         updates['worker-0']['parameters'])
+        self.assertNotIn('template', updates['worker-0'])
+
+    def test_reconfigure_cluster_leaves_unchanged_workers_alone(self):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('metrics_server_enabled', 'auto_healing_enabled'))
+        osc = mock.MagicMock()
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={'auto_healing_enabled': 'False',
+                        'reconciler_version': ''})
+        worker = mock.MagicMock(role='worker', stack_id='cluster-stack',
+                                is_default=True)
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        cluster = self._cluster(master, worker)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['worker-0'])
+        driver._get_update_timeout = mock.MagicMock(return_value=60)
+
+        driver._reconfigure_workers(
+            osc, cluster, {'metrics_server_enabled': 'true',
+                           'auto_healing_enabled': 'false'})
+
+        osc.heat.return_value.stacks.update.assert_not_called()
+
+    def test_reconfigure_workers_pushes_only_node_switches_to_pools(self):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('os_autoupgrade_enabled', 'kubelet_options'))
+        osc = mock.MagicMock()
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={'os_autoupgrade_enabled': 'false',
+                        'kubelet_options': '--pool-specific',
+                        'reconciler_version': ''})
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        pool = mock.MagicMock(role='worker', stack_id='pool-stack',
+                              is_default=False, labels={'kubelet_options':
+                                                        '--pool-specific'})
+        cluster = self._cluster(master, pool)
+        cluster.labels = {'os_autoupgrade_enabled': 'true',
+                          'kubelet_options': '--cluster'}
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['pool-0'])
+        driver._get_update_timeout = mock.MagicMock(return_value=60)
+
+        driver._reconfigure_workers(
+            osc, cluster, {'os_autoupgrade_enabled': 'true',
+                           'kubelet_options': '--cluster'})
+
+        osc.heat.return_value.stacks.update.assert_called_once_with(
+            'pool-0', existing=True,
+            parameters={'os_autoupgrade_enabled': 'true'},
+            timeout_mins=60, disable_rollback=True)
+        self.assertEqual({'kubelet_options': '--pool-specific',
+                          'os_autoupgrade_enabled': 'true'}, pool.labels)
+        pool.save.assert_called_once_with()
+
+    def test_reconfigure_workers_skips_legacy_members(self):
+        # A pre-reconciler (Ussuri) worker runs bash fragments: a params
+        # update would re-run them on a live node.
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('kubelet_options',))
+        osc = mock.MagicMock()
+        osc.heat.return_value.stacks.get.return_value = mock.MagicMock(
+            parameters={'kubelet_options': ''})
+        worker = mock.MagicMock(role='worker', stack_id='cluster-stack',
+                                is_default=True)
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        cluster = self._cluster(master, worker)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['worker-0'])
+
+        driver._reconfigure_workers(osc, cluster,
+                                    {'kubelet_options': '--max-pods=50'})
+
+        osc.heat.return_value.stacks.update.assert_not_called()
+
+
+class TestKubeFilesParam(base.TestCase):
+
+    def test_packs_kube_file_labels(self):
+        packed = k8s_tdef.kube_files_param({
+            'kube_file_oidc_ca': '-----BEGIN CERTIFICATE-----\nAA==\n',
+            'kube_file_audit': 'rules: []',
+            'kubeapi_options': '--x'})
+        files = json.loads(base64.b64decode(packed))
+        self.assertEqual({'oidc_ca': '-----BEGIN CERTIFICATE-----\nAA==\n',
+                          'audit': 'rules: []'}, files)
+
+    def test_no_files_is_empty(self):
+        self.assertEqual('', k8s_tdef.kube_files_param({'a': 'b'}))
+        self.assertEqual('', k8s_tdef.kube_files_param(None))
+
+    def test_rejects_unsafe_names(self):
+        for bad in ('kube_file_', 'kube_file_a/b', 'kube_file_' + 'x' * 65):
+            self.assertRaises(exception.InvalidParameterValue,
+                              k8s_tdef.kube_files_param, {bad: 'x'})
+
+    def test_rejects_oversized_payload(self):
+        self.assertRaises(
+            exception.InvalidParameterValue, k8s_tdef.kube_files_param,
+            {'kube_file_big': 'x' * (k8s_tdef.KUBE_FILES_MAX_BYTES + 1)})
 
 
 class TestHeatParamTypeForValue(base.TestCase):

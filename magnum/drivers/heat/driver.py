@@ -50,6 +50,29 @@ from magnum.objects import fields
 
 LOG = logging.getLogger(__name__)
 
+# Label-derived params a label reconfigure never pushes: versions belong to
+# upgrade_cluster (drain, batching); the rest are fixed at create.
+RECONFIGURE_SKIP_PARAMS = frozenset((
+    "kube_tag", "kube_version", "master_kube_tag", "minion_kube_tag",
+    "etcd_volume_size", "flannel_network_cidr", "flannel_backend",
+    "container_runtime", "availability_zone",
+))
+# Node-level switches that apply to every worker pool, not just the default
+# nodegroup (zincati runs on every node).
+CLUSTER_WIDE_NODE_PARAMS = frozenset(("os_autoupgrade_enabled",))
+# Converged per nodegroup by _sync_nodegroup_params, never carried across.
+NODEGROUP_SCOPED_PARAMS = frozenset((
+    "node_labels", "node_taints", "master_lb_allowed_cidrs",
+))
+
+
+def _heat_param_equal(current, desired):
+    current, desired = six.text_type(current), six.text_type(desired)
+    if current.lower() in ("true", "false") and \
+            desired.lower() in ("true", "false"):
+        return current.lower() == desired.lower()
+    return current == desired
+
 
 NodeGroupStatus = collections.namedtuple(
     "NodeGroupStatus", "name status reason is_default"
@@ -1213,14 +1236,208 @@ class HeatDriver(driver.Driver):
     def _get_reconcile_timestamp(self):
         return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
-    def _set_non_rotation_stack_flags(self, params, is_upgrade=False, is_resize=False):
+    def _set_non_rotation_stack_flags(
+        self, params, is_upgrade=False, is_resize=False, ca_rotation_id=None
+    ):
         # CA rotation is opt-in. When ordinary stack updates omit the
         # parameter, Heat preserves the previous value and later node
         # reconciles can incorrectly re-enter CA rotation.
-        params["ca_rotation_id"] = ""
+        #
+        # But clearing it unconditionally CANCELS a rotation that is still in
+        # flight: rotation writes the token to the per-node member stacks only,
+        # so any cluster-level update (flavour change, resize, upgrade) re-renders
+        # those members without it. The nodes then stop mid-protocol, the cluster
+        # desired phase never advances, and every peer still waiting at the
+        # dual-CA barrier burns its whole Heat timeout. Callers therefore pass the
+        # token that is currently live on the nodes (_live_ca_rotation_id), which
+        # is carried through instead of blanked. Re-sending a token the nodes have
+        # already finalized is harmless -- they record completion locally and the
+        # rotation module no-ops on it.
+        params["ca_rotation_id"] = ca_rotation_id or ""
         params["is_upgrade"] = is_upgrade
         params["is_resize"] = is_resize
         return params
+
+    def _preserve_live_ca_rotation_id(self, osc, cluster, params):
+        """Carry an in-flight rotation token into a parameters-only update.
+
+        Parameters-only updates rely on ``existing: True`` to preserve what they
+        do not pass -- but that preserves the CLUSTER stack's value, which is
+        blank, and re-renders the member stacks with it. Passing the token the
+        nodes actually hold keeps their input unchanged, so a live rotation is
+        neither cancelled nor re-fired.
+        """
+        rotation_id = self._live_ca_rotation_id(osc, cluster)
+        if rotation_id:
+            params["ca_rotation_id"] = rotation_id
+        return params
+
+    def _live_ca_rotation_id(self, osc, cluster):
+        """Return the CA rotation token currently installed on the nodes.
+
+        Read from the per-node member stacks, because that is the only place a
+        rotation writes it -- the cluster stack keeps the empty value it was
+        created with. Only master members are read: every rotation includes
+        all masters, so scanning workers would only add Heat calls. Best-effort
+        by design: a rotation token is not worth failing a cluster update over,
+        and the pre-existing behaviour (blank) is the safe fallback.
+        """
+        return self._scan_master_members(osc, cluster)[1]
+
+    def _scan_master_members(self, osc, cluster):
+        """(unmasked params of the first master member, live ca_rotation_id)."""
+        first = None
+        try:
+            for nodegroup in cluster.nodegroups:
+                if nodegroup.role != "master" or not nodegroup.stack_id:
+                    continue
+                parent_stack_id = (
+                    cluster.stack_id if nodegroup.is_default else nodegroup.stack_id
+                )
+                for stack_id in self._get_nested_stack_ids(
+                    osc, parent_stack_id, nodegroup
+                ):
+                    parameters = osc.heat().stacks.get(
+                        stack_id, resolve_outputs=False
+                    ).parameters or {}
+                    if first is None:
+                        first = heat_tdef.omit_masked_heat_parameters(
+                            dict(parameters))
+                    rotation_id = heat_tdef.get_unmasked_heat_parameter(
+                        parameters, "ca_rotation_id"
+                    )
+                    if rotation_id:
+                        return first, rotation_id
+        except Exception as exc:
+            LOG.debug(
+                "Could not read the live member params of cluster %s: %s",
+                getattr(cluster, "uuid", None),
+                exc,
+            )
+        return first or {}, ""
+
+    def _member_owned_params(self):
+        """Params that may be newer on the member stacks than on the parent.
+
+        reconfigure_cluster (label updates) and CA rotation write them to the
+        member stacks only; see _preserve_member_params.
+        """
+        definition = self.get_template_definition()
+        derived = getattr(definition, "label_derived_params", frozenset)()
+        return (frozenset(derived) - RECONFIGURE_SKIP_PARAMS -
+                NODEGROUP_SCOPED_PARAMS) | {"timestamp_upgrade"}
+
+    def _first_member_params(self, osc, parent_stack_id, nodegroup):
+        for stack_id in self._get_nested_stack_ids(osc, parent_stack_id,
+                                                   nodegroup):
+            parameters = osc.heat().stacks.get(
+                stack_id, resolve_outputs=False).parameters or {}
+            return heat_tdef.omit_masked_heat_parameters(dict(parameters))
+        return {}
+
+    def _preserve_member_params(self, context, osc, cluster, params,
+                                target_stack_id, target_params):
+        """Carry what the nodes hold into a parent-driven parameters update.
+
+        A label reconfigure and a CA rotation write straight to the member
+        stacks, so the parent stack keeps a stale copy. A parent update that
+        omits those params re-renders every member from it: a label-set
+        kubeapi_options vanishes, an addon toggle flips back (uninstalling its
+        Helm release), and every node re-fires. Passing the members' live
+        values keeps their input unchanged. Params the caller set win.
+        """
+        live, rotation_id = self._scan_master_members(osc, cluster)
+        if rotation_id:
+            params["ca_rotation_id"] = rotation_id
+        target = target_params or {}
+        if target_stack_id != cluster.stack_id:
+            # An extra nodegroup renders from its own labels: read its member.
+            live = {}
+            try:
+                pool = next((ng for ng in cluster.nodegroups
+                             if ng.stack_id == target_stack_id
+                             and not ng.is_default), None)
+                if pool is not None:
+                    live = self._first_member_params(osc, target_stack_id,
+                                                     pool)
+            except Exception as exc:
+                LOG.debug("Could not read the live member params of "
+                          "nodegroup stack %s: %s", target_stack_id, exc)
+        for key in self._member_owned_params():
+            if key in params or key not in target or key not in live:
+                continue
+            params[key] = live[key]
+        # A rotation also leaves the parent's (hidden, unreadable) ca_key
+        # stale; the cert manager holds what the masters got.
+        if "ca_key" in target and "ca_key" not in params:
+            ca_key = self._fetch_ca_key(context, cluster)
+            if ca_key:
+                params["ca_key"] = ca_key
+        return params
+
+    def _reconfigure_workers(self, osc, cluster, heat_params):
+        """Push changed label-derived params to the worker members.
+
+        Parameters only, and only what differs: a master-only change
+        (kubeapi_options, an addon toggle) re-fires no worker, while kubelet /
+        kube-proxy options, cloud_provider_enabled and os_autoupgrade_enabled
+        still reach them. Extra pools render from their own labels and only
+        take the cluster-wide node switches.
+        """
+        owned = self._member_owned_params() - {"timestamp_upgrade"}
+        targets = []
+        worker_ng = cluster.default_ng_worker
+        if worker_ng is not None and worker_ng.stack_id:
+            targets.append((cluster.stack_id, worker_ng, owned))
+        for nodegroup in cluster.nodegroups:
+            if (nodegroup.is_default or nodegroup.role == "master"
+                    or not nodegroup.stack_id):
+                continue
+            self._sync_cluster_wide_labels(cluster, nodegroup)
+            targets.append((nodegroup.stack_id, nodegroup,
+                            CLUSTER_WIDE_NODE_PARAMS))
+        for parent_stack_id, nodegroup, keys in targets:
+            for stack_id in self._get_nested_stack_ids(osc, parent_stack_id,
+                                                       nodegroup):
+                current = heat_tdef.omit_masked_heat_parameters(dict(
+                    osc.heat().stacks.get(
+                        stack_id, resolve_outputs=False).parameters or {}))
+                if "reconciler_version" not in current:
+                    # Pre-reconciler member: a parameters update would re-run
+                    # its legacy bash fragments. It converges on upgrade.
+                    LOG.info("Not reconfiguring legacy worker stack %s of "
+                             "cluster %s; upgrade the cluster to migrate it",
+                             stack_id, cluster.uuid)
+                    continue
+                changed = {
+                    key: value for key, value in heat_params.items()
+                    if key in keys and key in current
+                    and not _heat_param_equal(current[key], value)
+                }
+                if not changed:
+                    continue
+                LOG.info("Reconfiguring cluster %s worker stack %s: %s",
+                         cluster.uuid, stack_id, sorted(changed))
+                osc.heat().stacks.update(
+                    stack_id,
+                    existing=True,
+                    parameters=changed,
+                    timeout_mins=self._get_update_timeout(cluster),
+                    disable_rollback=True,
+                )
+
+    @staticmethod
+    def _sync_cluster_wide_labels(cluster, nodegroup):
+        """Copy the cluster-wide node switches onto an extra pool's labels so
+        a later upgrade of that pool (rendered from its labels) keeps them."""
+        cluster_labels = cluster.labels or {}
+        labels = dict(nodegroup.labels or {})
+        for key in CLUSTER_WIDE_NODE_PARAMS:
+            if key in cluster_labels:
+                labels[key] = cluster_labels[key]
+        if labels != (nodegroup.labels or {}):
+            nodegroup.labels = labels
+            nodegroup.save()
 
     def _get_env_files(self, template_path, env_rel_paths):
         template_dir = os.path.dirname(template_path)
@@ -1597,6 +1814,8 @@ class HeatDriver(driver.Driver):
             # upgrade; pin to 1 so members roll serially — a parallel master
             # reboot would drop etcd quorum.
             desired['update_max_batch_size'] = '1'
+        self._preserve_member_params(context, osc, cluster, desired,
+                                     nodegroup.stack_id, stack_params)
         fields = {
             "parameters": desired,
             "existing": True,
@@ -1673,15 +1892,25 @@ class HeatDriver(driver.Driver):
         # template, not labels, so labels.get() returns None).  We must
         # not overwrite existing child stack values with None, or Heat
         # will reject the update with "Parameter was not provided".
-        heat_params = {k: v for k, v in heat_params.items() if v is not None}
+        heat_params = {
+            k: v for k, v in heat_params.items()
+            if v is not None and k not in RECONFIGURE_SKIP_PARAMS
+        }
 
         heat_params["is_upgrade"] = "false"
         heat_params["is_resize"] = "false"
-        heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
+        # No timestamp_upgrade bump: a changed label changes the deployment
+        # input it feeds, so exactly the affected nodes re-fire. A bump would
+        # re-fire everything and leave the members ahead of the parent stack.
+        # The re-extracted params carry the CLUSTER stack's ca_rotation_id,
+        # which is always blank -- only the member stacks ever hold the token.
+        # Pushing that blank value straight at the members cancels a rotation
+        # that is still in flight, so restore what the nodes actually hold.
+        self._preserve_live_ca_rotation_id(osc, cluster, heat_params)
 
-        # Only update master nodegroup child stacks. Cluster addons
-        # (Helm releases, RBAC, etc.) only run on master-0, so there's
-        # no need to trigger workers for addon reconfiguration.
+        # Masters get the full template + params. Workers get only changed
+        # worker-relevant params (_reconfigure_workers), so addon
+        # toggles -- master-0 only -- never re-fire them.
         master_ng = cluster.default_ng_master
         if not master_ng or not master_ng.stack_id:
             LOG.warning("No master nodegroup stack found for cluster %s", cluster.uuid)
@@ -1711,9 +1940,8 @@ class HeatDriver(driver.Driver):
             # references on aborted attempts). The deployment must NOT be
             # marked: that forces Heat to REPLACE it, minting a new
             # deployment id that the node's async heat-container-agent races
-            # against. The deployment re-fires IN PLACE anyway because its
-            # TIMESTAMP_UPGRADE input is bumped above (and its config
-            # reference changes if Heat recreates/auto-replaces the config).
+            # against. The deployment re-fires IN PLACE when one of its
+            # inputs changed (or its config was recreated).
             if self._config_backing_row_missing(osc, stack_id, "master_config"):
                 try:
                     osc.heat().resources.mark_unhealthy(
@@ -1735,6 +1963,8 @@ class HeatDriver(driver.Driver):
             }
             LOG.info("Reconfiguring cluster %s master stack %s", cluster.uuid, stack_id)
             osc.heat().stacks.update(stack_id, **nodegroup_fields)
+
+        self._reconfigure_workers(osc, cluster, heat_params)
 
     def create_nodegroup(self, context, cluster, nodegroup):
         stack = self._create_stack(
@@ -1957,16 +2187,16 @@ class HeatDriver(driver.Driver):
         # Get existing stack parameters if available. Mutating stack op
         # below: cluster project scope only (see _get_cluster_osc).
         osc = self._get_cluster_osc(context, cluster, allow_admin_fallback=False)
+        existing_params = {}
         try:
-            stack = osc.heat().stacks.get(nodegroup.stack_id)
-            existing_params = stack.parameters
-            if "timestamp_upgrade" in existing_params:
-                scale_params["timestamp_upgrade"] = existing_params["timestamp_upgrade"]
+            existing_params = osc.heat().stacks.get(nodegroup.stack_id).parameters
         except Exception:
             pass
 
         self._set_non_rotation_stack_flags(scale_params)
         scale_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
+        self._preserve_member_params(context, osc, cluster, scale_params,
+                                     nodegroup.stack_id, existing_params)
 
         nodegroups = None
         if nodegroup and not nodegroup.is_default:
@@ -2004,9 +2234,11 @@ class HeatDriver(driver.Driver):
         rollback=False,
     ):
         # Get current node count from Heat stack to detect scale-down operations
+        target_params = {}
         try:
             osc = self._get_cluster_osc(context, cluster)
             stack = osc.heat().stacks.get(nodegroup.stack_id)
+            target_params = stack.parameters or {}
             current_node_count = int(
                 stack.parameters.get(
                     "number_of_masters"
@@ -2067,6 +2299,17 @@ class HeatDriver(driver.Driver):
         # are not re-triggered.  Only the ResourceGroup count changes: new
         # members are created fresh (CREATE deployment) and removed members
         # are deleted per removal_policies.
+        # Mutating stack op: cluster project scope only (trust context) --
+        # an admin-context resize re-fires deployments and can mint derived
+        # configs under the service tenant (see _get_cluster_osc).
+        osc = self._get_cluster_osc(context, cluster, allow_admin_fallback=False)
+
+        # ... except what lives only on the member stacks (in-flight rotation
+        # token, label-reconfigured values): carry the live values, or the
+        # re-render reverts them on every existing node.
+        self._preserve_member_params(context, osc, cluster, scale_params,
+                                     nodegroup.stack_id, target_params)
+
         fields = {
             "parameters": scale_params,
             "existing": True,
@@ -2079,10 +2322,6 @@ class HeatDriver(driver.Driver):
             nodegroup.stack_id,
             scale_params,
         )
-        # Mutating stack op: cluster project scope only (trust context) --
-        # an admin-context resize re-fires deployments and can mint derived
-        # configs under the service tenant (see _get_cluster_osc).
-        osc = self._get_cluster_osc(context, cluster, allow_admin_fallback=False)
         # A cluster carrying leftovers from an earlier failed/timed-out
         # update (a *_config_deployment stuck FAILED/IN_PROGRESS, a
         # NULL-updated_at row, a never-updated Octavia member) cannot even
@@ -2147,9 +2386,7 @@ class HeatDriver(driver.Driver):
             # Get existing cluster stack parameters
             try:
                 cluster_stack = osc.heat().stacks.get(cluster_stack_id)
-                existing_params = heat_tdef.omit_masked_heat_parameters(
-                    cluster_stack.parameters.copy()
-                )
+                existing_params = cluster_stack.parameters or {}
             except Exception as e:
                 LOG.warning(
                     "Could not retrieve existing cluster stack parameters: %s", str(e)
@@ -2164,6 +2401,10 @@ class HeatDriver(driver.Driver):
             cluster_params = {
                 "number_of_masters": total_master_count,
             }
+            # ... except what lives only on the member stacks.
+            self._preserve_member_params(context, osc, cluster,
+                                         cluster_params, cluster_stack_id,
+                                         existing_params)
 
             fields = {
                 "parameters": cluster_params,
@@ -2486,11 +2727,12 @@ class KubernetesDriver(HeatDriver):
         )
         for param in ("OS::stack_id", "OS::project_id", "OS::stack_name"):
             current_parameters.pop(param, None)
+        current_parameters.update(updated_params)
         if template:
+            # Heat rejects params the child template does not declare.
             current_parameters = self._filter_params_for_template(
                 current_parameters, template
             )
-        current_parameters.update(updated_params)
         return current_parameters
 
     def rotate_ca_certificate(self, context, cluster):
@@ -2859,7 +3101,11 @@ class FedoraKubernetesDriver(KubernetesDriver):
         # passed back — existing: True preserves the real one.
         template = self._inject_deprecated_parameters(template, raw_parameters)
 
-        self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
+        self._set_non_rotation_stack_flags(
+            heat_params,
+            is_upgrade=True,
+            ca_rotation_id=self._live_ca_rotation_id(osc, cluster),
+        )
         heat_params["update_max_batch_size"] = max_batch_size or 1
         heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
 
@@ -3123,7 +3369,11 @@ class UbuntuKubernetesDriver(KubernetesDriver):
         # passed back — existing: True preserves the real one.
         template = self._inject_deprecated_parameters(template, raw_parameters)
 
-        self._set_non_rotation_stack_flags(heat_params, is_upgrade=True)
+        self._set_non_rotation_stack_flags(
+            heat_params,
+            is_upgrade=True,
+            ca_rotation_id=self._live_ca_rotation_id(osc, cluster),
+        )
         heat_params["update_max_batch_size"] = max_batch_size or 1
         heat_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
 

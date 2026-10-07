@@ -10,6 +10,10 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import base64
+import json
+import re
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -22,6 +26,66 @@ CONF = cfg.CONF
 
 
 LOG = logging.getLogger(__name__)
+
+
+# Labels copied verbatim into the template parameter of the same name.
+LABEL_PARAMS = ('flannel_network_cidr', 'flannel_backend',
+                'admission_control_list',
+                'grafana_admin_passwd',
+                'kube_dashboard_enabled',
+                'etcd_volume_size',
+                'cert_manager_api',
+                'kubelet_options',
+                'kubeapi_options',
+                'kubeproxy_options',
+                'kubecontroller_options',
+                'kubescheduler_options',
+                'kube_scheduler_scoring_strategy',
+                'cinder_csi_default_storage_class',
+                'node_labels',
+                'node_taints',
+                'master_lb_allowed_cidrs')
+
+# Rendered verbatim into component args/config on the nodes: an absent label
+# must reach them as "" so removing it clears the setting.
+CLEARABLE_LABEL_PARAMS = ('kubelet_options', 'kubeapi_options',
+                          'kubeproxy_options', 'kubecontroller_options',
+                          'kubescheduler_options',
+                          'kube_scheduler_scoring_strategy',
+                          'cinder_csi_default_storage_class')
+
+# kube_file_<name>=<content> labels become /etc/kubernetes/files/<name> on
+# every node (see kube_files_param).
+KUBE_FILE_LABEL_PREFIX = 'kube_file_'
+KUBE_FILES_MAX_BYTES = 64 * 1024
+_KUBE_FILE_NAME = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def kube_files_param(labels):
+    """Pack the kube_file_<name> labels into the kube_files parameter.
+
+    Base64 of a sorted JSON object, so arbitrary multi-line content survives
+    Heat and the shell-sourced heat-params file unchanged. "" when none.
+    """
+    files = {}
+    for key, value in (labels or {}).items():
+        if not key.startswith(KUBE_FILE_LABEL_PREFIX):
+            continue
+        name = key[len(KUBE_FILE_LABEL_PREFIX):]
+        if not _KUBE_FILE_NAME.match(name):
+            raise exception.InvalidParameterValue(
+                'label %s: the file name after "%s" must match '
+                '[A-Za-z0-9_-]{1,64}' % (key, KUBE_FILE_LABEL_PREFIX))
+        files[name] = '' if value is None else str(value)
+    if not files:
+        return ''
+    packed = json.dumps(files, sort_keys=True,
+                        separators=(',', ':')).encode('utf-8')
+    if len(packed) > KUBE_FILES_MAX_BYTES:
+        raise exception.InvalidParameterValue(
+            '%s* labels total %d bytes; the limit is %d' % (
+                KUBE_FILE_LABEL_PREFIX, len(packed), KUBE_FILES_MAX_BYTES))
+    return base64.b64encode(packed).decode('ascii')
 
 
 """kubernetes ports """
@@ -85,6 +149,12 @@ class NodeAddressOutputMapping(ServerAddressOutputMapping):
 
 class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
     """Base Kubernetes template."""
+
+    label_params = LABEL_PARAMS
+
+    def label_derived_params(self):
+        """Template parameters whose value comes from cluster labels."""
+        return frozenset(self.label_params) | {'kube_files'}
 
     def __init__(self):
         super(K8sTemplateDefinition, self).__init__()
@@ -245,24 +315,14 @@ class K8sTemplateDefinition(template_def.BaseTemplateDefinition):
         net_params = self.get_net_params(context, cluster_template, cluster)
         extra_params.update(net_params)
 
-        label_list = ['flannel_network_cidr', 'flannel_backend',
-                      'admission_control_list',
-                      'grafana_admin_passwd',
-                      'kube_dashboard_enabled',
-                      'etcd_volume_size',
-                      'cert_manager_api',
-                      'kubelet_options',
-                      'kubeapi_options',
-                      'kubeproxy_options',
-                      'kubecontroller_options',
-                      'node_labels',
-                      'node_taints',
-                      'master_lb_allowed_cidrs']
-
         labels = self._get_relevant_labels(cluster, kwargs)
 
-        for label in label_list:
-            extra_params[label] = labels.get(label)
+        for label in LABEL_PARAMS:
+            value = labels.get(label)
+            if value is None and label in CLEARABLE_LABEL_PARAMS:
+                value = ''
+            extra_params[label] = value
+        extra_params['kube_files'] = kube_files_param(labels)
 
         cluser_ip_range = cluster.labels.get('service_cluster_ip_range')
         if cluser_ip_range:
