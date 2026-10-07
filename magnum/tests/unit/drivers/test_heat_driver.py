@@ -219,6 +219,38 @@ class TestHeatPoller(base.TestCase):
         self.assertEqual(cluster_status.UPDATE_COMPLETE, cluster.status)
         self.assertEqual(1, cluster.save.call_count)
 
+    def _member_update_poll(self, member_status):
+        cluster, poller = self.setup_poll_test(
+            default_stack_status=cluster_status.UPDATE_COMPLETE,
+            stack_params={'number_of_minions': 2, 'number_of_masters': 1})
+        member = mock.MagicMock(resource_name='0',
+                                resource_type='kubemaster.yaml',
+                                physical_resource_id='member0',
+                                resource_status=cluster_status.UPDATE_COMPLETE)
+        group = mock.MagicMock(resource_name='kube_masters',
+                               resource_type='OS::Heat::ResourceGroup',
+                               physical_resource_id='group0',
+                               resource_status=cluster_status.UPDATE_COMPLETE)
+        heat = poller.openstack_client.heat.return_value
+        heat.resources.list.return_value = [group, member]
+        self.mock_stacks['member0'] = mock.MagicMock(
+            stack_status=member_status)
+        cluster.status = cluster_status.UPDATE_IN_PROGRESS
+        poller.poll_and_check()
+        return cluster
+
+    def test_poll_and_check_member_stack_updating_holds(self):
+        cluster = self._member_update_poll(cluster_status.UPDATE_IN_PROGRESS)
+        for ng in cluster.nodegroups:
+            self.assertEqual(cluster_status.UPDATE_IN_PROGRESS, ng.status)
+        self.assertEqual(cluster_status.UPDATE_IN_PROGRESS, cluster.status)
+
+    def test_poll_and_check_member_stack_complete_releases(self):
+        cluster = self._member_update_poll(cluster_status.UPDATE_COMPLETE)
+        for ng in cluster.nodegroups:
+            self.assertEqual(cluster_status.UPDATE_COMPLETE, ng.status)
+        self.assertEqual(cluster_status.UPDATE_COMPLETE, cluster.status)
+
     def test_poll_and_check_update_failed(self):
         stack_params = {
             'number_of_minions': 2,
