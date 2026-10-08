@@ -1135,6 +1135,53 @@ class TestMemberOwnedParams(base.TestCase):
         self.assertNotIn('kube_tag', params)
         self.assertEqual(2, params['number_of_minions'])
 
+    @patch('magnum.drivers.heat.driver.clients.OpenStackClients')
+    def test_update_stack_carries_params_a_legacy_root_stack_lacks(
+            self, mock_osc_cls):
+        driver = DummyKubernetesDriver()
+        driver.definition.label_derived_params.return_value = frozenset(
+            ('kubeapi_options', 'kube_files',
+             'kube_scheduler_scoring_strategy'))
+        driver.definition.get_scale_params.return_value = {
+            'number_of_minions': 3}
+        osc = mock.MagicMock()
+        mock_osc_cls.return_value = osc
+        legacy_root = mock.MagicMock(parameters={
+            'number_of_minions': 2, 'kubeapi_options': '',
+            'timestamp_upgrade': '', 'ca_rotation_id': ''})
+        member = mock.MagicMock(parameters={
+            'kubeapi_options': '--oidc-ca-file=/etc/kubernetes/files/oidc_ca',
+            'kube_files': 'eyJvaWRjX2NhIjoiLS0tIn0=',
+            'kube_scheduler_scoring_strategy': 'MostAllocated',
+            'timestamp_upgrade': '', 'ca_rotation_id': ''})
+        osc.heat.return_value.stacks.get.side_effect = (
+            lambda sid, **kw: legacy_root if sid == 'cluster-stack'
+            else member)
+        master = mock.MagicMock(role='master', stack_id='cluster-stack',
+                                is_default=True)
+        worker = mock.MagicMock(role='worker', stack_id='cluster-stack',
+                                is_default=True, node_count=3)
+        cluster = self._cluster(master, worker)
+        driver._get_nested_stack_ids = mock.MagicMock(
+            return_value=['master-0'])
+        driver._prepare_stack_for_template_update = mock.MagicMock()
+        driver._get_stack_update_template_fields = mock.MagicMock(
+            return_value={'template': {'parameters': {
+                'number_of_minions': {}, 'kubeapi_options': {},
+                'kube_files': {'default': ''},
+                'kube_scheduler_scoring_strategy': {'default': ''}}},
+                'environment_files': [], 'files': {}})
+
+        driver._update_stack(mock.sentinel.ctx, cluster)
+
+        _, kwargs = osc.heat.return_value.stacks.update.call_args
+        params = kwargs['parameters']
+        self.assertEqual('eyJvaWRjX2NhIjoiLS0tIn0=', params['kube_files'])
+        self.assertEqual('MostAllocated',
+                         params['kube_scheduler_scoring_strategy'])
+        self.assertEqual('--oidc-ca-file=/etc/kubernetes/files/oidc_ca',
+                         params['kubeapi_options'])
+
     def test_preserve_member_params_reads_the_target_nodegroup(self):
         driver = DummyKubernetesDriver()
         driver.definition.label_derived_params.return_value = frozenset(

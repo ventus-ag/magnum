@@ -1336,7 +1336,8 @@ class HeatDriver(driver.Driver):
         return {}
 
     def _preserve_member_params(self, context, osc, cluster, params,
-                                target_stack_id, target_params):
+                                target_stack_id, target_params,
+                                declared=None):
         """Carry what the nodes hold into a parent-driven parameters update.
 
         A label reconfigure and a CA rotation write straight to the member
@@ -1345,6 +1346,10 @@ class HeatDriver(driver.Driver):
         kubeapi_options vanishes, an addon toggle flips back (uninstalling its
         Helm release), and every node re-fires. Passing the members' live
         values keeps their input unchanged. Params the caller set win.
+
+        ``declared`` names the params the stack will have after the update.
+        Pass it when the update pushes a template: a stack created before a
+        param existed does not have it yet, but its new template does.
         """
         live, rotation_id = self._scan_master_members(osc, cluster)
         if rotation_id:
@@ -1363,8 +1368,9 @@ class HeatDriver(driver.Driver):
             except Exception as exc:
                 LOG.debug("Could not read the live member params of "
                           "nodegroup stack %s: %s", target_stack_id, exc)
+        known = target if declared is None else declared
         for key in self._member_owned_params():
-            if key in params or key not in target or key not in live:
+            if key in params or key not in known or key not in live:
                 continue
             params[key] = live[key]
         # A rotation also leaves the parent's (hidden, unreadable) ca_key
@@ -2193,19 +2199,22 @@ class HeatDriver(driver.Driver):
         except Exception:
             pass
 
-        self._set_non_rotation_stack_flags(scale_params)
-        scale_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
-        self._preserve_member_params(context, osc, cluster, scale_params,
-                                     nodegroup.stack_id, existing_params)
-
         nodegroups = None
         if nodegroup and not nodegroup.is_default:
             nodegroups = [nodegroup]
+        template_fields = self._get_stack_update_template_fields(
+            context, cluster, nodegroups=nodegroups
+        )
+
+        self._set_non_rotation_stack_flags(scale_params)
+        scale_params["timestamp_upgrade"] = self._get_reconcile_timestamp()
+        self._preserve_member_params(
+            context, osc, cluster, scale_params, nodegroup.stack_id,
+            existing_params,
+            declared=self._template_param_names(template_fields["template"]))
 
         fields = {
-            **self._get_stack_update_template_fields(
-                context, cluster, nodegroups=nodegroups
-            ),
+            **template_fields,
             "parameters": scale_params,
             "existing": True,
             "disable_rollback": not rollback,
@@ -2623,6 +2632,12 @@ class KubernetesDriver(HeatDriver):
                 nested_params["ca_key"] = heat_params["ca_key"]
 
         return nested_params
+
+    @staticmethod
+    def _template_param_names(template):
+        parsed = template if isinstance(template, dict) else (
+            yaml.safe_load(template) or {})
+        return set((parsed.get("parameters") or {}).keys())
 
     @staticmethod
     def _filter_params_for_template(current_parameters, template):
