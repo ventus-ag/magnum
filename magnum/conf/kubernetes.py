@@ -65,7 +65,7 @@ kubernetes_opts = [
     cfg.BoolOpt('health_openstack_fallback',
                 default=True,
                 help=('Derive cluster health from OpenStack -- the API load '
-                      'balancer\'s operating status and the Nova status of '
+                      'balancer\'s Octavia status and the Nova status of '
                       'every cluster server -- when Magnum cannot reach the '
                       'Kubernetes API: a private-network cluster, or one '
                       'whose API firewall does not admit the conductor. '

@@ -31,8 +31,10 @@ from magnum.objects import fields as m_fields
 CONF = magnum.conf.CONF
 LOG = logging.getLogger(__name__)
 
-# Octavia operating statuses that say nothing is wrong with the API members.
-_LB_OK_STATUSES = ('ONLINE', 'NO_MONITOR')
+# Only statuses the Octavia health manager must actually have reported count
+# as failures: without its heartbeats every LB and member sits at OFFLINE,
+# which is the state on every ventus env.
+_LB_FAILED_OPERATING_STATUSES = ('ERROR', 'DEGRADED')
 
 # Immutable per cluster/stack, so resolved once per conductor process.
 _api_lb_ids = {}
@@ -129,12 +131,12 @@ class K8sMonitor(monitors.MonitorBase):
         """Health as OpenStack sees it, for an API Magnum cannot reach.
 
         Weaker than the Kubernetes poll: it proves the servers run and the
-        API load balancer's members accept TCP, not that nodes are Ready.
+        API load balancer has not failed, not that nodes are Ready.
         """
         reason = {'api': api_reason, 'source': 'openstack'}
         try:
             osc = clients.OpenStackClients(self.context)
-            lb_status = self._api_lb_operating_status(osc)
+            lb = self._api_lb(osc)
             servers = self._cluster_servers(osc)
         except Exception as e:
             LOG.warning("Cannot derive health of cluster %(cluster)s from "
@@ -148,9 +150,13 @@ class K8sMonitor(monitors.MonitorBase):
             return m_fields.ClusterHealthStatus.UNKNOWN, reason
 
         healthy = True
-        if lb_status is not None:
-            reason['loadbalancer'] = lb_status
-            healthy = lb_status in _LB_OK_STATUSES
+        if lb is not None:
+            reason['loadbalancer.provisioning_status'] = (
+                lb['provisioning_status'])
+            reason['loadbalancer.operating_status'] = lb['operating_status']
+            healthy = (lb['provisioning_status'] != 'ERROR' and
+                       lb['operating_status'] not in
+                       _LB_FAILED_OPERATING_STATUSES)
         for server in servers:
             reason[server.name + '.status'] = server.status
             healthy = healthy and server.status == 'ACTIVE'
@@ -159,7 +165,7 @@ class K8sMonitor(monitors.MonitorBase):
             return m_fields.ClusterHealthStatus.HEALTHY, reason
         return m_fields.ClusterHealthStatus.UNHEALTHY, reason
 
-    def _api_lb_operating_status(self, osc):
+    def _api_lb(self, osc):
         if not self.cluster.master_lb_enabled or not self.cluster.stack_id:
             return None
 
@@ -178,11 +184,10 @@ class K8sMonitor(monitors.MonitorBase):
             _api_lb_ids[self.cluster.uuid] = lb_id
 
         try:
-            lb = osc.octavia().load_balancer_show(lb_id)
+            return osc.octavia().load_balancer_show(lb_id)
         except Exception:
             _api_lb_ids.pop(self.cluster.uuid, None)
             raise
-        return lb['operating_status']
 
     def _cluster_servers(self, osc):
         # Additional nodegroups live in their own stacks; their servers are

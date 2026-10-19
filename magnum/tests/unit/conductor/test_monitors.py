@@ -322,7 +322,7 @@ class K8sMonitorOpenStackHealthTestCase(base.TestCase):
         self.heat.stacks.get.return_value.stack_name = 'cluster1-abc123'
         self.octavia = self.osc.octavia.return_value
         self.octavia.load_balancer_show.return_value = {
-            'operating_status': 'ONLINE'}
+            'provisioning_status': 'ACTIVE', 'operating_status': 'ONLINE'}
         self.nova = self.osc.nova.return_value
         self.nova.servers.list.return_value = [
             _server('cluster1-abc123-master-0'),
@@ -339,7 +339,8 @@ class K8sMonitorOpenStackHealthTestCase(base.TestCase):
             (m_fields.ClusterHealthStatus.HEALTHY,
              {'api': 'The cluster cluster1 is not accessible.',
               'source': 'openstack',
-              'loadbalancer': 'ONLINE',
+              'loadbalancer.provisioning_status': 'ACTIVE',
+              'loadbalancer.operating_status': 'ONLINE',
               'cluster1-abc123-master-0.status': 'ACTIVE',
               'cluster1-abc123-node-0.status': 'ACTIVE'}),
             self._status())
@@ -354,24 +355,27 @@ class K8sMonitorOpenStackHealthTestCase(base.TestCase):
             'name': '^(cluster1-abc123)-'})
         self.assertNotIn('api_unreachable', self.monitor.data)
 
-    def test_degraded_lb_is_unhealthy(self):
+    def _lb_status(self, provisioning, operating):
         self.octavia.load_balancer_show.return_value = {
-            'operating_status': 'DEGRADED'}
-
+            'provisioning_status': provisioning,
+            'operating_status': operating}
         self.monitor.poll_health_status()
+        return self._status()[0]
 
-        status, reason = self._status()
-        self.assertEqual(m_fields.ClusterHealthStatus.UNHEALTHY, status)
-        self.assertEqual('DEGRADED', reason['loadbalancer'])
+    def test_lb_reported_failure_is_unhealthy(self):
+        for operating in ('DEGRADED', 'ERROR'):
+            self.assertEqual(m_fields.ClusterHealthStatus.UNHEALTHY,
+                             self._lb_status('ACTIVE', operating), operating)
 
-    def test_lb_without_monitor_is_not_a_failure(self):
-        self.octavia.load_balancer_show.return_value = {
-            'operating_status': 'NO_MONITOR'}
+    def test_lb_provisioning_error_is_unhealthy(self):
+        self.assertEqual(m_fields.ClusterHealthStatus.UNHEALTHY,
+                         self._lb_status('ERROR', 'OFFLINE'))
 
-        self.monitor.poll_health_status()
-
-        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY,
-                         self._status()[0])
+    def test_lb_without_health_manager_reports_is_not_a_failure(self):
+        # A dead Octavia health manager leaves every LB OFFLINE.
+        for operating in ('OFFLINE', 'NO_MONITOR', 'ONLINE'):
+            self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY,
+                             self._lb_status('ACTIVE', operating), operating)
 
     def test_stopped_server_is_unhealthy(self):
         self.nova.servers.list.return_value = [
@@ -409,7 +413,7 @@ class K8sMonitorOpenStackHealthTestCase(base.TestCase):
 
         status, reason = self._status()
         self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
-        self.assertNotIn('loadbalancer', reason)
+        self.assertNotIn('loadbalancer.operating_status', reason)
         self.heat.resources.get.assert_not_called()
 
     def test_missing_api_lb_resource_uses_servers_only(self):
@@ -419,7 +423,7 @@ class K8sMonitorOpenStackHealthTestCase(base.TestCase):
 
         status, reason = self._status()
         self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
-        self.assertNotIn('loadbalancer', reason)
+        self.assertNotIn('loadbalancer.operating_status', reason)
 
     def test_lb_id_and_stack_name_are_cached(self):
         self.monitor.poll_health_status()
