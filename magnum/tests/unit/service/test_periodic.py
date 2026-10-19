@@ -469,3 +469,69 @@ class PeriodicTestCase(base.TestCase):
                          self.cluster4.health_status)
         self.assertEqual({'api': 'ok', 'node-0.Ready': 'False'},
                          self.cluster4.health_status_reason)
+
+    def _sync_health(self, monitor_data, backoff=None):
+        """Run one health sync of cluster4; return (tasks, monitor)."""
+        self.cluster4.status = cluster_status.CREATE_COMPLETE
+        monitor = mock.MagicMock(spec=k8s_monitor.K8sMonitor, name='test',
+                                 data=monitor_data)
+        tasks = periodic.MagnumPeriodicTasks(CONF)
+        if backoff is not None:
+            tasks._unreachable_clusters[self.cluster4.uuid] = backoff
+        with mock.patch('magnum.common.context.make_admin_context',
+                        return_value=self.context), \
+                mock.patch('magnum.common.rpc.get_notifier'), \
+                mock.patch.object(objects.Cluster, 'save'), \
+                mock.patch('magnum.objects.Cluster.list',
+                           return_value=[self.cluster4]), \
+                mock.patch('magnum.conductor.monitors.create_monitor',
+                           return_value=monitor), \
+                mock.patch('oslo_service.loopingcall.FixedIntervalLoopingCall',
+                           new=fakes.FakeLoopingCall):
+            tasks.sync_cluster_health_status(self.context)
+        return tasks, monitor
+
+    def test_sync_cluster_health_status_unreachable_api_backs_off(self):
+        health = {'health_status': cluster_health_status.HEALTHY,
+                  'health_status_reason': {'source': 'openstack'},
+                  'api_unreachable': True}
+
+        tasks, monitor = self._sync_health(health)
+
+        monitor.poll_health_status.assert_called_once_with(skip_api=False)
+        self.assertEqual(cluster_health_status.HEALTHY,
+                         self.cluster4.health_status)
+        self.assertEqual(1, tasks._unreachable_clusters[
+            self.cluster4.uuid][1])
+
+    def test_sync_cluster_health_status_backed_off_uses_openstack(self):
+        health = {'health_status': cluster_health_status.HEALTHY,
+                  'health_status_reason': {'source': 'openstack'}}
+        backoff = (periodic.timeutils.utcnow_ts() + 600, 3)
+
+        tasks, monitor = self._sync_health(health, backoff=backoff)
+
+        monitor.poll_health_status.assert_called_once_with(skip_api=True)
+        self.assertEqual(cluster_health_status.HEALTHY,
+                         self.cluster4.health_status)
+        self.assertEqual(backoff,
+                         tasks._unreachable_clusters[self.cluster4.uuid])
+
+    def test_sync_cluster_health_status_backed_off_without_fallback(self):
+        self.config(health_openstack_fallback=False, group='kubernetes')
+        backoff = (periodic.timeutils.utcnow_ts() + 600, 3)
+
+        tasks, monitor = self._sync_health({}, backoff=backoff)
+
+        monitor.poll_health_status.assert_not_called()
+        self.assertIsNone(self.cluster4.health_status)
+
+    def test_sync_cluster_health_status_reachable_clears_backoff(self):
+        health = {'health_status': cluster_health_status.HEALTHY,
+                  'health_status_reason': {'api': 'ok'}}
+        backoff = (periodic.timeutils.utcnow_ts() - 1, 3)
+
+        tasks, monitor = self._sync_health(health, backoff=backoff)
+
+        monitor.poll_health_status.assert_called_once_with(skip_api=False)
+        self.assertNotIn(self.cluster4.uuid, tasks._unreachable_clusters)

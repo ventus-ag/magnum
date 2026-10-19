@@ -107,13 +107,14 @@ class ClusterUpdateJob(object):
 
 class ClusterHealthUpdateJob(object):
 
-    def __init__(self, ctx, cluster, unreachable=None):
+    def __init__(self, ctx, cluster, unreachable=None, api_backoff=False):
         self.ctx = ctx
         self.cluster = cluster
         # Shared {cluster_uuid: (retry_after_ts, failures)} owned by the
         # periodic task, so a cluster that cannot be reached is skipped for
         # a growing window instead of stalling every single interval.
         self.unreachable = unreachable if unreachable is not None else {}
+        self.api_backoff = api_backoff
 
     def _record_unreachable(self):
         """Back off polling this cluster after a failed health request."""
@@ -144,15 +145,10 @@ class ClusterHealthUpdateJob(object):
             return
 
         try:
-            monitor.poll_health_status()
+            monitor.poll_health_status(skip_api=self.api_backoff)
         except Exception as e:
-            # An unreachable Kubernetes API is the expensive case, not a rare
-            # one: a dead cluster behind a live load balancer stalls in
-            # the TLS handshake, and those stalls run in the conductor, so
-            # enough of them starve the synchronous RPCs the API waits
-            # on and an upgrade returns a gateway error though it did start.
-            # Back
-            # off this cluster rather than paying that cost every interval.
+            # Unreachable-API stalls run in the conductor and starve the
+            # synchronous RPCs the API waits on, so back off this cluster.
             self._record_unreachable()
             LOG.warning(
                 "Skip pulling data from cluster %(cluster)s due to "
@@ -163,7 +159,10 @@ class ClusterHealthUpdateJob(object):
             # that basically means the k8s API doesn't work at that moment.
             return
 
-        self._record_reachable()
+        if monitor.data.get('api_unreachable'):
+            self._record_unreachable()
+        elif not self.api_backoff:
+            self._record_reachable()
 
         if monitor.data.get('health_status'):
             self.cluster.health_status = monitor.data.get('health_status')
@@ -261,14 +260,17 @@ class MagnumPeriodicTasks(periodic_task.PeriodicTasks):
             for cluster in clusters:
                 retry_after, failures = self._unreachable_clusters.get(
                     cluster.uuid, (0, 0))
-                if retry_after > now:
+                api_backoff = retry_after > now
+                if api_backoff:
                     LOG.debug(
-                        "Skipping health poll of unreachable cluster %s "
+                        "Not polling the API of unreachable cluster %s "
                         "(%s consecutive failure(s), retrying in %ss)",
                         cluster.uuid, failures, retry_after - now)
-                    continue
+                    if not CONF.kubernetes.health_openstack_fallback:
+                        continue
                 job = ClusterHealthUpdateJob(ctx, cluster,
-                                             self._unreachable_clusters)
+                                             self._unreachable_clusters,
+                                             api_backoff=api_backoff)
                 # though this call isn't really looping, we use this
                 # abstraction anyway to avoid dealing directly with eventlet
                 # hooey

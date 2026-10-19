@@ -104,7 +104,7 @@ class K8sAPI(core_v1_api.CoreV1Api):
             raise
         return tmp
 
-    def __init__(self, context, cluster):
+    def __init__(self, context, cluster, retries=None):
         self.ca_file = None
         self.cert_file = None
         self.key_file = None
@@ -121,6 +121,11 @@ class K8sAPI(core_v1_api.CoreV1Api):
 
         # build a connection with Kubernetes master
         client = ApiClient(configuration=config)
+        if retries is not None:
+            # This client version has no retries setting, and urllib3's
+            # default retries an unreachable endpoint three times.
+            client.rest_client.pool_manager.connection_pool_kw['retries'] = (
+                retries)
 
         super(K8sAPI, self).__init__(client)
 
@@ -133,7 +138,7 @@ class K8sAPI(core_v1_api.CoreV1Api):
             self.key_file.close()
 
 
-def create_k8s_api(context, cluster):
+def create_k8s_api(context, cluster, retries=None):
     """Create a kubernetes API client
 
     Creates connection with Kubernetes master and creates ApivApi instance
@@ -141,5 +146,6 @@ def create_k8s_api(context, cluster):
 
     :param context: The security context
     :param cluster:  Cluster object
+    :param retries: urllib3 retries for every request; None keeps the default
     """
-    return K8sAPI(context, cluster)
+    return K8sAPI(context, cluster, retries=retries)

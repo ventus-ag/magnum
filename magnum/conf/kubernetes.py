@@ -58,7 +58,21 @@ kubernetes_opts = [
                      'interval, while a briefly unreachable one recovers '
                      'quickly. The cluster is NEVER dropped from polling '
                      'entirely -- it keeps its last known health status and '
-                     'is retried. 0 disables the backoff.')),
+                     'is retried. With health_openstack_fallback only the '
+                     'Kubernetes API request is backed off; OpenStack-derived '
+                     'health is still reported every interval. 0 disables '
+                     'the backoff.')),
+    cfg.BoolOpt('health_openstack_fallback',
+                default=True,
+                help=('Derive cluster health from OpenStack -- the API load '
+                      'balancer\'s operating status and the Nova status of '
+                      'every cluster server -- when Magnum cannot reach the '
+                      'Kubernetes API: a private-network cluster, or one '
+                      'whose API firewall does not admit the conductor. '
+                      'Without it such clusters report UNKNOWN, or keep '
+                      'their last status while backed off. This signal is '
+                      'weaker than the Kubernetes poll: it cannot see a '
+                      'NotReady node on a running server.')),
 ]
 
 

@@ -51,3 +51,23 @@ class TestK8sAPI(base.TestCase):
             TestK8sAPI.content_dict[cert_ref]['decrypted_private_key'])
 
         return cert_obj
+
+    @mock.patch('magnum.conductor.k8s_api.create_client_files')
+    def test_create_k8s_api_retries(self, mock_client_files):
+        from magnum.conductor import k8s_api
+
+        mock_client_files.return_value = (
+            mock.MagicMock(), mock.MagicMock(), mock.MagicMock())
+        cluster = mock.MagicMock(api_address='https://10.0.0.5:6443')
+
+        default = k8s_api.create_k8s_api(self.context, cluster)
+        no_retry = k8s_api.create_k8s_api(self.context, cluster,
+                                          retries=False)
+
+        self.assertNotIn(
+            'retries',
+            default.api_client.rest_client.pool_manager.connection_pool_kw)
+        self.assertIs(
+            False,
+            no_retry.api_client.rest_client.pool_manager.connection_pool_kw[
+                'retries'])

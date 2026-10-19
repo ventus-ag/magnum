@@ -13,18 +13,34 @@
 import ast
 import json
 
+from heatclient import exc as heat_exc
+from kubernetes.client import rest as k8s_rest
 from oslo_log import log as logging
 from oslo_utils import strutils
 from oslo_utils import timeutils
+import urllib3
 
+from magnum.common import clients
 from magnum.common import utils
 from magnum.conductor import k8s_api as k8s
 from magnum.conductor import monitors
 import magnum.conf
+from magnum import objects
 from magnum.objects import fields as m_fields
 
 CONF = magnum.conf.CONF
 LOG = logging.getLogger(__name__)
+
+# Octavia operating statuses that say nothing is wrong with the API members.
+_LB_OK_STATUSES = ('ONLINE', 'NO_MONITOR')
+
+# Immutable per cluster/stack, so resolved once per conductor process.
+_api_lb_ids = {}
+_stack_names = {}
+
+
+class ClusterUnreachable(Exception):
+    """The cluster's Kubernetes API gave no response at all."""
 
 
 def _health_request_timeout():
@@ -33,6 +49,13 @@ def _health_request_timeout():
     if not seconds or seconds <= 0:
         return None
     return (seconds, seconds)
+
+
+def _is_no_response(exc):
+    if isinstance(exc, k8s_rest.ApiException):
+        # The client reports TLS failures as status 0.
+        return not exc.status
+    return isinstance(exc, (urllib3.exceptions.HTTPError, OSError))
 
 
 class K8sMonitor(monitors.MonitorBase):
@@ -63,21 +86,129 @@ class K8sMonitor(monitors.MonitorBase):
         pods = k8s_api.list_namespaced_pod('default')
         self.data['pods'] = self._parse_pod_info(pods)
 
-    def poll_health_status(self):
+    def poll_health_status(self, skip_api=False):
+        """Poll cluster health.
+
+        :param skip_api: the API is in its unreachable backoff window, so
+            report OpenStack-derived health without trying it.
+        """
         if (self._is_magnum_auto_healer_running() or
                 self._has_fresh_external_health_report()):
             return
 
-        k8s_api = k8s.create_k8s_api(self.context, self.cluster)
-        if self._is_cluster_accessible():
-            status, reason = self._poll_health_status(k8s_api)
+        if not self._is_cluster_accessible():
+            status, reason = self._unreachable_health_status(
+                "The cluster %s is not accessible." % self.cluster.name)
+        elif skip_api:
+            status, reason = self._unreachable_health_status(
+                "Kubernetes API unreachable from Magnum (backed off).")
         else:
-            status = m_fields.ClusterHealthStatus.UNKNOWN
-            reason = {"api": "The cluster %s is not accessible." %
-                      self.cluster.name}
+            k8s_api = k8s.create_k8s_api(self.context, self.cluster,
+                                         retries=False)
+            try:
+                status, reason = self._poll_health_status(k8s_api)
+            except ClusterUnreachable as e:
+                if not CONF.kubernetes.health_openstack_fallback:
+                    raise
+                LOG.info("Cluster %(cluster)s API unreachable from Magnum: "
+                         "%(e)s", {'cluster': self.cluster.uuid,
+                                   'e': e.__cause__})
+                self.data['api_unreachable'] = True
+                status, reason = self._unreachable_health_status(
+                    "Kubernetes API unreachable from Magnum (%s)." % e)
 
         self.data['health_status'] = status
         self.data['health_status_reason'] = reason
+
+    def _unreachable_health_status(self, api_reason):
+        if not CONF.kubernetes.health_openstack_fallback:
+            return m_fields.ClusterHealthStatus.UNKNOWN, {'api': api_reason}
+        return self._poll_openstack_health(api_reason)
+
+    def _poll_openstack_health(self, api_reason):
+        """Health as OpenStack sees it, for an API Magnum cannot reach.
+
+        Weaker than the Kubernetes poll: it proves the servers run and the
+        API load balancer's members accept TCP, not that nodes are Ready.
+        """
+        reason = {'api': api_reason, 'source': 'openstack'}
+        try:
+            osc = clients.OpenStackClients(self.context)
+            lb_status = self._api_lb_operating_status(osc)
+            servers = self._cluster_servers(osc)
+        except Exception as e:
+            LOG.warning("Cannot derive health of cluster %(cluster)s from "
+                        "OpenStack: %(e)s",
+                        {'cluster': self.cluster.uuid, 'e': e})
+            reason['openstack'] = 'lookup failed'
+            return m_fields.ClusterHealthStatus.UNKNOWN, reason
+
+        if not servers:
+            reason['openstack'] = 'no servers found'
+            return m_fields.ClusterHealthStatus.UNKNOWN, reason
+
+        healthy = True
+        if lb_status is not None:
+            reason['loadbalancer'] = lb_status
+            healthy = lb_status in _LB_OK_STATUSES
+        for server in servers:
+            reason[server.name + '.status'] = server.status
+            healthy = healthy and server.status == 'ACTIVE'
+
+        if healthy:
+            return m_fields.ClusterHealthStatus.HEALTHY, reason
+        return m_fields.ClusterHealthStatus.UNHEALTHY, reason
+
+    def _api_lb_operating_status(self, osc):
+        if not self.cluster.master_lb_enabled or not self.cluster.stack_id:
+            return None
+
+        lb_id = _api_lb_ids.get(self.cluster.uuid)
+        if lb_id is None:
+            heat = osc.heat()
+            try:
+                lb_stack = heat.resources.get(
+                    self.cluster.stack_id, 'api_lb').physical_resource_id
+                lb_id = heat.resources.get(
+                    lb_stack, 'loadbalancer').physical_resource_id
+            except heat_exc.HTTPNotFound:
+                return None
+            if not lb_id:
+                return None
+            _api_lb_ids[self.cluster.uuid] = lb_id
+
+        try:
+            lb = osc.octavia().load_balancer_show(lb_id)
+        except Exception:
+            _api_lb_ids.pop(self.cluster.uuid, None)
+            raise
+        return lb['operating_status']
+
+    def _cluster_servers(self, osc):
+        # Additional nodegroups live in their own stacks; their servers are
+        # named after that stack, never after the cluster.
+        stack_ids = {ng.stack_id for ng in
+                     objects.NodeGroup.list(self.context, self.cluster.uuid)
+                     if ng.stack_id}
+        if self.cluster.stack_id:
+            stack_ids.add(self.cluster.stack_id)
+        if not stack_ids:
+            return []
+
+        names = []
+        for stack_id in sorted(stack_ids):
+            name = _stack_names.get(stack_id)
+            if name is None:
+                name = osc.heat().stacks.get(stack_id).stack_name
+                _stack_names[stack_id] = name
+            names.append(name)
+
+        # Stack names are sanitised to [a-z0-9-], so need no regex escaping.
+        return osc.nova().servers.list(search_opts={
+            'all_tenants': True,
+            'tenant_id': self.cluster.project_id,
+            'name': '^(%s)-' % '|'.join(names),
+        })
 
     def _is_magnum_auto_healer_running(self):
         auto_healing = self.cluster.labels.get("auto_healing_enabled")
@@ -299,6 +430,9 @@ class K8sMonitor(monitors.MonitorBase):
 
             health_status_reason['api'] = api_status
         except Exception as exp_api:
+            if not api_status and _is_no_response(exp_api):
+                raise ClusterUnreachable(
+                    type(exp_api).__name__) from exp_api
             if not api_status:
                 api_status = (getattr(exp_api, 'body', None) or
                               getattr(exp_api, 'message', None))

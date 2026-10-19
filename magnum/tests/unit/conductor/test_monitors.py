@@ -16,13 +16,12 @@
 from collections import namedtuple
 from unittest import mock
 
-from oslo_serialization import jsonutils
+from heatclient import exc as heat_exc
+from kubernetes.client import rest as k8s_rest
+import urllib3
 
 from magnum.common import exception
 from magnum.drivers.common import k8s_monitor
-from magnum.drivers.mesos_ubuntu_v1 import monitor as mesos_monitor
-from magnum.drivers.swarm_fedora_atomic_v1 import monitor as swarm_monitor
-from magnum.drivers.swarm_fedora_atomic_v2 import monitor as swarm_v2_monitor
 from magnum import objects
 from magnum.objects import fields as m_fields
 from magnum.tests import base
@@ -62,176 +61,9 @@ class MonitorsTestCase(base.TestCase):
             objects.NodeGroup(self.context, **nodegroups['master']),
             objects.NodeGroup(self.context, **nodegroups['worker'])
         ]
-        self.monitor = swarm_monitor.SwarmMonitor(self.context, self.cluster)
-        self.v2_monitor = swarm_v2_monitor.SwarmMonitor(self.context,
-                                                        self.cluster)
         self.k8s_monitor = k8s_monitor.K8sMonitor(self.context, self.cluster)
-        self.mesos_monitor = mesos_monitor.MesosMonitor(self.context,
-                                                        self.cluster)
-        p = mock.patch('magnum.drivers.swarm_fedora_atomic_v1.monitor.'
-                       'SwarmMonitor.metrics_spec',
-                       new_callable=mock.PropertyMock)
-        self.mock_metrics_spec = p.start()
-        self.mock_metrics_spec.return_value = self.test_metrics_spec
-        self.addCleanup(p.stop)
-
-        p2 = mock.patch('magnum.drivers.swarm_fedora_atomic_v2.monitor.'
-                        'SwarmMonitor.metrics_spec',
-                        new_callable=mock.PropertyMock)
-        self.mock_metrics_spec_v2 = p2.start()
-        self.mock_metrics_spec_v2.return_value = self.test_metrics_spec
-        self.addCleanup(p2.stop)
-
-    @mock.patch('magnum.common.docker_utils.docker_for_cluster')
-    def test_swarm_monitor_pull_data_success(self, mock_docker_cluster):
-        mock_docker = mock.MagicMock()
-        mock_docker.info.return_value = {'DriverStatus': [[
-            u' \u2514 Reserved Memory', u'0 B / 1 GiB']]}
-        mock_docker.containers.return_value = [mock.MagicMock()]
-        mock_docker.inspect_container.return_value = 'test_container'
-        mock_docker_cluster.return_value.__enter__.return_value = mock_docker
-
-        self.monitor.pull_data()
-
-        self.assertEqual([{'MemTotal': 1073741824.0}],
-                         self.monitor.data['nodes'])
-        self.assertEqual(['test_container'], self.monitor.data['containers'])
-
-    @mock.patch('magnum.common.docker_utils.docker_for_cluster')
-    def test_swarm_v2_monitor_pull_data_success(self, mock_docker_cluster):
-        mock_docker = mock.MagicMock()
-        mock_docker.info.return_value = {'DriverStatus': [[
-            u' \u2514 Reserved Memory', u'0 B / 1 GiB']]}
-        mock_docker.containers.return_value = [mock.MagicMock()]
-        mock_docker.inspect_container.return_value = 'test_container'
-        mock_docker_cluster.return_value.__enter__.return_value = mock_docker
-
-        self.v2_monitor.pull_data()
-
-        self.assertEqual([{'MemTotal': 1073741824.0}],
-                         self.v2_monitor.data['nodes'])
-        self.assertEqual(['test_container'],
-                         self.v2_monitor.data['containers'])
-
-    @mock.patch('magnum.common.docker_utils.docker_for_cluster')
-    def test_swarm_monitor_pull_data_raise(self, mock_docker_cluster):
-        mock_container = mock.MagicMock()
-        mock_docker = mock.MagicMock()
-        mock_docker.info.return_value = {'DriverStatus': [[
-            u' \u2514 Reserved Memory', u'0 B / 1 GiB']]}
-        mock_docker.containers.return_value = [mock_container]
-        mock_docker.inspect_container.side_effect = Exception("inspect error")
-        mock_docker_cluster.return_value.__enter__.return_value = mock_docker
-
-        self.monitor.pull_data()
-
-        self.assertEqual([{'MemTotal': 1073741824.0}],
-                         self.monitor.data['nodes'])
-        self.assertEqual([mock_container], self.monitor.data['containers'])
-
-    @mock.patch('magnum.common.docker_utils.docker_for_cluster')
-    def test_swarm_v2_monitor_pull_data_raise(self, mock_docker_cluster):
-        mock_container = mock.MagicMock()
-        mock_docker = mock.MagicMock()
-        mock_docker.info.return_value = {'DriverStatus': [[
-            u' \u2514 Reserved Memory', u'0 B / 1 GiB']]}
-        mock_docker.containers.return_value = [mock_container]
-        mock_docker.inspect_container.side_effect = Exception("inspect error")
-        mock_docker_cluster.return_value.__enter__.return_value = mock_docker
-
-        self.v2_monitor.pull_data()
-
-        self.assertEqual([{'MemTotal': 1073741824.0}],
-                         self.v2_monitor.data['nodes'])
-        self.assertEqual([mock_container], self.v2_monitor.data['containers'])
-
-    def test_swarm_monitor_get_metric_names(self):
-        names = self.monitor.get_metric_names()
-        self.assertEqual(sorted(['metric1', 'metric2']), sorted(names))
-
-    def test_swarm_v2_monitor_get_metric_names(self):
-        names = self.v2_monitor.get_metric_names()
-        self.assertEqual(sorted(['metric1', 'metric2']), sorted(names))
-
-    def test_swarm_monitor_get_metric_unit(self):
-        unit = self.monitor.get_metric_unit('metric1')
-        self.assertEqual('metric1_unit', unit)
-
-    def test_swarm_v2_monitor_get_metric_unit(self):
-        unit = self.v2_monitor.get_metric_unit('metric1')
-        self.assertEqual('metric1_unit', unit)
-
-    def test_swarm_monitor_compute_metric_value(self):
-        mock_func = mock.MagicMock()
-        mock_func.return_value = 'metric1_value'
-        self.monitor.metric1_func = mock_func
-        value = self.monitor.compute_metric_value('metric1')
-        self.assertEqual('metric1_value', value)
-
-    def test_swarm_v2_monitor_compute_metric_value(self):
-        mock_func = mock.MagicMock()
-        mock_func.return_value = 'metric1_value'
-        self.v2_monitor.metric1_func = mock_func
-        value = self.v2_monitor.compute_metric_value('metric1')
-        self.assertEqual('metric1_value', value)
-
-    def test_swarm_monitor_compute_memory_util(self):
-        test_data = {
-            'nodes': [
-                {
-                    'Name': 'node',
-                    'MemTotal': 20,
-                },
-            ],
-            'containers': [
-                {
-                    'Name': 'container',
-                    'HostConfig': {
-                        'Memory': 10,
-                    },
-                },
-            ],
-        }
-        self.monitor.data = test_data
-        mem_util = self.monitor.compute_memory_util()
-        self.assertEqual(50, mem_util)
-
-        test_data = {
-            'nodes': [],
-            'containers': [],
-        }
-        self.monitor.data = test_data
-        mem_util = self.monitor.compute_memory_util()
-        self.assertEqual(0, mem_util)
-
-    def test_swarm_v2_monitor_compute_memory_util(self):
-        test_data = {
-            'nodes': [
-                {
-                    'Name': 'node',
-                    'MemTotal': 20,
-                },
-            ],
-            'containers': [
-                {
-                    'Name': 'container',
-                    'HostConfig': {
-                        'Memory': 10,
-                    },
-                },
-            ],
-        }
-        self.v2_monitor.data = test_data
-        mem_util = self.v2_monitor.compute_memory_util()
-        self.assertEqual(50, mem_util)
-
-        test_data = {
-            'nodes': [],
-            'containers': [],
-        }
-        self.v2_monitor.data = test_data
-        mem_util = self.v2_monitor.compute_memory_util()
-        self.assertEqual(0, mem_util)
+        k8s_monitor._api_lb_ids.clear()
+        k8s_monitor._stack_names.clear()
 
     @mock.patch('magnum.conductor.k8s_api.create_k8s_api')
     def test_k8s_monitor_pull_data_success(self, mock_k8s_api):
@@ -326,124 +158,6 @@ class MonitorsTestCase(base.TestCase):
         cpu_util = self.k8s_monitor.compute_cpu_util()
         self.assertEqual(0, cpu_util)
 
-    def _test_mesos_monitor_pull_data(
-            self, mock_url_get, state_json, expected_mem_total,
-            expected_mem_used, expected_cpu_total, expected_cpu_used):
-        state_json = jsonutils.dumps(state_json)
-        mock_url_get.return_value = state_json
-        self.mesos_monitor.pull_data()
-        self.assertEqual(self.mesos_monitor.data['mem_total'],
-                         expected_mem_total)
-        self.assertEqual(self.mesos_monitor.data['mem_used'],
-                         expected_mem_used)
-        self.assertEqual(self.mesos_monitor.data['cpu_total'],
-                         expected_cpu_total)
-        self.assertEqual(self.mesos_monitor.data['cpu_used'],
-                         expected_cpu_used)
-
-    @mock.patch('magnum.objects.NodeGroup.list')
-    @mock.patch('magnum.common.urlfetch.get')
-    def test_mesos_monitor_pull_data_success(self, mock_url_get,
-                                             mock_ng_list):
-        mock_ng_list.return_value = self.nodegroups
-        state_json = {
-            'leader': 'master@10.0.0.6:5050',
-            'pid': 'master@10.0.0.6:5050',
-            'slaves': [{
-                'resources': {
-                    'mem': 100,
-                    'cpus': 1,
-                },
-                'used_resources': {
-                    'mem': 50,
-                    'cpus': 0.2,
-                }
-            }]
-        }
-        self._test_mesos_monitor_pull_data(mock_url_get, state_json,
-                                           100, 50, 1, 0.2)
-
-    @mock.patch('magnum.objects.NodeGroup.list')
-    @mock.patch('magnum.common.urlfetch.get')
-    def test_mesos_monitor_pull_data_success_not_leader(self, mock_url_get,
-                                                        mock_ng_list):
-        mock_ng_list.return_value = self.nodegroups
-        state_json = {
-            'leader': 'master@10.0.0.6:5050',
-            'pid': 'master@1.1.1.1:5050',
-            'slaves': []
-        }
-        self._test_mesos_monitor_pull_data(mock_url_get, state_json,
-                                           0, 0, 0, 0)
-
-    @mock.patch('magnum.objects.NodeGroup.list')
-    @mock.patch('magnum.common.urlfetch.get')
-    def test_mesos_monitor_pull_data_success_no_master(self, mock_url_get,
-                                                       mock_ng_list):
-        mock_ng_list.return_value = []
-        self._test_mesos_monitor_pull_data(mock_url_get, {}, 0, 0, 0, 0)
-
-    def test_mesos_monitor_get_metric_names(self):
-        mesos_metric_spec = ('magnum.drivers.mesos_ubuntu_v1.monitor.'
-                             'MesosMonitor.metrics_spec')
-        with mock.patch(mesos_metric_spec,
-                        new_callable=mock.PropertyMock) as mock_mesos_metric:
-            mock_mesos_metric.return_value = self.test_metrics_spec
-            names = self.mesos_monitor.get_metric_names()
-            self.assertEqual(sorted(['metric1', 'metric2']), sorted(names))
-
-    def test_mesos_monitor_get_metric_unit(self):
-        mesos_metric_spec = ('magnum.drivers.mesos_ubuntu_v1.monitor.'
-                             'MesosMonitor.metrics_spec')
-        with mock.patch(mesos_metric_spec,
-                        new_callable=mock.PropertyMock) as mock_mesos_metric:
-            mock_mesos_metric.return_value = self.test_metrics_spec
-            unit = self.mesos_monitor.get_metric_unit('metric1')
-            self.assertEqual('metric1_unit', unit)
-
-    def test_mesos_monitor_compute_memory_util(self):
-        test_data = {
-            'mem_total': 100,
-            'mem_used': 50
-        }
-        self.mesos_monitor.data = test_data
-        mem_util = self.mesos_monitor.compute_memory_util()
-        self.assertEqual(50, mem_util)
-
-        test_data = {
-            'mem_total': 0,
-            'pods': 0,
-        }
-        self.mesos_monitor.data = test_data
-        mem_util = self.mesos_monitor.compute_memory_util()
-        self.assertEqual(0, mem_util)
-
-        test_data = {
-            'mem_total': 100,
-            'mem_used': 0,
-            'pods': 0,
-        }
-        self.mesos_monitor.data = test_data
-        mem_util = self.mesos_monitor.compute_memory_util()
-        self.assertEqual(0, mem_util)
-
-    def test_mesos_monitor_compute_cpu_util(self):
-        test_data = {
-            'cpu_total': 1,
-            'cpu_used': 0.2,
-        }
-        self.mesos_monitor.data = test_data
-        cpu_util = self.mesos_monitor.compute_cpu_util()
-        self.assertEqual(20, cpu_util)
-
-        test_data = {
-            'cpu_total': 100,
-            'cpu_used': 0,
-        }
-        self.mesos_monitor.data = test_data
-        cpu_util = self.mesos_monitor.compute_cpu_util()
-        self.assertEqual(0, cpu_util)
-
     @mock.patch('magnum.conductor.k8s_api.create_k8s_api')
     def test_k8s_monitor_health_healthy(self, mock_k8s_api):
         mock_nodes = mock.MagicMock()
@@ -523,10 +237,14 @@ class MonitorsTestCase(base.TestCase):
         mock_node.status = mock.MagicMock()
         mock_nodes.items = [mock_node]
         self.k8s_monitor.cluster.floating_ip_enabled = False
+        self.config(health_openstack_fallback=False, group='kubernetes')
 
         self.k8s_monitor.poll_health_status()
         self.assertEqual(self.k8s_monitor.data['health_status'],
                          m_fields.ClusterHealthStatus.UNKNOWN)
+        self.assertEqual(self.k8s_monitor.data['health_status_reason'],
+                         {'api': 'The cluster cluster1 is not accessible.'})
+        mock_k8s_api.assert_not_called()
 
     @mock.patch('magnum.conductor.k8s_api.create_k8s_api')
     def test_k8s_monitor_health_unreachable_with_master_lb(self, mock_k8s_api):
@@ -538,6 +256,7 @@ class MonitorsTestCase(base.TestCase):
         cluster.floating_ip_enabled = True
         cluster.master_lb_enabled = True
         cluster.labels['master_lb_floating_ip_enabled'] = False
+        self.config(health_openstack_fallback=False, group='kubernetes')
 
         self.k8s_monitor.poll_health_status()
         self.assertEqual(self.k8s_monitor.data['health_status'],
@@ -563,3 +282,251 @@ class MonitorsTestCase(base.TestCase):
         cluster.labels = {}
         self.k8s_monitor._is_magnum_auto_healer_running()
         self.assertFalse(self.k8s_monitor._is_magnum_auto_healer_running())
+
+
+def _server(name, status='ACTIVE'):
+    server = mock.MagicMock(status=status)
+    server.name = name
+    return server
+
+
+class K8sMonitorOpenStackHealthTestCase(base.TestCase):
+
+    def setUp(self):
+        super(K8sMonitorOpenStackHealthTestCase, self).setUp()
+        cluster = utils.get_test_cluster(api_address='https://10.0.0.5:6443',
+                                         floating_ip_enabled=False,
+                                         labels={})
+        self.cluster = objects.Cluster(self.context, **cluster)
+        self.monitor = k8s_monitor.K8sMonitor(self.context, self.cluster)
+        k8s_monitor._api_lb_ids.clear()
+        k8s_monitor._stack_names.clear()
+
+        p = mock.patch('magnum.drivers.common.k8s_monitor.clients.'
+                       'OpenStackClients')
+        self.osc = p.start().return_value
+        self.addCleanup(p.stop)
+        p = mock.patch('magnum.objects.NodeGroup.list')
+        self.ng_list = p.start()
+        self.addCleanup(p.stop)
+        p = mock.patch('magnum.conductor.k8s_api.create_k8s_api')
+        self.create_k8s_api = p.start()
+        self.addCleanup(p.stop)
+
+        self.ng_list.return_value = [
+            mock.MagicMock(stack_id=self.cluster.stack_id)]
+        self.heat = self.osc.heat.return_value
+        self.heat.resources.get.side_effect = [
+            mock.MagicMock(physical_resource_id='lb-stack-id'),
+            mock.MagicMock(physical_resource_id='lb-id')]
+        self.heat.stacks.get.return_value.stack_name = 'cluster1-abc123'
+        self.octavia = self.osc.octavia.return_value
+        self.octavia.load_balancer_show.return_value = {
+            'operating_status': 'ONLINE'}
+        self.nova = self.osc.nova.return_value
+        self.nova.servers.list.return_value = [
+            _server('cluster1-abc123-master-0'),
+            _server('cluster1-abc123-node-0')]
+
+    def _status(self):
+        return (self.monitor.data['health_status'],
+                self.monitor.data['health_status_reason'])
+
+    def test_private_cluster_healthy_from_openstack(self):
+        self.monitor.poll_health_status()
+
+        self.assertEqual(
+            (m_fields.ClusterHealthStatus.HEALTHY,
+             {'api': 'The cluster cluster1 is not accessible.',
+              'source': 'openstack',
+              'loadbalancer': 'ONLINE',
+              'cluster1-abc123-master-0.status': 'ACTIVE',
+              'cluster1-abc123-node-0.status': 'ACTIVE'}),
+            self._status())
+        self.create_k8s_api.assert_not_called()
+        self.heat.resources.get.assert_has_calls([
+            mock.call(self.cluster.stack_id, 'api_lb'),
+            mock.call('lb-stack-id', 'loadbalancer')])
+        self.octavia.load_balancer_show.assert_called_once_with('lb-id')
+        self.nova.servers.list.assert_called_once_with(search_opts={
+            'all_tenants': True,
+            'tenant_id': 'fake_project',
+            'name': '^(cluster1-abc123)-'})
+        self.assertNotIn('api_unreachable', self.monitor.data)
+
+    def test_degraded_lb_is_unhealthy(self):
+        self.octavia.load_balancer_show.return_value = {
+            'operating_status': 'DEGRADED'}
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.UNHEALTHY, status)
+        self.assertEqual('DEGRADED', reason['loadbalancer'])
+
+    def test_lb_without_monitor_is_not_a_failure(self):
+        self.octavia.load_balancer_show.return_value = {
+            'operating_status': 'NO_MONITOR'}
+
+        self.monitor.poll_health_status()
+
+        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY,
+                         self._status()[0])
+
+    def test_stopped_server_is_unhealthy(self):
+        self.nova.servers.list.return_value = [
+            _server('cluster1-abc123-master-0'),
+            _server('cluster1-abc123-node-0', 'SHUTOFF')]
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.UNHEALTHY, status)
+        self.assertEqual('SHUTOFF', reason['cluster1-abc123-node-0.status'])
+
+    def test_no_servers_is_unknown(self):
+        self.nova.servers.list.return_value = []
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.UNKNOWN, status)
+        self.assertEqual('no servers found', reason['openstack'])
+
+    def test_lookup_failure_is_unknown(self):
+        self.nova.servers.list.side_effect = Exception('nova down')
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.UNKNOWN, status)
+        self.assertEqual('lookup failed', reason['openstack'])
+
+    def test_no_master_lb_uses_servers_only(self):
+        self.cluster.master_lb_enabled = False
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
+        self.assertNotIn('loadbalancer', reason)
+        self.heat.resources.get.assert_not_called()
+
+    def test_missing_api_lb_resource_uses_servers_only(self):
+        self.heat.resources.get.side_effect = heat_exc.HTTPNotFound()
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
+        self.assertNotIn('loadbalancer', reason)
+
+    def test_lb_id_and_stack_name_are_cached(self):
+        self.monitor.poll_health_status()
+        k8s_monitor.K8sMonitor(self.context,
+                               self.cluster).poll_health_status()
+
+        self.assertEqual(2, self.heat.resources.get.call_count)
+        self.assertEqual(1, self.heat.stacks.get.call_count)
+        self.assertEqual(2, self.octavia.load_balancer_show.call_count)
+
+    def test_octavia_failure_evicts_cached_lb(self):
+        self.octavia.load_balancer_show.side_effect = Exception('gone')
+
+        self.monitor.poll_health_status()
+
+        self.assertEqual(m_fields.ClusterHealthStatus.UNKNOWN,
+                         self._status()[0])
+        self.assertNotIn(self.cluster.uuid, k8s_monitor._api_lb_ids)
+
+    def test_nodegroup_stacks_are_included(self):
+        self.ng_list.return_value = [
+            mock.MagicMock(stack_id=self.cluster.stack_id),
+            mock.MagicMock(stack_id='ng-stack-id'),
+            mock.MagicMock(stack_id=None)]
+        names = {self.cluster.stack_id: mock.MagicMock(
+                     stack_name='cluster1-abc123'),
+                 'ng-stack-id': mock.MagicMock(
+                     stack_name='cluster1-gpu-def456')}
+        self.heat.stacks.get.side_effect = names.get
+
+        self.monitor.poll_health_status()
+
+        pattern = self.nova.servers.list.call_args[1]['search_opts']['name']
+        self.assertEqual(
+            '^(%s)-' % '|'.join(
+                names[s].stack_name for s in sorted(names)),
+            pattern)
+
+    def _public_cluster_api_error(self, error):
+        self.cluster.floating_ip_enabled = True
+        api_client = self.create_k8s_api.return_value.api_client
+        api_client.call_api.side_effect = error
+
+    def test_firewalled_public_cluster_falls_back(self):
+        self._public_cluster_api_error(
+            urllib3.exceptions.ConnectTimeoutError('timed out'))
+
+        self.monitor.poll_health_status()
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
+        self.assertEqual(
+            'Kubernetes API unreachable from Magnum (ConnectTimeoutError).',
+            reason['api'])
+        self.assertTrue(self.monitor.data['api_unreachable'])
+        self.create_k8s_api.assert_called_once_with(
+            self.context, self.cluster, retries=False)
+
+    def test_tls_failure_counts_as_unreachable(self):
+        self._public_cluster_api_error(
+            k8s_rest.ApiException(status=0, reason='SSLError'))
+
+        self.monitor.poll_health_status()
+
+        self.assertTrue(self.monitor.data['api_unreachable'])
+        self.assertEqual('openstack',
+                         self._status()[1]['source'])
+
+    def test_api_http_error_is_still_unhealthy(self):
+        error = k8s_rest.ApiException(status=500, reason='Internal')
+        error.body = '[-]etcd failed'
+        self._public_cluster_api_error(error)
+
+        self.monitor.poll_health_status()
+
+        self.assertEqual(
+            (m_fields.ClusterHealthStatus.UNHEALTHY,
+             {'api': '[-]etcd failed'}),
+            self._status())
+        self.assertNotIn('api_unreachable', self.monitor.data)
+        self.nova.servers.list.assert_not_called()
+
+    def test_unreachable_without_fallback_raises(self):
+        self.config(health_openstack_fallback=False, group='kubernetes')
+        self._public_cluster_api_error(OSError('Connection refused'))
+
+        self.assertRaises(k8s_monitor.ClusterUnreachable,
+                          self.monitor.poll_health_status)
+
+    def test_skip_api_reports_openstack_health(self):
+        self.cluster.floating_ip_enabled = True
+
+        self.monitor.poll_health_status(skip_api=True)
+
+        status, reason = self._status()
+        self.assertEqual(m_fields.ClusterHealthStatus.HEALTHY, status)
+        self.assertEqual(
+            'Kubernetes API unreachable from Magnum (backed off).',
+            reason['api'])
+        self.create_k8s_api.assert_not_called()
+
+    def test_auto_healer_cluster_is_left_alone(self):
+        self.cluster.labels = {
+            'auto_healing_enabled': 'true',
+            'auto_healing_controller': 'magnum-auto-healer'}
+
+        self.monitor.poll_health_status()
+
+        self.assertNotIn('health_status', self.monitor.data)
+        self.osc.nova.assert_not_called()
