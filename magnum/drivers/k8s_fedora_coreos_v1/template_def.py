@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import json
 import os
 import six.moves.urllib.parse as urlparse
 
@@ -55,4 +56,15 @@ class FCOSK8sTemplateDefinition(kftd.K8sFedoraTemplateDefinition):
         extra_params.pop('discovery_url', None)
         extra_params['openstack_ca'] = urlparse.quote(
             utils.get_openstack_ca())
+        ssh_public_key = extra_params.get('ssh_public_key')
+        if ssh_public_key:
+            extra_params['ssh_public_key'] = json_string_body(ssh_public_key)
         return extra_params
+
+
+def json_string_body(value):
+    # Heat str_replace drops this into a JSON string in user_data.json. A raw
+    # backslash/quote (e.g. 'DOMAIN\user' key comment) breaks the JSON, Heat
+    # falls back to cloud-init MIME and Ignition refuses to boot the node.
+    # ensure_ascii=False leaves ordinary values byte-identical (no live diff).
+    return json.dumps(value, ensure_ascii=False)[1:-1]
